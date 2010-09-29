@@ -23,12 +23,38 @@ source $testdir/tester.tcl
 #   e_createtable-1.*: Test statements related to table and database names, 
 #       the TEMP and TEMPORARY keywords, and the IF NOT EXISTS clause.
 #
-#
+#   e_createtable-2.*: Test "CREATE TABLE AS" statements.
 #
 
 proc do_createtable_tests {nm args} {
   uplevel do_select_tests [list e_createtable-$nm] $args
 }
+
+
+#-------------------------------------------------------------------------
+# This command returns a serialized tcl array mapping from the name of
+# each attached database to a list of tables in that database. For example,
+# if the database schema is created with:
+#
+#   CREATE TABLE t1(x);
+#   CREATE TEMP TABLE t2(x);
+#   CREATE TEMP TABLE t3(x);
+#
+# Then this command returns "main t1 temp {t2 t3}".
+#
+proc table_list {} {
+  set res [list]
+  db eval { pragma database_list } a {
+    set dbname $a(name)
+    set master $a(name).sqlite_master
+    if {$dbname == "temp"} { set master sqlite_temp_master }
+    lappend res $dbname [
+      db eval "SELECT DISTINCT tbl_name FROM $master ORDER BY tbl_name"
+    ]
+  }
+  set res
+}
+
 
 # EVIDENCE-OF: R-25262-01881 -- syntax diagram type-name
 #
@@ -353,19 +379,6 @@ do_createtable_tests 1.1.2 {
 }
 
 
-proc table_list {} {
-  set res [list]
-  db eval { pragma database_list } a {
-    set dbname $a(name)
-    set master $a(name).sqlite_master
-    if {$dbname == "temp"} { set master sqlite_temp_master }
-    lappend res $dbname [
-      db eval "SELECT DISTINCT tbl_name FROM $master ORDER BY tbl_name"
-    ]
-  }
-  set res
-}
-
 # EVIDENCE-OF: R-10195-31023 If a <database-name> is specified, it
 # must be either "main", "temp", or the name of an attached database.
 #
@@ -584,6 +597,460 @@ do_execsql_test e_createtable-1.11.2.4 {
   SELECT name FROM auxa.sqlite_master;
 } {}
 
+#-------------------------------------------------------------------------
+# Test cases e_createtable-2.* - test statements related to the CREATE
+# TABLE AS ... SELECT statement.
+#
+
+# Three Tcl commands:
+#
+#   select_column_names SQL
+#     The argument must be a SELECT statement. Return a list of the names
+#     of the columns of the result-set that would be returned by executing
+#     the SELECT.
+#
+#   table_column_names TBL
+#     The argument must be a table name. Return a list of column names, from
+#     left to right, for the table.
+#
+#   table_column_decltypes TBL
+#     The argument must be a table name. Return a list of column declared
+#     types, from left to right, for the table.
+#
+proc sci {select cmd} {
+  set res [list]
+  set STMT [sqlite3_prepare_v2 db $select -1 dummy]
+  for {set i 0} {$i < [sqlite3_column_count $STMT]} {incr i} {
+    lappend res [$cmd $STMT $i]
+  }
+  sqlite3_finalize $STMT
+  set res
+}
+proc tci {tbl cmd} { sci "SELECT * FROM $tbl" $cmd }
+proc select_column_names    {sql} { sci $sql sqlite3_column_name }
+proc table_column_names     {tbl} { tci $tbl sqlite3_column_name }
+proc table_column_decltypes {tbl} { tci $tbl sqlite3_column_decltype }
+
+# Create a database schema. This schema is used by tests 2.1.* through 2.3.*.
+#
+drop_all_tables
+do_execsql_test e_createtable-2.0 {
+  CREATE TABLE t1(a, b, c);
+  CREATE TABLE t2(d, e, f);
+  CREATE TABLE t3(g BIGINT, h VARCHAR(10));
+  CREATE TABLE t4(i BLOB, j ANYOLDATA);
+  CREATE TABLE t5(k FLOAT, l INTEGER);
+  CREATE TABLE t6(m DEFAULT 10, n DEFAULT 5, PRIMARY KEY(m, n));
+  CREATE TABLE t7(x INTEGER PRIMARY KEY);
+  CREATE TABLE t8(o COLLATE nocase DEFAULT 'abc');
+  CREATE TABLE t9(p NOT NULL, q DOUBLE CHECK (q!=0), r STRING UNIQUE);
+} {}
+
+# EVIDENCE-OF: R-64828-59568 The table has the same number of columns as
+# the rows returned by the SELECT statement. The name of each column is
+# the same as the name of the corresponding column in the result set of
+# the SELECT statement.
+#
+do_createtable_tests 2.1 -tclquery {
+  table_column_names x1
+} -repair {
+  catchsql { DROP TABLE x1 }
+} {
+  1    "CREATE TABLE x1 AS SELECT * FROM t1"                     {a b c}
+  2    "CREATE TABLE x1 AS SELECT c, b, a FROM t1"               {c b a}
+  3    "CREATE TABLE x1 AS SELECT * FROM t1, t2"                 {a b c d e f}
+  4    "CREATE TABLE x1 AS SELECT count(*) FROM t1"              {count(*)}
+  5    "CREATE TABLE x1 AS SELECT count(a) AS a, max(b) FROM t1" {a max(b)}
+}
+
+# EVIDENCE-OF: R-37111-22855 The declared type of each column is
+# determined by the expression affinity of the corresponding expression
+# in the result set of the SELECT statement, as follows: Expression
+# Affinity Column Declared Type TEXT "TEXT" NUMERIC "NUM" INTEGER "INT"
+# REAL "REAL" NONE "" (empty string)
+#
+do_createtable_tests 2.2 -tclquery {
+  table_column_decltypes x1
+} -repair {
+  catchsql { DROP TABLE x1 }
+} {
+  1    "CREATE TABLE x1 AS SELECT a FROM t1"     {""}
+  2    "CREATE TABLE x1 AS SELECT * FROM t3"     {INT TEXT}
+  3    "CREATE TABLE x1 AS SELECT * FROM t4"     {"" NUM}
+  4    "CREATE TABLE x1 AS SELECT * FROM t5"     {REAL INT}
+}
+
+# EVIDENCE-OF: R-16667-09772 A table created using CREATE TABLE AS has
+# no PRIMARY KEY and no constraints of any kind. The default value of
+# each column is NULL. The default collation sequence for each column of
+# the new table is BINARY.
+#
+#   The following tests create tables based on SELECT statements that read
+#   from tables that have primary keys, constraints and explicit default 
+#   collation sequences. None of this is transfered to the definition of
+#   the new table as stored in the sqlite_master table.
+#
+#   Tests 2.3.2.* show that the default value of each column is NULL.
+#
+do_createtable_tests 2.3.1 -query {
+  SELECT sql FROM sqlite_master ORDER BY rowid DESC LIMIT 1
+} {
+  1    "CREATE TABLE x1 AS SELECT * FROM t6" {{CREATE TABLE x1(m,n)}}
+  2    "CREATE TABLE x2 AS SELECT * FROM t7" {{CREATE TABLE x2(x INT)}}
+  3    "CREATE TABLE x3 AS SELECT * FROM t8" {{CREATE TABLE x3(o)}}
+  4    "CREATE TABLE x4 AS SELECT * FROM t9" {{CREATE TABLE x4(p,q REAL,r NUM)}}
+}
+do_execsql_test e_createtable-2.3.2.1 {
+  INSERT INTO x1 DEFAULT VALUES;
+  INSERT INTO x2 DEFAULT VALUES;
+  INSERT INTO x3 DEFAULT VALUES;
+  INSERT INTO x4 DEFAULT VALUES;
+} {}
+db nullvalue null
+do_execsql_test e_createtable-2.3.2.2 { SELECT * FROM x1 } {null null}
+do_execsql_test e_createtable-2.3.2.3 { SELECT * FROM x2 } {null}
+do_execsql_test e_createtable-2.3.2.4 { SELECT * FROM x3 } {null}
+do_execsql_test e_createtable-2.3.2.5 { SELECT * FROM x4 } {null null null}
+db nullvalue {}
+
+drop_all_tables
+do_execsql_test e_createtable-2.4.0 {
+  CREATE TABLE t1(x, y);
+  INSERT INTO t1 VALUES('i',   'one');
+  INSERT INTO t1 VALUES('ii',  'two');
+  INSERT INTO t1 VALUES('iii', 'three');
+} {}
+
+# EVIDENCE-OF: R-24153-28352 Tables created using CREATE TABLE AS are
+# initially populated with the rows of data returned by the SELECT
+# statement.
+#
+# EVIDENCE-OF: R-08224-30249 Rows are assigned contiguously ascending
+# rowid values, starting with 1, in the order that they are returned by
+# the SELECT statement.
+#
+#   Each test case below is specified as the name of a table to create
+#   using "CREATE TABLE ... AS SELECT ..." and a SELECT statement to use in
+#   creating it. The table is created. 
+#
+#   Test cases 2.4.*.1 check that after it has been created, the data in the
+#   table is the same as the data returned by the SELECT statement executed as
+#   a standalone command, verifying the first testable statement above.
+#
+#   Test cases 2.4.*.2 check that the rowids were allocated contiguously
+#   as required by the second testable statement above. That the rowids
+#   from the contiguous block were allocated to rows in the order rows are
+#   returned by the SELECT statement is verified by 2.4.*.1.
+#
+# EVIDENCE-OF: R-32365-09043 A "CREATE TABLE ... AS SELECT" statement
+# creates and populates a database table based on the results of a
+# SELECT statement.
+#
+#   The above is also considered to be tested by the following. It is
+#   clear that tables are being created and populated by the command in
+#   question.
+#
+foreach {tn tbl select} {
+  1   x1   "SELECT * FROM t1"
+  2   x2   "SELECT * FROM t1 ORDER BY x DESC"
+  3   x3   "SELECT * FROM t1 ORDER BY x ASC"
+} {
+  # Create the table using a "CREATE TABLE ... AS SELECT ..." command.
+  execsql [subst {CREATE TABLE $tbl AS $select}]
+
+  # Check that the rows inserted into the table, sorted in ascending rowid
+  # order, match those returned by executing the SELECT statement as a
+  # standalone command.
+  do_execsql_test e_createtable-2.4.$tn.1 [subst {
+    SELECT * FROM $tbl ORDER BY rowid;
+  }] [execsql $select]
+
+  # Check that the rowids in the new table are a contiguous block starting
+  # with rowid 1. Note that this will fail if SELECT statement $select 
+  # returns 0 rows (as max(rowid) will be NULL).
+  do_execsql_test e_createtable-2.4.$tn.2 [subst {
+    SELECT min(rowid), count(rowid)==max(rowid) FROM $tbl
+  }] {1 1}
+}
+
+#--------------------------------------------------------------------------
+# Test cases for column defintions in CREATE TABLE statements that do not
+# use a SELECT statement. Not including data constraints. In other words,
+# tests for the specification of:
+#
+#   * declared types,
+#   * default values, and
+#   * default collation sequences.
+#
+
+# EVIDENCE-OF: R-27219-49057 Unlike most SQL databases, SQLite does not
+# restrict the type of data that may be inserted into a column based on
+# the columns declared type.
+#
+#   Test this by creating a few tables with varied declared types, then
+#   inserting various different types of values into them.
+#
+drop_all_tables
+do_execsql_test e_createtable-3.1.0 {
+  CREATE TABLE t1(x VARCHAR(10), y INTEGER, z DOUBLE);
+  CREATE TABLE t2(a DATETIME, b STRING, c REAL);
+  CREATE TABLE t3(o, t);
+} {}
+
+# value type -> declared column type
+# ----------------------------------
+# integer    -> VARCHAR(10)
+# string     -> INTEGER
+# blob       -> DOUBLE
+#
+do_execsql_test e_createtable-3.1.1 {
+  INSERT INTO t1 VALUES(14, 'quite a lengthy string', X'555655');
+  SELECT * FROM t1;
+} {14 {quite a lengthy string} UVU}
+
+# string     -> DATETIME
+# integer    -> STRING
+# time       -> REAL
+#
+do_execsql_test e_createtable-3.1.2 {
+  INSERT INTO t2 VALUES('not a datetime', 13, '12:41:59');
+  SELECT * FROM t2;
+} {{not a datetime} 13 12:41:59}
+
+# EVIDENCE-OF: R-10565-09557 The declared type of a column is used to
+# determine the affinity of the column only.
+#
+#     Affinities are tested in more detail elsewhere (see document
+#     datatype3.html). Here, just test that affinity transformations
+#     consistent with the expected affinity of each column (based on
+#     the declared type) appear to take place.
+#
+# Affinities of t1 (test cases 3.2.1.*): TEXT, INTEGER, REAL
+# Affinities of t2 (test cases 3.2.2.*): NUMERIC, NUMERIC, REAL
+# Affinities of t3 (test cases 3.2.3.*): NONE, NONE
+#
+do_execsql_test e_createtable-3.2.0 { DELETE FROM t1; DELETE FROM t2; } {}
+
+do_createtable_tests 3.2.1 -query {
+  SELECT quote(x), quote(y), quote(z) FROM t1 ORDER BY rowid DESC LIMIT 1;
+} {
+  1   "INSERT INTO t1 VALUES(15,   '22.0', '14')"   {'15' 22 14.0}
+  2   "INSERT INTO t1 VALUES(22.0, 22.0, 22.0)"     {'22.0' 22 22.0}
+}
+do_createtable_tests 3.2.2 -query {
+  SELECT quote(a), quote(b), quote(c) FROM t2 ORDER BY rowid DESC LIMIT 1;
+} {
+  1   "INSERT INTO t2 VALUES(15,   '22.0', '14')"   {15   22  14.0}
+  2   "INSERT INTO t2 VALUES(22.0, 22.0, 22.0)"     {22   22  22.0}
+}
+do_createtable_tests 3.2.3 -query {
+  SELECT quote(o), quote(t) FROM t3 ORDER BY rowid DESC LIMIT 1;
+} {
+  1   "INSERT INTO t3 VALUES('15', '22.0')"         {'15' '22.0'}
+  2   "INSERT INTO t3 VALUES(15, 22.0)"             {15 22.0}
+}
+
+# EVIDENCE-OF: R-42316-09582 If there is no explicit DEFAULT clause
+# attached to a column definition, then the default value of the column
+# is NULL.
+#
+#     None of the columns in table t1 have an explicit DEFAULT clause.
+#     So testing that the default value of all columns in table t1 is
+#     NULL serves to verify the above.
+#     
+do_createtable_tests 3.2.3 -query {
+  SELECT quote(x), quote(y), quote(z) FROM t1
+} -repair {
+  execsql { DELETE FROM t1 }
+} {
+  1   "INSERT INTO t1(x, y) VALUES('abc', 'xyz')"   {'abc' 'xyz' NULL}
+  2   "INSERT INTO t1(x, z) VALUES('abc', 'xyz')"   {'abc' NULL 'xyz'}
+  3   "INSERT INTO t1 DEFAULT VALUES"               {NULL NULL NULL}
+}
+
+# EVIDENCE-OF: R-62940-43005 An explicit DEFAULT clause may specify that
+# the default value is NULL, a string constant, a blob constant, a
+# signed-number, or any constant expression enclosed in parentheses. An
+# explicit default value may also be one of the special case-independent
+# keywords CURRENT_TIME, CURRENT_DATE or CURRENT_TIMESTAMP.
+#
+do_execsql_test e_createtable-3.3.1 {
+  CREATE TABLE t4(
+    a DEFAULT NULL,
+    b DEFAULT 'string constant',
+    c DEFAULT X'424C4F42',
+    d DEFAULT 1,
+    e DEFAULT -1,
+    f DEFAULT 3.14,
+    g DEFAULT -3.14,
+    h DEFAULT ( substr('abcd', 0, 2) || 'cd' ),
+    i DEFAULT CURRENT_TIME,
+    j DEFAULT CURRENT_DATE,
+    k DEFAULT CURRENT_TIMESTAMP
+  );
+} {}
+
+# EVIDENCE-OF: R-10288-43169 For the purposes of the DEFAULT clause, an
+# expression is considered constant provided that it does not contain
+# any sub-queries or string constants enclosed in double quotes.
+#
+do_createtable_tests 3.4.1 -error {
+  default value of column [x] is not constant
+} {
+  1   {CREATE TABLE t5(x DEFAULT ( (SELECT 1) ))}  {}
+  2   {CREATE TABLE t5(x DEFAULT ( "abc" ))}  {}
+  3   {CREATE TABLE t5(x DEFAULT ( 1 IN (SELECT 1) ))}  {}
+  4   {CREATE TABLE t5(x DEFAULT ( EXISTS (SELECT 1) ))}  {}
+}
+do_createtable_tests 3.4.2 -repair {
+  catchsql { DROP TABLE t5 }
+} {
+  1   {CREATE TABLE t5(x DEFAULT ( 'abc' ))}  {}
+  2   {CREATE TABLE t5(x DEFAULT ( 1 IN (1, 2, 3) ))}  {}
+}
+
+# EVIDENCE-OF: R-18814-23501 Each time a row is inserted into the table
+# by an INSERT statement that does not provide explicit values for all
+# table columns the values stored in the new row are determined by their
+# default values
+#
+#     Verify this with some assert statements for which all, some and no
+#     columns lack explicit values.
+#
+set sqlite_current_time 1000000000
+do_createtable_tests 3.5 -query {
+  SELECT quote(a), quote(b), quote(c), quote(d), quote(e), quote(f), 
+         quote(g), quote(h), quote(i), quote(j), quote(k)
+  FROM t4 ORDER BY rowid DESC LIMIT 1;
+} {
+  1 "INSERT INTO t4 DEFAULT VALUES" {
+    NULL {'string constant'} X'424C4F42' 1 -1 3.14 -3.14 
+    'acd' '01:46:40' '2001-09-09' {'2001-09-09 01:46:40'}
+  }
+
+  2 "INSERT INTO t4(a, b, c) VALUES(1, 2, 3)" {
+    1 2 3 1 -1 3.14 -3.14 'acd' '01:46:40' '2001-09-09' {'2001-09-09 01:46:40'}
+  }
+
+  3 "INSERT INTO t4(k, j, i) VALUES(1, 2, 3)" {
+    NULL {'string constant'} X'424C4F42' 1 -1 3.14 -3.14 'acd' 3 2 1
+  }
+
+  4 "INSERT INTO t4(a,b,c,d,e,f,g,h,i,j,k) VALUES(1,2,3,4,5,6,7,8,9,10,11)" {
+    1 2 3 4 5 6 7 8 9 10 11
+  }
+}
+
+# EVIDENCE-OF: R-12572-62501 If the default value of the column is a
+# constant NULL, text, blob or signed-number value, then that value is
+# used directly in the new row.
+#
+do_execsql_test e_createtable-3.6.1 {
+  CREATE TABLE t5(
+    a DEFAULT NULL,  
+    b DEFAULT 'text value',  
+    c DEFAULT X'424C4F42',
+    d DEFAULT -45678.6,
+    e DEFAULT 394507
+  );
+} {}
+do_execsql_test e_createtable-3.6.2 {
+  INSERT INTO t5 DEFAULT VALUES;
+  SELECT quote(a), quote(b), quote(c), quote(d), quote(e) FROM t5;
+} {NULL {'text value'} X'424C4F42' -45678.6 394507}
+
+# EVIDENCE-OF: R-60616-50251 If the default value of a column is an
+# expression in parentheses, then the expression is evaluated once for
+# each row inserted and the results used in the new row.
+#
+#   Test case 3.6.4 demonstrates that the expression is evaluated 
+#   separately for each row if the INSERT is an "INSERT INTO ... SELECT ..."
+#   command.
+#
+set ::nextint 0
+proc nextint {} { incr ::nextint }
+db func nextint nextint
+
+do_execsql_test e_createtable-3.7.1 {
+  CREATE TABLE t6(a DEFAULT ( nextint() ), b DEFAULT ( nextint() ));
+} {}
+do_execsql_test e_createtable-3.7.2 {
+  INSERT INTO t6 DEFAULT VALUES;
+  SELECT quote(a), quote(b) FROM t6;
+} {1 2}
+do_execsql_test e_createtable-3.7.3 {
+  INSERT INTO t6(a) VALUES('X');
+  SELECT quote(a), quote(b) FROM t6;
+} {1 2 'X' 3}
+do_execsql_test e_createtable-3.7.4 {
+  INSERT INTO t6(a) SELECT a FROM t6;
+  SELECT quote(a), quote(b) FROM t6;
+} {1 2 'X' 3 1 4 'X' 5}
+
+# EVIDENCE-OF: R-18683-56219 If the default value of a column is
+# CURRENT_TIME, CURRENT_DATE or CURRENT_DATETIME, then the value used in
+# the new row is a text representation of the current UTC date and/or
+# time.
+#
+#     This is difficult to test literally without knowing what time the 
+#     user will run the tests. Instead, we test that the three cases
+#     above set the value to the current date and/or time according to
+#     the xCurrentTime() method of the VFS. Which is usually the same
+#     as UTC. In this case, however, we instrument it to always return
+#     a time equivalent to "2001-09-09 01:46:40 UTC".
+#
+set sqlite_current_time 1000000000
+do_execsql_test e_createtable-3.8.1 {
+  CREATE TABLE t7(
+    a DEFAULT CURRENT_TIME, 
+    b DEFAULT CURRENT_DATE, 
+    c DEFAULT CURRENT_TIMESTAMP
+  );
+} {}
+do_execsql_test e_createtable-3.8.2 {
+  INSERT INTO t7 DEFAULT VALUES;
+  SELECT quote(a), quote(b), quote(c) FROM t7;
+} {'01:46:40' '2001-09-09' {'2001-09-09 01:46:40'}}
+
+
+# EVIDENCE-OF: R-62327-53843 For CURRENT_TIME, the format of the value
+# is "HH:MM:SS".
+#
+# EVIDENCE-OF: R-03775-43471 For CURRENT_DATE, "YYYY-MM-DD".
+#
+# EVIDENCE-OF: R-07677-44926 The format for CURRENT_TIMESTAMP is
+# "YYYY-MM-DD HH:MM:SS".
+#
+#     The three above are demonstrated by tests 1, 2 and 3 below. 
+#     Respectively.
+#
+do_createtable_tests 3.8.3 -query {
+  SELECT a, b, c FROM t7 ORDER BY rowid DESC LIMIT 1;
+} {
+  1 "INSERT INTO t7(b, c) VALUES('x', 'y')" {01:46:40 x y}
+  2 "INSERT INTO t7(c, a) VALUES('x', 'y')" {y 2001-09-09 x}
+  3 "INSERT INTO t7(a, b) VALUES('x', 'y')" {x y {2001-09-09 01:46:40}}
+}
+
+# EVIDENCE-OF: R-55061-47754 The COLLATE clause specifies the name of a
+# collating sequence to use as the default collation sequence for the
+# column.
+#
+# EVIDENCE-OF: R-40275-54363 If no COLLATE clause is specified, the
+# default collation sequence is BINARY.
+#
+do_execsql_test e_createtable-3-9.1 {
+  CREATE TABLE t8(a COLLATE nocase, b COLLATE rtrim, c COLLATE binary, d);
+  INSERT INTO t8 VALUES('abc',   'abc',   'abc',   'abc');
+  INSERT INTO t8 VALUES('abc  ', 'abc  ', 'abc  ', 'abc  ');
+  INSERT INTO t8 VALUES('ABC  ', 'ABC  ', 'ABC  ', 'ABC  ');
+  INSERT INTO t8 VALUES('ABC',   'ABC',   'ABC',   'ABC');
+} {}
+do_createtable_tests 3.9 {
+  2    "SELECT a FROM t8 ORDER BY a, rowid"    {abc ABC {abc  } {ABC  }}
+  3    "SELECT b FROM t8 ORDER BY b, rowid"    {{ABC  } ABC abc {abc  }}
+  4    "SELECT c FROM t8 ORDER BY c, rowid"    {ABC {ABC  } abc {abc  }}
+  5    "SELECT d FROM t8 ORDER BY d, rowid"    {ABC {ABC  } abc {abc  }}
+}
 
 finish_test
-

@@ -541,6 +541,12 @@ Tcl_SetVar2(interp, "sqlite_options", "mergesort", "1", TCL_GLOBAL_ONLY);
       STRINGVALUE(SQLITE_THREADSAFE), TCL_GLOBAL_ONLY);
   assert( sqlite3_threadsafe()==SQLITE_THREADSAFE );
 
+#if defined(USETHREADASSERTS)
+  Tcl_SetVar2(interp,"sqlite_options","use_thread_asserts","1",TCL_GLOBAL_ONLY);
+#else
+  Tcl_SetVar2(interp,"sqlite_options","use_thread_asserts","0",TCL_GLOBAL_ONLY);
+#endif
+  
 #ifdef SQLITE_OMIT_TEMPDB
   Tcl_SetVar2(interp, "sqlite_options", "tempdb", "0", TCL_GLOBAL_ONLY);
 #else

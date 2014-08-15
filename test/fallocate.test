@@ -79,12 +79,17 @@ ifcapable !wal { set skipwaltests 1 }
 if {![wal_is_ok]} { set skipwaltests 1 }
 
 if {!$skipwaltests} {
+  set shmpath test.db-shm
+  if {[forced_proxy_locking]} {
+    set shmpath [execsql { pragma lock_proxy_file }]-shm
+    #puts $shmpath
+  }
   db close
   forcedelete test.db
   ifcapable enable_persist_wal {
     forcedelete test.db-journal
     forcedelete test.db-wal
-    forcedelete test.db-shm
+    forcedelete $shmpath
   }
   if {[forced_proxy_locking]} { 
     forcedelete .test.db-conch

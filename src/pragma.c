@@ -1325,6 +1325,13 @@ void sqlite3Pragma(
   }
 #endif
 
+#if !defined(SQLITE_ENABLE_LOCKING_STYLE)
+#  if defined(__APPLE__)
+#    define SQLITE_ENABLE_LOCKING_STYLE 1
+#  else
+#    define SQLITE_ENABLE_LOCKING_STYLE 0
+#  endif
+#endif
 #if SQLITE_ENABLE_LOCKING_STYLE
   /*
   **   PRAGMA [database.]lock_proxy_file

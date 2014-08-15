@@ -34,10 +34,10 @@
 #undef HAVE_LOCALTIME_S
 
 /* Define to 1 if you have the <malloc.h> header file. */
-#undef HAVE_MALLOC_H
+/* #undef HAVE_MALLOC_H */
 
 /* Define to 1 if you have the `malloc_usable_size' function. */
-#undef HAVE_MALLOC_USABLE_SIZE
+/* #undef HAVE_MALLOC_USABLE_SIZE */
 
 /* Define to 1 if you have the <memory.h> header file. */
 #undef HAVE_MEMORY_H
@@ -82,7 +82,7 @@
 #undef HAVE_USLEEP
 
 /* Define to 1 if you have the utime() library function. */
-#undef HAVE_UTIME
+/* #undef HAVE_UTIME */
 
 /* Define to the sub-directory in which libtool stores uninstalled libraries.
    */

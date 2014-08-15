@@ -45,6 +45,11 @@ static int createModule(
   nName = sqlite3Strlen30(zName);
   if( sqlite3HashFind(&db->aModule, zName, nName) ){
     rc = SQLITE_MISUSE_BKPT;
+    // <rdar://problem/11777852>
+    if (strncmp("fts", zName, 3) == 0) {
+      xDestroy = NULL;
+      rc = SQLITE_OK;
+    }
   }else{
     Module *pMod;
     pMod = (Module *)sqlite3DbMallocRaw(db, sizeof(Module) + nName + 1);
@@ -326,7 +331,11 @@ void sqlite3VtabBeginParse(
   addModuleArgument(db, pTable, sqlite3NameFromToken(db, pModuleName));
   addModuleArgument(db, pTable, 0);
   addModuleArgument(db, pTable, sqlite3DbStrDup(db, pTable->zName));
-  pParse->sNameToken.n = (int)(&pModuleName->z[pModuleName->n] - pName1->z);
+  if (pName2 && pName2->z) {
+    pParse->sNameToken.n = (int)(&pModuleName->z[pModuleName->n] - pName2->z);
+  } else {
+    pParse->sNameToken.n = (int)(&pModuleName->z[pModuleName->n] - pName1->z);
+  }
 
 #ifndef SQLITE_OMIT_AUTHORIZATION
   /* Creating a virtual table invokes the authorization callback twice.

@@ -22,6 +22,7 @@
 #include "sqliteInt.h"
 #include "wal.h"
 
+extern void pthread_yield_np(void);
 
 /******************* NOTES ON THE DESIGN OF THE PAGER ************************
 **
@@ -3792,9 +3793,17 @@ static int pager_wait_on_lock(Pager *pPager, int locktype){
        || (pPager->eLock==RESERVED_LOCK && locktype==EXCLUSIVE_LOCK)
   );
 
+  int i = 0;
+  int c = 0;
   do {
     rc = pagerLockDb(pPager, locktype);
-  }while( rc==SQLITE_BUSY && pPager->xBusyHandler(pPager->pBusyHandlerArg) );
+    c = ( rc==SQLITE_BUSY && pPager->xBusyHandler(pPager->pBusyHandlerArg) );
+    if (c && (i > 0)) {
+      pthread_yield_np();
+    }
+    i++;
+  }while( c );
+  
   return rc;
 }
 

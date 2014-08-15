@@ -345,9 +345,9 @@ test_suite "coverage-pager" -description {
 } -files {
   pager1.test    pager2.test  pagerfault.test  pagerfault2.test
   walfault.test  walbak.test  journal2.test    tkt-9d68c883.test
+test_suite "coverage-analyze" -description {
 } 
 
-test_suite "coverage-analyze" -description {
   Coverage tests for file analyze.c.
 } -files {
   analyze3.test analyze4.test analyze5.test analyze6.test

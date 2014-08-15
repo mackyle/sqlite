@@ -58,8 +58,9 @@ struct intarray_cursor {
 ** Free an sqlite3_intarray object.
 */
 static void intarrayFree(sqlite3_intarray *p){
-  if( p->xFree ){
+  if( p->xFree && p->a){
     p->xFree(p->a);
+    p->a = NULL;
   }
   sqlite3_free(p);
 }
@@ -258,6 +259,7 @@ int sqlite3_intarray_bind(
 ){
   if( pIntArray->xFree ){
     pIntArray->xFree(pIntArray->a);
+    pIntArray->a = NULL;
   }
   pIntArray->n = nElements;
   pIntArray->a = aElements;

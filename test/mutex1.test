@@ -138,6 +138,12 @@ ifcapable threadsafe&&shared_cache {
           lappend res $key
         }
       }
+      ifcapable {use_thread_asserts} {
+        if { $mode == "multithread" } {
+          # USETHREADASSERTS changes the multithread mutexes to serialized
+          set res [lsort $mutexes]
+        }
+      }
       lsort $res
     } [lsort $mutexes]
   }

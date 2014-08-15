@@ -19,6 +19,8 @@
 
 #include "sqliteInt.h"
 
+#if !defined(SQLITE_OMIT_PCACHE1_PCACHE)
+
 typedef struct PCache1 PCache1;
 typedef struct PgHdr1 PgHdr1;
 typedef struct PgFreeslot PgFreeslot;
@@ -1029,3 +1031,5 @@ void sqlite3PcacheStats(
   *pnRecyclable = nRecyclable;
 }
 #endif
+
+#endif /* SQLITE_OMIT_PCACHE1_PCACHE */

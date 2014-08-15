@@ -29,7 +29,7 @@
 ** are necessary under two condidtions:  (1) Debug builds and (2) using
 ** home-grown mutexes.  Encapsulate these conditions into a single #define.
 */
-#if defined(SQLITE_DEBUG) || defined(SQLITE_HOMEGROWN_RECURSIVE_MUTEX)
+#if defined(SQLITE_DEBUG) || defined(SQLITE_HOMEGROWN_RECURSIVE_MUTEX) || defined(USETHREADASSERTS)
 # define SQLITE_MUTEX_NREF 1
 #else
 # define SQLITE_MUTEX_NREF 0
@@ -69,7 +69,7 @@ struct sqlite3_mutex {
 ** make sure no assert() statements are evaluated and hence these
 ** routines are never called.
 */
-#if !defined(NDEBUG) || defined(SQLITE_DEBUG)
+#if defined(USETHREADASSERTS) || defined(SQLITE_DEBUG)
 static int pthreadMutexHeld(sqlite3_mutex *p){
   return (p->nRef!=0 && pthread_equal(p->owner, pthread_self()));
 }
@@ -336,7 +336,7 @@ sqlite3_mutex_methods const *sqlite3DefaultMutex(void){
     pthreadMutexEnter,
     pthreadMutexTry,
     pthreadMutexLeave,
-#ifdef SQLITE_DEBUG
+#if defined(USETHREADASSERTS) || defined(SQLITE_DEBUG)
     pthreadMutexHeld,
     pthreadMutexNotheld
 #else

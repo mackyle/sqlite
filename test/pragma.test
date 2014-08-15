@@ -1521,6 +1521,29 @@ if !$skip_lock_proxy_tests {
     string match "*proxytest/sub/dir/lock" $lockpath4
   } {1}
 
+  # make sure we can deal with long (> NAME_MAX) file paths correctly
+  db close
+  set db_longroot [exec mktemp -d -t "longdbpath"]
+  set db_longpath $db_longroot/123456789/223456789/323456789/423456789/523456789/623456789/723456789/823456789/923456789/a23456789/b23456789/c23456789/d23456789/e23456789/f23456789/g23456789/h23456789/i23456789/j23456789/k23456789/l23456789/m23456789/n23456789/o23456789/p23456789/q23456789
+  file mkdir $db_longpath
+  do_test pragma-16.10.4.1 {
+    sqlite3 db $db_longpath/longtest.db
+    execsql "PRAGMA lock_proxy_file=':auto:'"
+    set lockpath_long [execsql {
+      create table if not exists aa(bb);
+      PRAGMA lock_proxy_file;
+    } db]
+    #puts $db_longpath
+    #puts $lockpath_long
+    set lockPathLen [string len $lockpath_long]
+    set dbPathLen [string len $db_longpath]
+    set lockName [string range $lockpath_long [string last / $lockpath_long] $lockPathLen]
+    set nameLength [string len $lockName]
+    list [expr "$dbPathLen > 256"] [expr "$lockPathLen < 1024"] [expr "$nameLength < 256"] [expr "$lockPathLen > 7"] [expr "$nameLength > 7"]
+  } {1 1 1 1 1}
+  file delete -force $db_longroot
+  file delete -force $lockpath_long
+
   # ensure that if the path can not be created (perm), setting :auto: deals
   db close
   file delete -force $lpp5d

@@ -1677,12 +1677,30 @@ static int walCheckpoint(
   int i;                          /* Loop counter */
   volatile WalCkptInfo *pInfo;    /* The checkpoint status information */
   int (*xBusy)(void*) = 0;        /* Function to call when waiting for locks */
+#if defined(__APPLE__)
+  /* <rdar://problem/17742712> */
+  i64 szDbFile;                   /* File size of the database, in bytes */
+  i64 szWalFile;                  /* File size of the wal, in bytes */
+#endif
 
   szPage = walPagesize(pWal);
   testcase( szPage<=32768 );
   testcase( szPage>=65536 );
   pInfo = walCkptInfo(pWal);
   if( pInfo->nBackfill>=pWal->hdr.mxFrame ) return SQLITE_OK;
+
+#if defined(__APPLE__)
+  /* <rdar://problem/17742712> */
+  /* Get the size of the db and wal files to sanity check write offsets. */
+  rc = sqlite3OsFileSize(pWal->pDbFd, &szDbFile);
+  if( rc!=SQLITE_OK ){
+      return rc;
+  }
+  rc = sqlite3OsFileSize(pWal->pWalFd, &szWalFile);
+  if( rc!=SQLITE_OK ){
+      return rc;
+  }
+#endif
 
   /* Allocate the iterator */
   rc = walIteratorInit(pWal, &pIter);
@@ -1751,6 +1769,24 @@ static int walCheckpoint(
       if( rc!=SQLITE_OK ) break;
       iOffset = (iDbpage-1)*(i64)szPage;
       testcase( IS_BIG_INT(iOffset) );
+      
+#if defined(__APPLE__)
+      /* <rdar://problem/17742712> */
+      /* DEBUG(numist): this is way, way more conservative than the checks in
+      ** the seekAndRead/seekAndWrite functions. I'm not even 100% sure that
+      ** it's not overconservative, but db storage is more efficient than wal
+      ** storage, so I'm pretty confident that writes to the db should never
+      ** exceed dbsize +_ walsize.
+      */
+      if( iOffset>(szDbFile+szWalFile) ){
+        __builtin_trap();
+      }
+      /* Update the db file size if the file will grow due to the write. */
+      if( iOffset+szPage > szDbFile ){
+        szDbFile = iOffset+szPage;
+      }
+#endif
+      
       rc = sqlite3OsWrite(pWal->pDbFd, zBuf, szPage, iOffset);
       if( rc!=SQLITE_OK ) break;
     }
@@ -1886,6 +1922,10 @@ int sqlite3WalClose(
   return rc;
 }
 
+#ifndef SQLITE_AMALGAMATION
+extern int sqlite30sShmRead(sqlite3_file *id, void *dst, volatile void *src, sqlite3_int64 size);
+#endif
+
 /*
 ** Try to read the wal-index header.  Return 0 on success and 1 if
 ** there is a problem.
@@ -1907,6 +1947,7 @@ static int walIndexTryHdr(Wal *pWal, int *pChanged){
   u32 aCksum[2];                  /* Checksum on the header content */
   WalIndexHdr h1, h2;             /* Two copies of the header content */
   WalIndexHdr volatile *aHdr;     /* Header in shared memory */
+  int rc = SQLITE_OK;
 
   /* The first page of the wal-index must be mapped at this point. */
   assert( pWal->nWiData>0 && pWal->apWiData[0] );
@@ -1925,9 +1966,18 @@ static int walIndexTryHdr(Wal *pWal, int *pChanged){
   if( aHdr==NULL ){
     return 1; /* Shouldn't be getting NULL from walIndexHdr, but we are */
   }
-  memcpy(&h1, (void *)&aHdr[0], sizeof(h1));
+  
+  rc = sqlite30sShmRead(pWal->pDbFd, &h1, &aHdr[0], sizeof(h1));
+  if ( rc!=SQLITE_OK ) {
+    return rc;
+  }
+
   walShmBarrier(pWal);
-  memcpy(&h2, (void *)&aHdr[1], sizeof(h2));
+
+  rc = sqlite30sShmRead(pWal->pDbFd, &h2, &aHdr[1], sizeof(h2));
+  if ( rc!=SQLITE_OK ) {
+    return rc;
+  }
 
   if( memcmp(&h1, &h2, sizeof(h1))!=0 ){
     return 1;   /* Dirty read */
@@ -2854,7 +2904,13 @@ int sqlite3WalFrames(
     assert( iOffset==walFrameOffset(iFrame, szPage) );
     nDbSize = (isCommit && p->pDirty==0) ? nTruncate : 0;
     rc = walWriteOneFrame(&w, p, nDbSize, iOffset);
-    if( rc ) return rc;
+    if( rc ) {
+#if defined(SQLITE_WRITE_WALFRAME_PREBUFFERED)
+      free(w.aFrameBuf);
+      w.aFrameBuf = NULL;
+#endif
+      return rc;
+    }
     pLast = p;
     iOffset += szFrame;
   }
@@ -2879,7 +2935,13 @@ int sqlite3WalFrames(
       w.iSyncPoint = ((iOffset+sectorSize-1)/sectorSize)*sectorSize;
       while( iOffset<w.iSyncPoint ){
         rc = walWriteOneFrame(&w, pLast, nTruncate, iOffset);
-        if( rc ) return rc;
+        if( rc ) {
+#if defined(SQLITE_WRITE_WALFRAME_PREBUFFERED)
+          free(w.aFrameBuf);
+          w.aFrameBuf = NULL;
+#endif
+          return rc;
+        }
         iOffset += szFrame;
         nExtra++;
       }
@@ -2890,6 +2952,7 @@ int sqlite3WalFrames(
 
 #if defined(SQLITE_WRITE_WALFRAME_PREBUFFERED)
   free(w.aFrameBuf);
+  w.aFrameBuf = NULL;
 #endif
   /* If this frame set completes the first transaction in the WAL and
   ** if PRAGMA journal_size_limit is set, then truncate the WAL to the

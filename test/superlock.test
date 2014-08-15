@@ -214,8 +214,16 @@ proc db_swap {file1 file2} {
   unlock2
 }
 
+sqlite3 db  test.db
+file_control_persist_wal db 0
+db close
+sqlite3 db2  test.db2
+file_control_persist_wal db2 0
+db2 close
+
 forcedelete test.db
 sqlite3 db  test.db
+file_control_persist_wal db 0
 do_execsql_test 6.1 {
   ATTACH 'test.db2' AS aux;
   PRAGMA aux.journal_mode = wal;
@@ -231,6 +239,9 @@ do_execsql_test 6.1 {
   SELECT * FROM t1;
 } {wal wal 1 2 3 4}
 
+sqlite3 db2  test.db2
+file_control_persist_wal db2 0
+db2 close
 
 db_swap test.db2 test.db
 do_catchsql_test 6.2 { SELECT * FROM t1 } {1 {no such table: t1}}

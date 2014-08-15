@@ -137,16 +137,16 @@ void sqlite3_mutex_leave(sqlite3_mutex *p){
   }
 }
 
-#ifndef NDEBUG
+#if defined(USETHREADASSERTS) || defined(SQLITE_DEBUG)
 /*
 ** The sqlite3_mutex_held() and sqlite3_mutex_notheld() routine are
 ** intended for use inside assert() statements.
 */
 int sqlite3_mutex_held(sqlite3_mutex *p){
-  return p==0 || sqlite3GlobalConfig.mutex.xMutexHeld(p);
+  return p==0 || (sqlite3GlobalConfig.mutex.xMutexHeld && sqlite3GlobalConfig.mutex.xMutexHeld(p));
 }
 int sqlite3_mutex_notheld(sqlite3_mutex *p){
-  return p==0 || sqlite3GlobalConfig.mutex.xMutexNotheld(p);
+  return p==0 || (sqlite3GlobalConfig.mutex.xMutexNotheld && sqlite3GlobalConfig.mutex.xMutexNotheld(p));
 }
 #endif
 

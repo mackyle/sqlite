@@ -5,6 +5,9 @@
 #ifndef _SQLITE3_PRIVATE_H
 #define _SQLITE3_PRIVATE_H
 
+#include <unistd.h>
+#include <sqlite3.h>
+
 #define SQLITE_LOCKSTATE_OFF    0
 #define SQLITE_LOCKSTATE_ON     1
 #define SQLITE_LOCKSTATE_NOTADB 2
@@ -34,6 +37,18 @@ extern int _sqlite3_lockstate(const char *path, pid_t pid);
 ** files (-shm)
 */
 #define SQLITE_FCNTL_LOCKSTATE_PID          103
+
+/*
+** Purges eligible purgable memory regions (holding only unpinned pages) from 
+** the page cache
+*/
+extern void _sqlite3_purgeEligiblePagerCacheMemory(void);
+
+/*
+** Returns the system defined default sqlite3_busy_handler function
+** 
+*/
+extern int (*_sqlite3_system_busy_handler(void))(void*,int);
 
 /*
 ** Pass the SQLITE_TRUNCATE_DATABASE operation code to sqlite3_file_control() 

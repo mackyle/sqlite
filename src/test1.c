@@ -5094,7 +5094,7 @@ static int file_control_lasterrno_test(
 }
 
 #ifdef __APPLE__
-/* From sqlite3_priavet.h */
+/* From sqlite3_private.h */
 # ifndef SQLITE_TRUNCATE_DATABASE
 # define SQLITE_TRUNCATE_DATABASE      101
 # define SQLITE_TRUNCATE_JOURNALMODE_WAL           (0x1<<0)
@@ -5110,6 +5110,15 @@ static int file_control_lasterrno_test(
 # endif
 # ifndef SQLITE_REPLACE_DATABASE
 # define SQLITE_REPLACE_DATABASE       102
+# endif
+# ifndef SQLITE_FCNTL_LOCKSTATE_PID
+#  define SQLITE_FCNTL_LOCKSTATE_PID          103
+#  define SQLITE_LOCKSTATE_OFF    0
+#  define SQLITE_LOCKSTATE_ON     1
+#  define SQLITE_LOCKSTATE_NOTADB 2
+#  define SQLITE_LOCKSTATE_ERROR  -1
+#  define SQLITE_LOCKSTATE_ANYPID -1
+extern int _sqlite3_lockstate(const char *path, pid_t pid);
 # endif
 
 /*
@@ -5159,7 +5168,6 @@ static int file_control_replace_test(
   int objc,              /* Number of arguments */
   Tcl_Obj *CONST objv[]  /* Command arguments */
 ){
-  int iArg = 0;
   sqlite3 *src_db;
   sqlite3 *dst_db;
   int rc;
@@ -5181,6 +5189,40 @@ static int file_control_replace_test(
     return TCL_ERROR; 
   }
   return TCL_OK;  
+}
+
+/*
+** tclcmd:   file_control_lockstate_test DBNAME PID
+**
+** This TCL command runs the _sqlite3_lockstate interface and
+** verifies correct operation of the SQLITE_FCNTL_LOCKSTATE_PID verb.
+*/
+static int file_control_lockstate_test(
+  ClientData clientData, /* Pointer to sqlite3_enable_XXX function */
+  Tcl_Interp *interp,    /* The TCL interpreter that invoked this command */
+  int objc,              /* Number of arguments */
+  Tcl_Obj *CONST objv[]  /* Command arguments */
+){
+  char *zDb;
+  int pid = -1;
+  int state;
+  
+  if( objc!=3 ){
+    Tcl_AppendResult(interp, "wrong # args: should be \"",
+                     Tcl_GetStringFromObj(objv[0], 0), " DBNAME PID", 0);
+    return TCL_ERROR;
+  }
+  if( Tcl_GetIntFromObj(interp, objv[2], &pid) ){
+    return TCL_ERROR;
+  }
+  zDb = Tcl_GetString(objv[1]);
+  if( zDb[0]=='\0' ) zDb = NULL;
+  if( !zDb ){
+    return TCL_ERROR;
+  }
+  state = _sqlite3_lockstate(zDb, pid);
+  Tcl_SetObjResult(interp, Tcl_NewIntObj(state));
+  return TCL_OK;
 }
 #endif /* __APPLE__ */
 
@@ -6713,6 +6755,7 @@ int Sqlitetest1_Init(Tcl_Interp *interp){
 #ifdef __APPLE__
      { "file_control_truncate_test", file_control_truncate_test,  0   },
      { "file_control_replace_test", file_control_replace_test,  0   },
+     { "file_control_lockstate_test", file_control_lockstate_test,  0   },
 #endif 
      { "file_control_chunksize_test", file_control_chunksize_test,  0   },
      { "file_control_sizehint_test",  file_control_sizehint_test,   0   },

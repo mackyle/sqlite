@@ -55,7 +55,7 @@ ifcapable lock_proxy_pragmas&&prefer_proxy_locking {
   # test proxy locking readonly file system handling
   #
 
-  if {[file exists /usr/bin/hdiutil]} {
+  if {[path_is_local "."]&&[file exists /usr/bin/hdiutil]} {
 
     puts "Creating readonly file system for proxy locking tests..."
     if {[file exists /Volumes/readonly]} {

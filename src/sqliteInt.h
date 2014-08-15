@@ -90,7 +90,11 @@
 ** autoconf-based build
 */
 #ifdef _HAVE_SQLITE_CONFIG_H
+# ifdef _MSC_VER
+#include "win_config.h" /* hand-mantained windows variant */
+# else
 #include "config.h"
+# endif
 #endif
 
 #include "sqliteLimit.h"
@@ -188,6 +192,16 @@
 */
 #if !defined(SQLITE_DEFAULT_MEMSTATUS)
 # define SQLITE_DEFAULT_MEMSTATUS 1
+#endif
+
+/*
+** The SQLITE_ENABLE_PURGEABLE_PCACHE sets the default pcache to 
+** pcache_purgeable, otherwise pcache1 is used.
+*/
+#if !defined(SQLITE_ENABLE_PURGEABLE_PCACHE)
+# define SQLITE_OMIT_PURGEABLE_PCACHE
+#else
+# define SQLITE_OMIT_PCACHE1_PCACHE
 #endif
 
 /*

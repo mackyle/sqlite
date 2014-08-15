@@ -3720,9 +3720,10 @@ int main(int argc, char **argv){
 
 #if USE_SYSTEM_SQLITE+0!=1
   if( strcmp(sqlite3_sourceid(),SQLITE_SOURCE_ID)!=0 ){
-    fprintf(stderr, "SQLite header and source version mismatch\n%s\n%s\n",
+    fprintf(stderr, "\nWARNING!  SQLite header and source version mismatch"
+            "\n  source: %s\n  header: %s\n\n",
             sqlite3_sourceid(), SQLITE_SOURCE_ID);
-    exit(1);
+    /* exit(1); */
   }
 #endif
   Argv0 = argv[0];

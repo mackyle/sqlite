@@ -14,12 +14,29 @@
 ** Including a description of file format and an overview of operation.
 */
 #include "btreeInt.h"
+#include <AvailabilityMacros.h>
 
 /*
 ** The header string that appears at the beginning of every
 ** SQLite database.
 */
 static const char zMagicHeader[] = SQLITE_FILE_HEADER;
+
+#if defined(SQLITE_ENABLE_FLOCKTIMEOUT)&&(SQLITE_ENABLE_FLOCKTIMEOUT>0)
+# if (defined(__APPLE__) && (!defined(TARGET_IPHONE_SIMULATOR)||(TARGET_IPHONE_SIMULATOR==0)) && ((TARGET_OS_EMBEDDED>0)||(MAC_OS_X_VERSION_10_9>0)))
+#  define SQLITE_USE_FLOCKTIMEOUT 1
+# endif
+#endif /* SQLITE_ENABLE_FLOCKTIMEOUT */
+
+/*
+ ** Operator used with sqlite3_file_control to set the timeout for the next call
+ ** to lock the database file via fcntl with F_SETLKWTIMEOUT.  The timeout should
+ ** be passed as a pointer to a long representing the timeout in milliseconds
+ */
+#ifndef SQLITE_FCNTL_SET_NEXTFLOCKTIMEOUT
+#define SQLITE_FCNTL_SET_NEXTFLOCKTIMEOUT      104
+#define SQLITE_FCNTL_GET_NEXTFLOCKTIMEOUT      105
+#endif
 
 /*
 ** Set this global variable to 1 to enable tracing using the TRACE
@@ -2768,8 +2785,22 @@ int sqlite3BtreeBeginTrans(Btree *p, int wrflag){
     ** file is not pBt->pageSize. In this case lockBtree() will update
     ** pBt->pageSize to the page-size of the file on disk.
     */
+    
+#ifdef SQLITE_USE_FLOCKTIMEOUT
+    int existingNextTimeout = 0;
+    if (wrflag) {
+      sqlite3_file_control(p->db, NULL, SQLITE_FCNTL_GET_NEXTFLOCKTIMEOUT, &existingNextTimeout);
+    }
+    
     while( pBt->pPage1==0 && SQLITE_OK==(rc = lockBtree(pBt)) );
 
+    if (wrflag) {
+      sqlite3_file_control(p->db, NULL, SQLITE_FCNTL_SET_NEXTFLOCKTIMEOUT, &existingNextTimeout);
+    }
+#else
+    while( pBt->pPage1==0 && SQLITE_OK==(rc = lockBtree(pBt)) );
+#endif
+    
     if( rc==SQLITE_OK && wrflag ){
       if( (pBt->btsFlags & BTS_READ_ONLY)!=0 ){
         rc = SQLITE_READONLY;

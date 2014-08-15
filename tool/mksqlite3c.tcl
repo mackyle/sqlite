@@ -116,10 +116,12 @@ foreach hdr {
    sqliteInt.h
    sqliteLimit.h
    sqlrr.h
+   test_intarray.h
    vdbe.h
    vdbeInt.h
    wal.h
    whereInt.h
+   sqlite3_private.h
 } {
   set available_hdr($hdr) 1
 }
@@ -265,6 +267,7 @@ foreach file {
    bitvec.c
    pcache.c
    pcache1.c
+   pcache_purgeable.c
    rowset.c
    pager.c
    wal.c
@@ -333,6 +336,7 @@ foreach file {
    icu.c
    fts3_icu.c
    sqlrr.c
+   test_intarray.c
 } {
   copy_file tsrc/$file
 }

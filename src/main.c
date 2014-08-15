@@ -15,6 +15,7 @@
 ** accessed by users of the library.
 */
 #include "sqliteInt.h"
+#include <AvailabilityMacros.h>
 
 #ifdef SQLITE_ENABLE_SQLRR
 # include "sqlrr.h"
@@ -29,6 +30,38 @@
 # include "sqliteicu.h"
 #endif
 
+#if defined(SQLITE_ENABLE_FLOCKTIMEOUT)&&(SQLITE_ENABLE_FLOCKTIMEOUT>0)
+# if (defined(__APPLE__) && (!defined(TARGET_IPHONE_SIMULATOR)||(TARGET_IPHONE_SIMULATOR==0)) && ((TARGET_OS_EMBEDDED>0)||(MAC_OS_X_VERSION_10_9>0)))
+# include "sqlite3_private.h"
+#  define SQLITE_USE_FLOCKTIMEOUT 1
+# endif
+#endif /* SQLITE_ENABLE_FLOCKTIMEOUT */
+
+#if defined(__APPLE__)
+# include <unistd.h>
+# include <dispatch/dispatch.h>
+# include <dispatch/private.h>
+extern void _sqlite3_purgeEligiblePagerCacheMemory();
+# if defined(DISPATCH_API_VERSION)&&(DISPATCH_API_VERSION>=20100226) && \
+  defined(SQLITE_ENABLE_PURGEABLE_PCACHE)&&(SQLITE_ENABLE_PURGEABLE_PCACHE>0)
+#  include <dlfcn.h> /* amalgamator: keep */ 
+static dispatch_source_t _cache_event_source = NULL;
+# endif
+#endif
+
+/*
+ ** Operator used with sqlite3_file_control to set the timeout for the next call
+ ** to lock the database file via fcntl with F_SETLKWTIMEOUT.  The timeout should
+ ** be passed as a pointer to a long representing the timeout in milliseconds
+ */
+#ifndef SQLITE_FCNTL_SET_NEXTFLOCKTIMEOUT
+#define SQLITE_FCNTL_SET_NEXTFLOCKTIMEOUT      104
+#define SQLITE_FCNTL_GET_NEXTFLOCKTIMEOUT      105
+#endif
+
+/*
+** The version of the library
+*/
 #ifndef SQLITE_AMALGAMATION
 /* IMPLEMENTATION-OF: R-46656-45156 The sqlite3_version[] string constant
 ** contains the text of SQLITE_VERSION macro. 
@@ -217,6 +250,46 @@ int sqlite3_initialize(void){
       bRunExtraInit = 1;
 #endif
     }
+    
+#if defined(__APPLE__) && defined(USETHREADASSERTS)
+    if ((0 != access("/var/db/disableAppleInternal", R_OK))) {
+//      fprintf(stderr, "SQLite multi-threading assertions ENABLED.\n");
+      
+      if (sqlite3GlobalConfig.bCoreMutex != 0) {
+        sqlite3GlobalConfig.bFullMutex = 1;
+      }
+    } else {
+      sqlite3_mutex_methods *pTo = &sqlite3GlobalConfig.mutex;
+      pTo->xMutexHeld = NULL;
+      pTo->xMutexNotheld = NULL;
+//      fprintf(stderr, "SQLite multi-threading assertions DISABLED.\n");
+    }
+#endif    
+    
+  
+#if defined(DISPATCH_API_VERSION)&&(DISPATCH_API_VERSION>=20100226) && \
+  defined(SQLITE_ENABLE_PURGEABLE_PCACHE)&&(SQLITE_ENABLE_PURGEABLE_PCACHE>0)
+    
+		dispatch_queue_t mq = dispatch_get_main_queue();
+		if (mq) {
+      if( NULL != dlopen("/usr/lib/libsqlite3.dylib", RTLD_LAZY) ){ 
+        /* never dlclose to avoid dylib unloading */
+        dispatch_async(mq, ^{
+          dispatch_queue_t queue = dispatch_get_global_queue(0, 0);
+          if (queue) {
+            _cache_event_source = dispatch_source_create(DISPATCH_SOURCE_TYPE_VM, 0, DISPATCH_VM_PRESSURE, queue);
+            if (_cache_event_source != NULL) {
+              dispatch_source_set_event_handler(_cache_event_source, ^{ 
+                _sqlite3_purgeEligiblePagerCacheMemory();
+              });
+              dispatch_resume(_cache_event_source);
+            }
+          }
+        });
+      }
+		}
+#endif 
+  
     sqlite3GlobalConfig.inProgress = 0;
   }
   sqlite3_mutex_leave(sqlite3GlobalConfig.pInitMutex);
@@ -1231,10 +1304,18 @@ static int sqliteDefaultBusyCallback(
  int count                /* Number of times table has been busy */
 ){
 #if SQLITE_OS_WIN || (defined(HAVE_USLEEP) && HAVE_USLEEP)
+# ifdef SQLITE_USE_FLOCKTIMEOUT
+  static const u16 delays[] =
+  { 1, 2, 5, 10, 15, 20, 25, 25,  25,  50,  50, 100, 100, 100, 100, 100, 100, 100, 100,  100, 100, 100,  100,  100,  100,  100,  100,  100,  100,  100,  200,  200,  200,  200,  200,  250,  250,  250,  250, 333 }; // 333, 333, 500, 500, 500, 500, 1000, 1000, 1000, 10000 };
+  static const u16 totals[] =
+     { 0, 1, 3,  8, 18, 33, 53, 78, 103, 128, 178, 228, 328, 428, 528, 628, 728, 828, 928, 1028, 1128, 1228, 1328, 1428, 1528, 1628, 1728, 1828, 1928, 2128, 2228, 2428, 2628, 2828, 3028, 3228, 3478, 3728, 3978, 4228, 4561, 4894, 5227, 5727, 6227, 6727, 7227, 8227, 9227 };
+#else
   static const u8 delays[] =
      { 1, 2, 5, 10, 15, 20, 25, 25,  25,  50,  50, 100 };
   static const u8 totals[] =
      { 0, 1, 3,  8, 18, 33, 53, 78, 103, 128, 178, 228 };
+#endif
+  
 # define NDELAY ArraySize(delays)
   sqlite3 *db = (sqlite3 *)ptr;
   int timeout = db->busyTimeout;
@@ -1250,9 +1331,19 @@ static int sqliteDefaultBusyCallback(
   }
   if( prior + delay > timeout ){
     delay = timeout - prior;
-    if( delay<=0 ) return 0;
+    if( delay<=0 ){
+# ifdef SQLITE_USE_FLOCKTIMEOUT
+      delay = 0; /* reset the delay */
+      sqlite3_file_control(db, NULL, SQLITE_FCNTL_SET_NEXTFLOCKTIMEOUT, &delay);
+# endif
+      return 0;
+    }
   }
+# ifdef SQLITE_USE_FLOCKTIMEOUT
+  sqlite3_file_control(db, NULL, SQLITE_FCNTL_SET_NEXTFLOCKTIMEOUT, &delay);
+# else
   sqlite3OsSleep(db->pVfs, delay*1000);
+# endif
   return 1;
 #else
   sqlite3 *db = (sqlite3 *)ptr;
@@ -2191,7 +2282,7 @@ static void _close_asl_log() {
 }
 static void _open_asl_log() {
   if( NULL==autolog_client ){
-    autolog_client = asl_open("SQLite", NULL, 0);
+    autolog_client = asl_open(NULL, NULL, 0);
     atexit(_close_asl_log);
   }
 }
@@ -2200,10 +2291,10 @@ void _sqlite_auto_profile_syslog(void *aux, const char *sql, u64 ns);
 void _sqlite_auto_trace_syslog(void *aux, const char *sql);
 void _sqlite_auto_profile_syslog(void *aux, const char *sql, u64 ns) {
 #pragma unused(aux)
-	asl_log(autolog_client, NULL, ASL_LEVEL_NOTICE, "Query: %s\n Execution Time: %llu ms\n", sql, ns / 1000000);
+	asl_log(autolog_client, NULL, ASL_LEVEL_NOTICE, "Query: %s\n Execution Time: %llu ms\n", sql ? sql : "", ns / 1000000);
 }
 void _sqlite_auto_trace_syslog(void *aux, const char *sql) {
-	asl_log(autolog_client, NULL, ASL_LEVEL_NOTICE, "TraceSQL(%p): %s\n", aux, sql);
+	asl_log(autolog_client, NULL, ASL_LEVEL_NOTICE, "TraceSQL(%p): %s\n", aux, sql ? sql : "");
 }
 #endif
 
@@ -2507,6 +2598,9 @@ static int openDatabase(
   int isThreadsafe;               /* True for threadsafe connections */
   char *zOpen = 0;                /* Filename argument to pass to BtreeOpen() */
   char *zErrMsg = 0;              /* Error message from sqlite3ParseUri() */
+#if SQLITE_ENABLE_DATA_PROTECTION
+  int protFlags = flags & SQLITE_OPEN_FILEPROTECTION_MASK;
+#endif
 
   *ppDb = 0;
 #ifndef SQLITE_OMIT_AUTOINIT
@@ -2569,6 +2663,9 @@ static int openDatabase(
                SQLITE_OPEN_FULLMUTEX |
                SQLITE_OPEN_WAL
              );
+#if SQLITE_ENABLE_DATA_PROTECTION
+  flags |= protFlags;
+#endif
 
   /* Allocate the sqlite data structure */
   db = sqlite3MallocZero( sizeof(sqlite3) );
@@ -2679,17 +2776,6 @@ static int openDatabase(
   sqlite3Error(db, SQLITE_OK, 0);
   sqlite3RegisterBuiltinFunctions(db);
 
-  /* Load automatic extensions - extensions that have been registered
-  ** using the sqlite3_automatic_extension() API.
-  */
-  rc = sqlite3_errcode(db);
-  if( rc==SQLITE_OK ){
-    sqlite3AutoLoadExtensions(db);
-    rc = sqlite3_errcode(db);
-    if( rc!=SQLITE_OK ){
-      goto opendb_out;
-    }
-  }
 
 #ifdef SQLITE_ENABLE_FTS1
   if( !db->mallocFailed ){
@@ -2722,6 +2808,18 @@ static int openDatabase(
     rc = sqlite3RtreeInit(db);
   }
 #endif
+
+  /* Load automatic extensions - extensions that have been registered
+  ** using the sqlite3_automatic_extension() API.
+  */
+  rc = sqlite3_errcode(db);
+  if( rc==SQLITE_OK ){
+    sqlite3AutoLoadExtensions(db);
+    rc = sqlite3_errcode(db);
+    if( rc!=SQLITE_OK ){
+      goto opendb_out;
+    }
+  }
 
   /* -DSQLITE_DEFAULT_LOCKING_MODE=1 makes EXCLUSIVE the default locking
   ** mode.  -DSQLITE_DEFAULT_LOCKING_MODE=0 make NORMAL the default locking
@@ -3602,6 +3700,14 @@ int _sqlite3_lockstate(const char *path, pid_t pid){
     sqlite3_close(db); /* need to close even if open returns an error */
   }
   return SQLITE_LOCKSTATE_ERROR;
+}
+
+/*
+** Returns the system defined default sqlite3_busy_handler function
+**
+*/
+int (*_sqlite3_system_busy_handler(void))(void*,int) {
+  return &sqliteDefaultBusyCallback;
 }
 
 #endif /* SQLITE_ENABLE_APPLE_SPI */

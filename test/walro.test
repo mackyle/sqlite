@@ -46,7 +46,7 @@ do_multiclient_test tn {
   code1 { db close  }
   code2 { db2 close }
   code3 { db3 close }
-  forcedelete test.db
+  forcedelete test.db $shmpath
   forcedelete walro
   
   # Do not run tests with the connections in the same process.
@@ -183,8 +183,8 @@ do_multiclient_test tn {
   # read-only connections from reading the database.
   do_test 1.4.1 {
     code1 { db close }
-    forcedelete test.db-shm
-    file exists test.db-shm
+    forcedelete $shmpath
+    file exists $shmpath
   } {0}
 
   # Open one read-only and one read-write connection. Write some data
@@ -245,6 +245,9 @@ forcedelete test.db
 # database file while a checkpoint operation is ongoing.
 #
 do_multiclient_test tn {
+  # Do not run tests with the connections in the same process.
+  #
+  if {$tn==2} continue
   
   # Close all connections and delete the database.
   #

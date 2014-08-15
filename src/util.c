@@ -1070,6 +1070,14 @@ void *sqlite3HexToBlob(sqlite3 *db, const char *z, int n){
 }
 #endif /* !SQLITE_OMIT_BLOB_LITERAL || SQLITE_HAS_CODEC */
 
+#if defined(__APPLE__) && (defined(USETHREADASSERTS) || defined(SQLITE_DEBUG))
+__private_extern__ char* __crashreporter_info__ = NULL;
+static const char* _defaultMessage_ = "\n SQLite: Fatal multithreading error in caller.  Illegal multi-threaded access to the same database connection.\n";
+#define HALT_CATCH_FIRE() { __crashreporter_info__ = (char*)_defaultMessage_; __builtin_trap(); }
+#else
+#define HALT_CATCH_FIRE()
+#endif
+
 /*
 ** Log an error that is an API call on a connection pointer that should
 ** not have been used.  The "type" of connection pointer is given as the
@@ -1108,6 +1116,11 @@ int sqlite3SafetyCheckOk(sqlite3 *db){
       testcase( sqlite3GlobalConfig.xLog!=0 );
       logBadConnection("unopened");
     }
+#if defined(USETHREADASSERTS) || defined(SQLITE_DEBUG)
+    if (magic==SQLITE_MAGIC_BUSY) {
+      HALT_CATCH_FIRE();
+    }
+#endif
     return 0;
   }else{
     return 1;
@@ -1165,6 +1178,7 @@ int sqlite3SubInt64(i64 *pA, i64 iB){
 int sqlite3MulInt64(i64 *pA, i64 iB){
   i64 iA = *pA;
   i64 iA1, iA0, iB1, iB0, r;
+#undef HALT_CATCH_FIRE
 
   iA1 = iA/TWOPOWER32;
   iA0 = iA % TWOPOWER32;

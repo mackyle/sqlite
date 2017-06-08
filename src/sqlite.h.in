@@ -449,6 +449,8 @@ int sqlite3_exec(
 #define SQLITE_NOTADB      26   /* File opened that is not a database file */
 #define SQLITE_NOTICE      27   /* Notifications from sqlite3_log() */
 #define SQLITE_WARNING     28   /* Warnings from sqlite3_log() */
+#define SQLITE_NOTLEADER   29   /* Attempt to start a write transaction on a non-leader node */
+#define SQLITE_REPLICATION 30   /* Failure while replicating a write transaction  */
 #define SQLITE_ROW         100  /* sqlite3_step() has another row ready */
 #define SQLITE_DONE        101  /* sqlite3_step() has finished executing */
 /* end-of-error-codes */
@@ -8792,6 +8794,91 @@ SQLITE_EXPERIMENTAL int sqlite3_snapshot_cmp(
 ** SQLITE_OK is returned if successful, or an SQLite error code otherwise.
 */
 SQLITE_EXPERIMENTAL int sqlite3_snapshot_recover(sqlite3 *db, const char *zDb);
+
+/*
+** CAPI3REF: Database replication
+** EXPERIMENTAL
+*/
+#define SQLITE_REPLICATION_NONE        0   /* No replication */
+#define SQLITE_REPLICATION_LEADER      1   /* Fire replication commands */
+#define SQLITE_REPLICATION_FOLLOWER    2   /* Execute replication commands */
+
+  typedef struct sqlite3_replication_page sqlite3_replication_page;
+struct sqlite3_replication_page {
+  void *pBuf;        /* The content of the page */
+  unsigned flags;    /* Page flags used internaly by the WAL */
+  unsigned pgno;     /* Page number for this page */
+};
+
+typedef struct sqlite3_replication_methods sqlite3_replication_methods;
+struct sqlite3_replication_methods {
+  void *pArg;                           /* Custom pointer that will be passed back to methods */
+  int (*xBegin)(void *pArg);
+  int (*xWalFrames)(void *pArg, int szPage, int nList, sqlite3_replication_page *pList, unsigned nTruncate, int isCommit, unsigned sync_flags);
+  int (*xUndo)(void *pArg);
+  int (*xEnd)(void *pArg);
+  int (*xCheckpoint)(void *pArg, int eMode, int *pnLog, int *pnCkpt);
+};
+
+/*
+** Put this connection in leader replication mode, registering callbacks for
+** write transactions and write-ahead-log frames events.
+*/
+int sqlite3_replication_leader(
+  sqlite3 *db,                          /* The db handle to use */
+  const char *zDbName,                  /* Enable leader replication on this backend */
+  sqlite3_replication_methods *methods  /* Replication interface */
+);
+
+int sqlite3_replication_follower(
+  sqlite3 *db,                          /* The db handle to use */
+  const char *zDbName                   /* Enable follower replication on this backend */
+);
+
+int sqlite3_replication_none(
+  sqlite3 *db,                          /* The db handle to use */
+  const char *zDbName                   /* Enable follower replication on this backend */
+);
+
+int sqlite3_replication_mode(
+  sqlite3 *db,                          /* The db handle to use */
+  const char *zDbName,                  /* Enable follower replication on this backend */
+  int *eMode
+);
+
+int sqlite3_replication_begin(
+  sqlite3 *db,
+  const char *zDbName            /* Write WAL replication frames for this backend */
+);
+
+int sqlite3_replication_wal_frames(
+  sqlite3 *db,
+  const char *zDbName,            /* Write WAL replication frames for this backend */
+  int szPage,                     /* Database page-size in bytes */
+  int nList,
+  sqlite3_replication_page *pList,
+  unsigned nTruncate,
+  int isCommit,
+  int sync_flags
+);
+
+int sqlite3_replication_undo(
+  sqlite3 *db,
+  const char *zDbName            /* Write WAL replication frames for this backend */
+);
+
+int sqlite3_replication_end(
+  sqlite3 *db,
+  const char *zDbName            /* Write WAL replication frames for this backend */
+);
+
+int sqlite3_replication_checkpoint(
+  sqlite3 *db,                          /* The db handle to use */
+  const char *zDbName,                  /* Enable replication on this database */
+  int eMode,                      /* Type of checkpoint */
+  int *pnLog,                     /* OUT: Final number of frames in log */
+  int *pnCkpt                     /* OUT: Final number of checkpointed frames */
+);
 
 /*
 ** Undo the hack that converts floating point types to integer for

@@ -1142,7 +1142,8 @@ static void explainTempTable(Parse *pParse, const char *zUsage){
   if( pParse->explain==2 ){
     Vdbe *v = pParse->pVdbe;
     char *zMsg = sqlite3MPrintf(pParse->db, "USE TEMP B-TREE FOR %s", zUsage);
-    sqlite3VdbeAddOp4(v, OP_Explain, pParse->iSelectId, 0, 0, zMsg, P4_DYNAMIC);
+    sqlite3VdbeAddOp4(v, OP_Explain, pParse->iSelectId, 0, 0, zMsg,
+        P4_DYNAMIC);
   }
 }
 
@@ -1190,7 +1191,8 @@ static void explainComposite(
         pParse->db, "COMPOUND SUBQUERIES %d AND %d %s(%s)", iSub1, iSub2,
         bUseTmp?"USING TEMP B-TREE ":"", selectOpName(op)
     );
-    sqlite3VdbeAddOp4(v, OP_Explain, pParse->iSelectId, 0, 0, zMsg, P4_DYNAMIC);
+    sqlite3VdbeAddOp4(v, OP_Explain, pParse->iSelectId, 0, 0, zMsg,
+        P4_DYNAMIC);
   }
 }
 #else
@@ -1714,7 +1716,7 @@ int sqlite3ColumnsFromExprList(
         zName = iCol>=0 ? pTab->aCol[iCol].zName : "rowid";
       }else if( pColExpr->op==TK_ID ){
         assert( !ExprHasProperty(pColExpr, EP_IntValue) );
-        zName = pColExpr->u.zToken;
+        zName = pColExpr->u.zToken.zToken;
       }else{
         /* Use the original text of the column expression as its name */
         zName = pEList->a[i].zSpan;
@@ -1992,7 +1994,7 @@ static KeyInfo *multiSelectOrderByKeyInfo(Parse *pParse, Select *p, int nExtra){
         pColl = multiSelectCollSeq(pParse, p, pItem->u.x.iOrderByCol-1);
         if( pColl==0 ) pColl = db->pDfltColl;
         pOrderBy->a[i].pExpr =
-          sqlite3ExprAddCollateString(pParse, pTerm, pColl->zName);
+          sqlite3ExprAddCollateString(pParse, pTerm, pColl->zName, -1);
       }
       assert( sqlite3KeyInfoIsWriteable(pRet) );
       pRet->aColl[i] = pColl;
@@ -2638,7 +2640,7 @@ static int generateOutputSubroutine(
     int addr1, addr2;
     addr1 = sqlite3VdbeAddOp1(v, OP_IfNot, regPrev); VdbeCoverage(v);
     addr2 = sqlite3VdbeAddOp4(v, OP_Compare, pIn->iSdst, regPrev+1, pIn->nSdst,
-                              (char*)sqlite3KeyInfoRef(pKeyInfo), P4_KEYINFO);
+                              (char*)sqlite3KeyInfoRef(pKeyInfo),P4_KEYINFO);
     sqlite3VdbeAddOp3(v, OP_Jump, addr2+2, iContinue, addr2+2); VdbeCoverage(v);
     sqlite3VdbeJumpHere(v, addr1);
     sqlite3VdbeAddOp3(v, OP_Copy, pIn->iSdst, regPrev+1, pIn->nSdst-1);
@@ -3918,7 +3920,7 @@ static u8 minMaxQuery(sqlite3 *db, Expr *pFunc, ExprList **ppMinMax){
   assert( *ppMinMax==0 );
   assert( pFunc->op==TK_AGG_FUNCTION );
   if( pEList==0 || pEList->nExpr!=1 ) return eRet;
-  zFunc = pFunc->u.zToken;
+  zFunc = pFunc->u.zToken.zToken;
   if( sqlite3StrICmp(zFunc, "min")==0 ){
     eRet = WHERE_ORDERBY_MIN;
     sortOrder = SQLITE_SO_ASC;
@@ -4470,7 +4472,7 @@ static int selectExpander(Walker *pWalker, Select *p){
         if( pE->op==TK_DOT ){
           assert( pE->pLeft!=0 );
           assert( !ExprHasProperty(pE->pLeft, EP_IntValue) );
-          zTName = pE->pLeft->u.zToken;
+          zTName = pE->pLeft->u.zToken.zToken;
         }
         for(i=0, pFrom=pTabList->a; i<pTabList->nSrc; i++, pFrom++){
           Table *pTab = pFrom->pTab;
@@ -4547,7 +4549,7 @@ static int selectExpander(Walker *pWalker, Select *p){
               pExpr = pRight;
             }
             pNew = sqlite3ExprListAppend(pParse, pNew, pExpr);
-            sqlite3TokenInit(&sColname, zColname);
+            sqlite3TokenInit(&sColname, zColname, -1);
             sqlite3ExprListSetName(pParse, pNew, &sColname, 0);
             if( pNew && (p->selFlags & SF_NestedFrom)!=0 ){
               struct ExprList_item *pX = &pNew->a[pNew->nExpr-1];

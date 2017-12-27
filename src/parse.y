@@ -855,12 +855,13 @@ idlist(A) ::= nm(Y).
       p->op = (u8)op;
       p->flags = EP_Leaf;
       p->iAgg = -1;
-      p->u.zToken = (char*)&p[1];
-      memcpy(p->u.zToken, t.z, t.n);
-      p->u.zToken[t.n] = 0;
-      if( sqlite3Isquote(p->u.zToken[0]) ){
-        if( p->u.zToken[0]=='"' ) p->flags |= EP_DblQuoted;
-        sqlite3Dequote(p->u.zToken);
+      p->u.zToken.zToken = (char*)&p[1];
+      memcpy(p->u.zToken.zToken, t.z, t.n);
+      p->u.zToken.zToken[t.n] = 0;
+      p->u.zToken.len = t.n;
+      if( sqlite3Isquote(p->u.zToken.zToken[0]) ){
+        if( p->u.zToken.zToken[0]=='"' ) p->flags |= EP_DblQuoted;
+        sqlite3DequoteToken(&p->u.zToken);
       }
 #if SQLITE_MAX_EXPR_DEPTH>0
       p->nHeight = 1;

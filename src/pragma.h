@@ -52,6 +52,7 @@
 #define PragTyp_LOCK_STATUS                   44
 #define PragTyp_PARSER_TRACE                  45
 #define PragTyp_STATS                         46
+#define PragTyp_INLINE_NUL                    47
 
 /* Property flags associated with various pragma. */
 #define PragFlg_NeedSchema 0x01 /* Force schema load before running */
@@ -139,6 +140,11 @@ static const PragmaName aPragmaName[] = {
   /* ColNames:  */ 0, 0,
   /* iArg:      */ 0 },
 #endif
+ {/* zName:     */ "allow_inline_nul",
+  /* ePragTyp:  */ PragTyp_FLAG,
+  /* ePragFlg:  */ PragFlg_Result1|PragFlg_NoColumns1,
+  /* ColNames:  */ 0, 0,
+  /* iArg:      */ SQLITE_AllowInlineNul },
 #if !defined(SQLITE_OMIT_SCHEMA_VERSION_PRAGMAS)
  {/* zName:     */ "application_id",
   /* ePragTyp:  */ PragTyp_HEADER_VALUE,

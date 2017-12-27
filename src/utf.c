@@ -436,7 +436,13 @@ int sqlite3Utf8To8(unsigned char *zIn){
 **
 ** NULL is returned if there is an allocation error.
 */
-char *sqlite3Utf16to8(sqlite3 *db, const void *z, int nByte, u8 enc){
+char *sqlite3Utf16to8(
+  sqlite3 *db,
+  const void *z,
+  int nByte,
+  int *outBytes,
+  u8 enc
+){
   Mem m;
   memset(&m, 0, sizeof(m));
   m.db = db;
@@ -446,6 +452,8 @@ char *sqlite3Utf16to8(sqlite3 *db, const void *z, int nByte, u8 enc){
     sqlite3VdbeMemRelease(&m);
     m.z = 0;
   }
+  if( outBytes )
+    (*outBytes) = m.n;
   assert( (m.flags & MEM_Term)!=0 || db->mallocFailed );
   assert( (m.flags & MEM_Str)!=0 || db->mallocFailed );
   assert( m.z || db->mallocFailed );

@@ -186,8 +186,8 @@ do_test trace3-8.6 {
 do_test trace3-8.7 {
   list [sqlite3_bind_text16 $STMT 1 \
       [encoding convertto unicode hi\000yall\000] 16] \
-      [sqlite3_expanded_sql $STMT]
-} {{} {SELECT a, b FROM t1 WHERE b = 'hi' ORDER BY a;}}
+      [ encoding convertto utf-8 [ sqlite3_expanded_sql_utf8 $STMT ] ]
+} {{} {SELECT a, b FROM t1 WHERE b = 'hi\000yall\000' ORDER BY a;}}
 do_test trace3-8.8 {
   list [sqlite3_bind_blob $STMT 1 "\x12\x34\x56" 3] \
       [sqlite3_expanded_sql $STMT]

@@ -150,7 +150,7 @@ static int statConnect(
 
   if( argc>=4 ){
     Token nm;
-    sqlite3TokenInit(&nm, (char*)argv[3]);
+    sqlite3TokenInit(&nm, (char*)argv[3], -1);
     iDb = sqlite3FindDb(db, &nm);
     if( iDb<0 ){
       *pzErr = sqlite3_mprintf("no such database: %s", argv[3]);

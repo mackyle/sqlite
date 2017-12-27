@@ -1334,7 +1334,7 @@ static int valueFromExpr(
   assert( (pExpr->flags & EP_TokenOnly)==0 || pCtx==0 );
 
   if( op==TK_CAST ){
-    u8 aff = sqlite3AffinityType(pExpr->u.zToken,0);
+    u8 aff = sqlite3AffinityType(pExpr->u.zToken.zToken,0);
     rc = valueFromExpr(db, pExpr->pLeft, enc, aff, ppVal, pCtx);
     testcase( rc!=SQLITE_OK );
     if( *ppVal ){
@@ -1361,7 +1361,7 @@ static int valueFromExpr(
     if( ExprHasProperty(pExpr, EP_IntValue) ){
       sqlite3VdbeMemSetInt64(pVal, (i64)pExpr->u.iValue*negInt);
     }else{
-      zVal = sqlite3MPrintf(db, "%s%s", zNeg, pExpr->u.zToken);
+      zVal = sqlite3MPrintf(db, "%s%s", zNeg, pExpr->u.zToken.zToken);
       if( zVal==0 ) goto no_mem;
       sqlite3ValueSetStr(pVal, -1, zVal, SQLITE_UTF8, SQLITE_DYNAMIC);
     }
@@ -1398,12 +1398,12 @@ static int valueFromExpr(
 #ifndef SQLITE_OMIT_BLOB_LITERAL
   else if( op==TK_BLOB ){
     int nVal;
-    assert( pExpr->u.zToken[0]=='x' || pExpr->u.zToken[0]=='X' );
-    assert( pExpr->u.zToken[1]=='\'' );
+    assert( pExpr->u.zToken.zToken[0]=='x' || pExpr->u.zToken.zToken[0]=='X' );
+    assert( pExpr->u.zToken.zToken[1]=='\'' );
     pVal = valueNew(db, pCtx);
     if( !pVal ) goto no_mem;
-    zVal = &pExpr->u.zToken[2];
-    nVal = sqlite3Strlen30(zVal)-1;
+    zVal = &pExpr->u.zToken.zToken[2];
+    nVal = pExpr->u.zToken.len-3;
     assert( zVal[nVal]=='\'' );
     sqlite3VdbeMemSetStr(pVal, sqlite3HexToBlob(db, zVal, nVal), nVal/2,
                          0, SQLITE_DYNAMIC);

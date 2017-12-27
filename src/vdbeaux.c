@@ -64,6 +64,7 @@ void sqlite3VdbeSetSql(Vdbe *p, const char *z, int n, u8 prepFlags){
   }
   assert( p->zSql==0 );
   p->zSql = sqlite3DbStrNDup(p->db, z, n);
+  p->nSql = n;
 }
 
 /*
@@ -72,6 +73,7 @@ void sqlite3VdbeSetSql(Vdbe *p, const char *z, int n, u8 prepFlags){
 void sqlite3VdbeSwap(Vdbe *pA, Vdbe *pB){
   Vdbe tmp, *pTmp;
   char *zTmp;
+  int nTmp;
   assert( pA->db==pB->db );
   tmp = *pA;
   *pA = *pB;
@@ -83,8 +85,11 @@ void sqlite3VdbeSwap(Vdbe *pA, Vdbe *pB){
   pA->pPrev = pB->pPrev;
   pB->pPrev = pTmp;
   zTmp = pA->zSql;
+  nTmp = pA->nSql;
   pA->zSql = pB->zSql;
+  pA->nSql = pB->nSql;
   pB->zSql = zTmp;
+  pB->nSql = nTmp;
   pB->expmask = pA->expmask;
   pB->prepFlags = pA->prepFlags;
   memcpy(pB->aCounter, pA->aCounter, sizeof(pB->aCounter));
@@ -233,8 +238,9 @@ int sqlite3VdbeGoto(Vdbe *p, int iDest){
 /* Generate code to cause the string zStr to be loaded into
 ** register iDest
 */
-int sqlite3VdbeLoadString(Vdbe *p, int iDest, const char *zStr){
-  return sqlite3VdbeAddOp4(p, OP_String8, 0, iDest, 0, zStr, 0);
+int sqlite3VdbeLoadString(Vdbe *p, int iDest, const char *zStr, int len){
+  if( len<0 ) len = sqlite3Strlen30(zStr);
+  return sqlite3VdbeAddOp4(p, OP_String8, len, iDest, 0, zStr, len);
 }
 
 /*
@@ -256,7 +262,9 @@ void sqlite3VdbeMultiLoad(Vdbe *p, int iDest, const char *zTypes, ...){
   for(i=0; (c = zTypes[i])!=0; i++){
     if( c=='s' ){
       const char *z = va_arg(ap, const char*);
-      sqlite3VdbeAddOp4(p, z==0 ? OP_Null : OP_String8, 0, iDest+i, 0, z, 0);
+      int zn = va_arg( ap, int );
+      if( zn==-1 ) zn = sqlite3Strlen30( z );
+      sqlite3VdbeAddOp4(p, z==0 ? OP_Null : OP_String8, zn, iDest+i, 0, z, 0);
     }else if( c=='i' ){
       sqlite3VdbeAddOp2(p, OP_Integer, va_arg(ap, int), iDest+i);
     }else{
@@ -1822,16 +1830,19 @@ int sqlite3VdbeList(
 */
 void sqlite3VdbePrintSql(Vdbe *p){
   const char *z = 0;
+  int n = 0;
   if( p->zSql ){
     z = p->zSql;
+    n = p->nSql;
   }else if( p->nOp>=1 ){
     const VdbeOp *pOp = &p->aOp[0];
     if( pOp->opcode==OP_Init && pOp->p4.z!=0 ){
       z = pOp->p4.z;
-      while( sqlite3Isspace(*z) ) z++;
+      n = pOp->p1;
+      while( sqlite3Isspace(*z) ) { z++; n--; }
     }
   }
-  if( z ) printf("SQL: [%s]\n", z);
+  if( z ) printf("SQL: [%.*s]\n", n, z);
 }
 #endif
 
@@ -2855,7 +2866,7 @@ int sqlite3VdbeTransferError(Vdbe *p){
 */
 static void vdbeInvokeSqllog(Vdbe *v){
   if( sqlite3GlobalConfig.xSqllog && v->rc==SQLITE_OK && v->zSql && v->pc>=0 ){
-    char *zExpanded = sqlite3VdbeExpandSql(v, v->zSql);
+    char *zExpanded = sqlite3VdbeExpandSql(v, v->zSql, v->nSql, NULL);
     assert( v->db->init.busy==0 );
     if( zExpanded ){
       sqlite3GlobalConfig.xSqllog(
@@ -2939,7 +2950,7 @@ int sqlite3VdbeReset(Vdbe *p){
       if( p->zSql ){
         char c, pc = 0;
         fprintf(out, "-- ");
-        for(i=0; (c = p->zSql[i])!=0; i++){
+        for(i=0; (c = p->zSql[i]),(i<p->nSql); i++){
           if( pc=='\n' ) fprintf(out, "-- ");
           putc(c, out);
           pc = c;

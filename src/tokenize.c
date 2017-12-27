@@ -193,7 +193,7 @@ int sqlite3IsIdChar(u8 c){ return IdChar(c); }
 ** Return the length (in bytes) of the token that begins at z[0]. 
 ** Store the token type in *tokenType before returning.
 */
-int sqlite3GetToken(const unsigned char *z, int *tokenType){
+int sqlite3GetToken(const unsigned char *z, int zBytes, int *tokenType){
   int i, c;
   switch( aiClass[*z] ){  /* Switch on the character-class of the first byte
                           ** of the token. See the comment on the CC_ defines
@@ -317,7 +317,7 @@ int sqlite3GetToken(const unsigned char *z, int *tokenType){
       testcase( delim=='`' );
       testcase( delim=='\'' );
       testcase( delim=='"' );
-      for(i=1; (c=z[i])!=0; i++){
+      for(i=1; (c=z[i]),(zBytes<0)?c:((i)<zBytes); i++){
         if( c==delim ){
           if( z[i+1]==delim ){
             i++;
@@ -473,7 +473,7 @@ int sqlite3GetToken(const unsigned char *z, int *tokenType){
 ** memory obtained from sqlite3_malloc() and to make *pzErrMsg point to that
 ** error message.
 */
-int sqlite3RunParser(Parse *pParse, const char *zSql, char **pzErrMsg){
+int sqlite3RunParser(Parse *pParse, const char *zSql, int zBytes, char **pzErrMsg){
   int nErr = 0;                   /* Number of errors encountered */
   void *pEngine;                  /* The LEMON-generated LALR(1) parser */
   int n = 0;                      /* Length of the next token token */
@@ -481,10 +481,12 @@ int sqlite3RunParser(Parse *pParse, const char *zSql, char **pzErrMsg){
   int lastTokenParsed = -1;       /* type of the previous token */
   sqlite3 *db = pParse->db;       /* The database connection */
   int mxSqlLen;                   /* Max length of an SQL string */
+  const char *_zSql = zSql;
 #ifdef sqlite3Parser_ENGINEALWAYSONSTACK
   yyParser sEngine;    /* Space to hold the Lemon-generated Parser object */
 #endif
 
+  assert( zBytes>=0 );
   assert( zSql!=0 );
   mxSqlLen = db->aLimit[SQLITE_LIMIT_SQL_LENGTH];
   if( db->nVdbeActive==0 ){
@@ -509,8 +511,8 @@ int sqlite3RunParser(Parse *pParse, const char *zSql, char **pzErrMsg){
   assert( pParse->nVar==0 );
   assert( pParse->pVList==0 );
   while( 1 ){
-    if( zSql[0]!=0 ){
-      n = sqlite3GetToken((u8*)zSql, &tokenType);
+    if( zBytes - (zSql - _zSql) ){
+      n = sqlite3GetToken((u8*)zSql, zBytes - (zSql - _zSql), &tokenType);
       mxSqlLen -= n;
       if( mxSqlLen<0 ){
         pParse->rc = SQLITE_TOOBIG;

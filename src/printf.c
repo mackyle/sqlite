@@ -861,6 +861,35 @@ void sqlite3StrAccumAppend(StrAccum *p, const char *z, int N){
 }
 
 /*
+** Append N bytes of text from z to the StrAccum object.  Increase the
+** size of the memory allocation for StrAccum if necessary.
+*/
+void sqlite3StrAccumAppendEscapedQuote(StrAccum *p, const char *z, int N){
+  assert( z!=0 || N==0 );
+  assert( p->zText!=0 || p->nChar==0 || p->accError );
+  assert( N>=0 );
+  assert( p->accError==0 || p->nAlloc==0 );
+  int n = 0;
+  int c;
+  for( c = 0; c < N; c++ )
+    if( z[c] == '\'' ) n++;
+  if( p->nChar+N >= p->nAlloc ){
+    enlargeAndAppend(p,z,N+n);
+  }else if( N ){
+    char *out = p->zText + p->nChar;
+    assert( p->zText );
+    p->nChar += N + n;
+    if( n == 0 ) {
+      memcpy(out, z, N);
+    } else
+      for( c = 0; c < N; c++ ) {
+        if( z[c] == '\'' ) (*out++) = '\'';
+        (*out++) = z[c];
+      }
+  }
+}
+
+/*
 ** Append the complete text of zero-terminated string z[] to the p string.
 */
 void sqlite3StrAccumAppendAll(StrAccum *p, const char *z){

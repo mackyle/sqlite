@@ -1495,9 +1495,9 @@ struct sqlite3 {
 #define SQLITE_QueryOnly      0x00100000  /* Disable database changes */
 #define SQLITE_CellSizeCk     0x00200000  /* Check btree cell sizes on load */
 #define SQLITE_Fts3Tokenizer  0x00400000  /* Enable fts3_tokenizer(2) */
-#define SQLITE_EnableQPSG     0x00800000  /* Query Planner Stability Guarantee*/
+#define SQLITE_EnableQPSG     0x00800000  /* Query Planner Stability Guarantee */
 #define SQLITE_TriggerEQP     0x01000000  /* Show trigger EXPLAIN QUERY PLAN */
-
+#define SQLITE_AllowInlineNul 0x02000000  /* Allow inline NUL characters in commands */
 /* Flags used only if debugging */
 #ifdef SQLITE_DEBUG
 #define SQLITE_SqlTrace       0x08000000  /* Debug print SQL as it executes */
@@ -2358,8 +2358,12 @@ struct Expr {
   char affinity;         /* The affinity of the column or 0 if not a column */
   u32 flags;             /* Various flags.  EP_* See below */
   union {
-    char *zToken;          /* Token value. Zero terminated and dequoted */
-    int iValue;            /* Non-negative integer value if EP_IntValue */
+    struct ExprToken{
+      char *zToken;      /* Token value string */
+      int len;           /* Token length */
+    } zToken;            /* Token value. length specified, if len < 0
+                            treat as Zero-terminated. */
+    int iValue;          /* Non-negative integer value if EP_IntValue */
   } u;
 
   /* If the EP_TokenOnly flag is set in the Expr.flags mask, then no
@@ -3524,6 +3528,7 @@ void *sqlite3DbMallocZero(sqlite3*, u64);
 void *sqlite3DbMallocRaw(sqlite3*, u64);
 void *sqlite3DbMallocRawNN(sqlite3*, u64);
 char *sqlite3DbStrDup(sqlite3*,const char*);
+struct ExprToken sqlite3DbStrDupToken( sqlite3*, struct ExprToken );
 char *sqlite3DbStrNDup(sqlite3*,const char*, u64);
 void *sqlite3Realloc(void*, u64);
 void *sqlite3DbReallocOrFree(sqlite3 *, void *, u64);
@@ -3638,9 +3643,10 @@ char *sqlite3VMPrintf(sqlite3*,const char*, va_list);
 void sqlite3SetString(char **, sqlite3*, const char*);
 void sqlite3ErrorMsg(Parse*, const char*, ...);
 void sqlite3Dequote(char*);
-void sqlite3TokenInit(Token*,char*);
+void sqlite3DequoteToken(struct ExprToken *);
+void sqlite3TokenInit(Token*,char*,int);
 int sqlite3KeywordCode(const unsigned char*, int);
-int sqlite3RunParser(Parse*, const char*, char **);
+int sqlite3RunParser(Parse*, const char*, int, char **);
 void sqlite3FinishCoding(Parse*);
 int sqlite3GetTempReg(Parse*);
 void sqlite3ReleaseTempReg(Parse*,int);
@@ -3652,6 +3658,7 @@ int sqlite3NoTempsInRange(Parse*,int,int);
 #endif
 Expr *sqlite3ExprAlloc(sqlite3*,int,const Token*,int);
 Expr *sqlite3Expr(sqlite3*,int,const char*);
+Expr *sqlite3ExprLen(sqlite3*,int,const char*,int);
 void sqlite3ExprAttachSubtrees(sqlite3*,Expr*,Expr*,Expr*);
 Expr *sqlite3PExpr(Parse*, int, Expr*, Expr*);
 void sqlite3PExprAddSelect(Parse*, Expr*, Select*);
@@ -4033,7 +4040,7 @@ CollSeq *sqlite3ExprCollSeq(Parse *pParse, Expr *pExpr);
 CollSeq *sqlite3ExprNNCollSeq(Parse *pParse, Expr *pExpr);
 int sqlite3ExprCollSeqMatch(Parse*,Expr*,Expr*);
 Expr *sqlite3ExprAddCollateToken(Parse *pParse, Expr*, const Token*, int);
-Expr *sqlite3ExprAddCollateString(Parse*,Expr*,const char*);
+Expr *sqlite3ExprAddCollateString(Parse*,Expr*,const char*,int);
 Expr *sqlite3ExprSkipCollate(Expr*);
 int sqlite3CheckCollSeq(Parse *, CollSeq *);
 int sqlite3CheckObjectName(Parse *, const char *);
@@ -4057,7 +4064,7 @@ void sqlite3ValueSetNull(sqlite3_value*);
 void sqlite3ValueFree(sqlite3_value*);
 sqlite3_value *sqlite3ValueNew(sqlite3 *);
 #ifndef SQLITE_OMIT_UTF16
-char *sqlite3Utf16to8(sqlite3 *, const void*, int, u8);
+char *sqlite3Utf16to8(sqlite3 *, const void*, int, int*, u8);
 #endif
 int sqlite3ValueFromExpr(sqlite3 *, Expr *, u8, u8, sqlite3_value **);
 void sqlite3ValueApplyAffinity(sqlite3_value *, u8, u8);
@@ -4077,7 +4084,7 @@ void sqlite3RootPageMoved(sqlite3*, int, int, int);
 void sqlite3Reindex(Parse*, Token*, Token*);
 void sqlite3AlterFunctions(void);
 void sqlite3AlterRenameTable(Parse*, SrcList*, Token*);
-int sqlite3GetToken(const unsigned char *, int *);
+int sqlite3GetToken(const unsigned char *, int, int *);
 void sqlite3NestedParse(Parse*, const char*, ...);
 void sqlite3ExpirePreparedStatements(sqlite3*);
 int sqlite3CodeSubselect(Parse*, Expr *, int, int);
@@ -4125,6 +4132,7 @@ int sqlite3OpenTempDatabase(Parse *);
 
 void sqlite3StrAccumInit(StrAccum*, sqlite3*, char*, int, int);
 void sqlite3StrAccumAppend(StrAccum*,const char*,int);
+void sqlite3StrAccumAppendEscapedQuote(StrAccum*,const char*,int);
 void sqlite3StrAccumAppendAll(StrAccum*,const char*);
 void sqlite3AppendChar(StrAccum*,int,char);
 char *sqlite3StrAccumFinish(StrAccum*);

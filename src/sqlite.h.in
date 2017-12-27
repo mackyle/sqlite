@@ -3725,6 +3725,10 @@ int sqlite3_prepare16_v3(
 ** string containing the SQL text of prepared statement P with
 ** [bound parameters] expanded.
 **
+** ^sqlite3_sql_utf8(P,pN) returns the sql statement, and will fill the
+** integer pointer passed with the length of the string.  NULL may be 
+** passed.
+**
 ** ^(For example, if a prepared statement is created using the SQL
 ** text "SELECT $abc,:xyz" and if parameter $abc is bound to integer 2345
 ** and parameter :xyz is unbound, then sqlite3_sql() will return
@@ -3734,6 +3738,10 @@ int sqlite3_prepare16_v3(
 ** ^The sqlite3_expanded_sql() interface returns NULL if insufficient memory
 ** is available to hold the result, or if the result would exceed the
 ** the maximum string length determined by the [SQLITE_LIMIT_LENGTH].
+**
+** ^sqlite3_sql_expanded_utf8(P,pN) returns the expanded sql statement, and
+** will fill the integer pointer passed with the length of the string.  NULL
+** may be passed to ignore the result.
 **
 ** ^The [SQLITE_TRACE_SIZE_LIMIT] compile-time option limits the size of
 ** bound parameter expansions.  ^The [SQLITE_OMIT_TRACE] compile-time
@@ -3747,6 +3755,8 @@ int sqlite3_prepare16_v3(
 */
 const char *sqlite3_sql(sqlite3_stmt *pStmt);
 char *sqlite3_expanded_sql(sqlite3_stmt *pStmt);
+const char *sqlite3_sql_utf8(sqlite3_stmt *pStmt, int *pnLen);
+char *sqlite3_expanded_sql_utf8(sqlite3_stmt *pStmt, int *pnLen);
 
 /*
 ** CAPI3REF: Determine If An SQL Statement Writes The Database

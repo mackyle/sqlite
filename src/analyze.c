@@ -1032,7 +1032,7 @@ static void analyzeOneTable(
   iIdxCur = iTab++;
   pParse->nTab = MAX(pParse->nTab, iTab);
   sqlite3OpenTable(pParse, iTabCur, iDb, pTab, OP_OpenRead);
-  sqlite3VdbeLoadString(v, regTabname, pTab->zName);
+  sqlite3VdbeLoadString(v, regTabname, pTab->zName, -1);
 
   for(pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext){
     int nCol;                     /* Number of columns in pIdx. "N" */
@@ -1054,7 +1054,7 @@ static void analyzeOneTable(
     }
 
     /* Populate the register containing the index name. */
-    sqlite3VdbeLoadString(v, regIdxname, zIdxName);
+    sqlite3VdbeLoadString(v, regIdxname, zIdxName, sqlite3Strlen30(zIdxName));
     VdbeComment((v, "Analysis for %s.%s", pTab->zName, zIdxName));
 
     /*

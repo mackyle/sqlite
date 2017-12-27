@@ -1276,7 +1276,7 @@ static int vdbeUnbind(Vdbe *p, int i){
     sqlite3Error(p->db, SQLITE_MISUSE);
     sqlite3_mutex_leave(p->db->mutex);
     sqlite3_log(SQLITE_MISUSE, 
-        "bind on a busy prepared statement: [%s]", p->zSql);
+        "bind on a busy prepared statement: [%.*s]", p->nSql, p->zSql);
     return SQLITE_MISUSE_BKPT;
   }
   if( i<1 || i>p->nVar ){
@@ -1326,7 +1326,7 @@ static int bindText(
     if( zData!=0 ){
       pVar = &p->aVar[i-1];
       rc = sqlite3VdbeMemSetStr(pVar, zData, nData, encoding, xDel);
-      if( rc==SQLITE_OK && encoding!=0 ){
+      if( rc==SQLITE_OK && encoding!=0 && encoding != ENC(p->db)){
         rc = sqlite3VdbeChangeEncoding(pVar, ENC(p->db));
       }
       if( rc ){
@@ -1682,6 +1682,47 @@ const char *sqlite3_sql(sqlite3_stmt *pStmt){
 }
 
 /*
+** Return the SQL associated with a prepared statement
+*/
+const char *sqlite3_sql_utf8(sqlite3_stmt *pStmt, int *pnSql ){
+  Vdbe *p = (Vdbe *)pStmt;
+  if( p ){
+    if( pnSql ) pnSql[0] = p->nSql;
+    return p->zSql;
+  }
+  if( pnSql ) pnSql[0] = 0;
+  return 0;
+}
+
+/*
+** Return the SQL associated with a prepared statement with
+** bound parameters expanded.  Space to hold the returned string is
+** obtained from sqlite3_malloc().  The caller is responsible for
+** freeing the returned string by passing it to sqlite3_free().
+**
+** The SQLITE_TRACE_SIZE_LIMIT puts an upper bound on the size of
+** expanded bound parameters.
+*/
+char *sqlite3_expanded_sql_utf8(sqlite3_stmt *pStmt, int *pnSql){
+#ifdef SQLITE_OMIT_TRACE
+  return 0;
+#else
+  char *z = 0;
+  int nSql;
+  const char *zSql = sqlite3_sql_utf8(pStmt, &nSql);
+  if( zSql ){
+    Vdbe *p = (Vdbe *)pStmt;
+    sqlite3_mutex_enter(p->db->mutex);
+    z = sqlite3VdbeExpandSql(p, zSql, nSql, pnSql);
+    sqlite3_mutex_leave(p->db->mutex);
+  } else {
+    if( pnSql ) pnSql[0] = 0;
+  }
+  return z;
+#endif
+}
+
+/*
 ** Return the SQL associated with a prepared statement with
 ** bound parameters expanded.  Space to hold the returned string is
 ** obtained from sqlite3_malloc().  The caller is responsible for
@@ -1691,20 +1732,9 @@ const char *sqlite3_sql(sqlite3_stmt *pStmt){
 ** expanded bound parameters.
 */
 char *sqlite3_expanded_sql(sqlite3_stmt *pStmt){
-#ifdef SQLITE_OMIT_TRACE
-  return 0;
-#else
-  char *z = 0;
-  const char *zSql = sqlite3_sql(pStmt);
-  if( zSql ){
-    Vdbe *p = (Vdbe *)pStmt;
-    sqlite3_mutex_enter(p->db->mutex);
-    z = sqlite3VdbeExpandSql(p, zSql);
-    sqlite3_mutex_leave(p->db->mutex);
-  }
-  return z;
-#endif
+  return sqlite3_expanded_sql_utf8( pStmt, NULL );
 }
+
 
 #ifdef SQLITE_ENABLE_PREUPDATE_HOOK
 /*

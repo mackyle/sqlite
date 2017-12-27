@@ -586,6 +586,7 @@ FUZZERSHELL_OPT = -DSQLITE_ENABLE_JSON1
 FUZZCHECK_OPT = -DSQLITE_ENABLE_JSON1 -DSQLITE_ENABLE_MEMSYS5 -DSQLITE_OSS_FUZZ
 FUZZCHECK_OPT += -DSQLITE_MAX_MEMORY=50000000
 FUZZCHECK_SRC = $(TOP)/test/fuzzcheck.c $(TOP)/test/ossfuzz.c
+INLINENUL_SRC = $(TOP)/test/inlinenul.c
 DBFUZZ_OPT = 
 
 # This is the default Makefile target.  The objects listed here
@@ -637,6 +638,9 @@ fuzzershell$(TEXE):	$(TOP)/tool/fuzzershell.c sqlite3.c sqlite3.h
 
 fuzzcheck$(TEXE):	$(FUZZCHECK_SRC) sqlite3.c sqlite3.h
 	$(LTLINK) -o $@ $(FUZZCHECK_OPT) $(FUZZCHECK_SRC) sqlite3.c $(TLIBS)
+
+checkinlinenul$(TEXE):	$(INLINENUL_SRC) sqlite3.c sqlite3.h
+	$(LTLINK) -o $@ $(FUZZCHECK_OPT) $(INLINENUL_SRC) sqlite3.c $(TLIBS)
 
 ossshell$(TEXE):	$(TOP)/test/ossfuzz.c $(TOP)/test/ossshell.c sqlite3.c sqlite3.h
 	$(LTLINK) -o $@ $(FUZZCHECK_OPT) $(TOP)/test/ossshell.c \
@@ -1137,7 +1141,7 @@ testfixture$(TEXE):	$(TESTFIXTURE_SRC)
 		-o $@ $(TESTFIXTURE_SRC) $(LIBTCL) $(TLIBS)
 
 # A very detailed test running most or all test cases
-fulltest:	$(TESTPROGS) fuzztest
+fulltest:	$(TESTPROGS) fuzztest testinlinenul
 	./testfixture$(TEXE) $(TOP)/test/all.test $(TESTOPTS)
 
 # Really really long testing
@@ -1145,12 +1149,15 @@ soaktest:	$(TESTPROGS)
 	./testfixture$(TEXE) $(TOP)/test/all.test -soak=1 $(TESTOPTS)
 
 # Do extra testing but not everything.
-fulltestonly:	$(TESTPROGS) fuzztest
+fulltestonly:	$(TESTPROGS) fuzztest testinlinenul
 	./testfixture$(TEXE) $(TOP)/test/full.test
 
 # Fuzz testing
 fuzztest:	fuzzcheck$(TEXE) $(FUZZDATA)
 	./fuzzcheck$(TEXE) $(FUZZDATA)
+
+testinlinenul:	checkinlinenul$(TEXE)
+	./checkinlinenul$(TEXE)
 
 fastfuzztest:	fuzzcheck$(TEXE) $(FUZZDATA)
 	./fuzzcheck$(TEXE) --limit-mem 100M $(FUZZDATA)
@@ -1171,7 +1178,7 @@ quicktest:	./testfixture$(TEXE)
 # This is the common case.  Run many tests that do not take too long,
 # including fuzzcheck, sqlite3_analyzer, and sqldiff tests.
 #
-test:	fastfuzztest sourcetest $(TESTPROGS) tcltest
+test:	fastfuzztest testinlinenul sourcetest $(TESTPROGS) tcltest
 
 # Run a test using valgrind.  This can take a really long time
 # because valgrind is so much slower than a native machine.

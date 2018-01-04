@@ -382,6 +382,10 @@ set pragma_def {
 
   NAME: optimize
   FLAG: Result1 NeedSchema
+
+  NAME: allow_inline_nul
+  TYPE: FLAG
+  ARG:  SQLITE_AllowInlineNul
 }
 
 # Open the output file

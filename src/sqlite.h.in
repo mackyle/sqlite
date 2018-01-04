@@ -3726,8 +3726,8 @@ int sqlite3_prepare16_v3(
 ** [bound parameters] expanded.
 **
 ** ^sqlite3_sql_utf8(P,pN) returns the sql statement, and will fill the
-** integer pointer passed with the length of the string.  NULL may be 
-** passed.
+** integer pointed at by the second argument with the length of the string.  
+** NULL may be passed to ignore getting a length.
 **
 ** ^(For example, if a prepared statement is created using the SQL
 ** text "SELECT $abc,:xyz" and if parameter $abc is bound to integer 2345
@@ -3735,23 +3735,26 @@ int sqlite3_prepare16_v3(
 ** the original string, "SELECT $abc,:xyz" but sqlite3_expanded_sql()
 ** will return "SELECT 2345,NULL".)^
 **
-** ^The sqlite3_expanded_sql() interface returns NULL if insufficient memory
-** is available to hold the result, or if the result would exceed the
-** the maximum string length determined by the [SQLITE_LIMIT_LENGTH].
+** ^The sqlite3_expanded_sql()/sqlite3_expanded_sql_utf8() interface returns
+** NULL if insufficient memory is available to hold the result, or if the 
+** result would exceed the maximum string length determined by the 
+** [SQLITE_LIMIT_LENGTH].
 **
 ** ^sqlite3_sql_expanded_utf8(P,pN) returns the expanded sql statement, and
-** will fill the integer pointer passed with the length of the string.  NULL
-** may be passed to ignore the result.
+** will fill the integer pointed at by the second argument with the length 
+** of the string.  NULL may be passed to ignore the result.
 **
 ** ^The [SQLITE_TRACE_SIZE_LIMIT] compile-time option limits the size of
 ** bound parameter expansions.  ^The [SQLITE_OMIT_TRACE] compile-time
 ** option causes sqlite3_expanded_sql() to always return NULL.
 **
-** ^The string returned by sqlite3_sql(P) is managed by SQLite and is
-** automatically freed when the prepared statement is finalized.
-** ^The string returned by sqlite3_expanded_sql(P), on the other hand,
-** is obtained from [sqlite3_malloc()] and must be free by the application
-** by passing it to [sqlite3_free()].
+** ^The string returned by sqlite3_sql(P), sqlite3_sql_utf8(p,pN) is managed 
+** by SQLite and is automatically freed when the prepared statement is 
+** finalized.
+** 
+** ^The string returned by sqlite3_expanded_sql(P) or sqlite3_epxanded_sql_utf8,
+** on the other hand, is obtained from [sqlite3_malloc()] and must be free by
+** the application by passing it to [sqlite3_free()].
 */
 const char *sqlite3_sql(sqlite3_stmt *pStmt);
 char *sqlite3_expanded_sql(sqlite3_stmt *pStmt);
@@ -6981,9 +6984,9 @@ sqlite3_mutex *sqlite3_db_mutex(sqlite3*);
 ** the xFileControl method.  ^The return value of the xFileControl
 ** method becomes the return value of this routine.
 **
-** ^The [SQLITE_FCNTL_FILE_POINTER] value for the op parameter causes
+** ^The SQLITE_FCNTL_FILE_POINTER value for the op parameter causes
 ** a pointer to the underlying [sqlite3_file] object to be written into
-** the space pointed to by the 4th parameter.  ^The [SQLITE_FCNTL_FILE_POINTER]
+** the space pointed to by the 4th parameter.  ^The SQLITE_FCNTL_FILE_POINTER
 ** case is a short-circuit path which does not actually invoke the
 ** underlying sqlite3_io_methods.xFileControl method.
 **
@@ -6995,7 +6998,7 @@ sqlite3_mutex *sqlite3_db_mutex(sqlite3*);
 ** an incorrect zDbName and an SQLITE_ERROR return from the underlying
 ** xFileControl method.
 **
-** See also: [file control opcodes]
+** See also: [SQLITE_FCNTL_LOCKSTATE]
 */
 int sqlite3_file_control(sqlite3*, const char *zDbName, int op, void*);
 
@@ -7052,8 +7055,7 @@ int sqlite3_test_control(int op, ...);
 #define SQLITE_TESTCTRL_ISINIT                  23
 #define SQLITE_TESTCTRL_SORTER_MMAP             24
 #define SQLITE_TESTCTRL_IMPOSTER                25
-#define SQLITE_TESTCTRL_PARSER_COVERAGE         26
-#define SQLITE_TESTCTRL_LAST                    26  /* Largest TESTCTRL */
+#define SQLITE_TESTCTRL_LAST                    25  /* Largest TESTCTRL */
 
 /*
 ** CAPI3REF: SQLite Runtime Status

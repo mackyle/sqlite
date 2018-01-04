@@ -179,6 +179,7 @@ void GetOrderedResults( int nLine ) {
 
 int main( void ) {
 	int rc; /* sqlite3 result code */
+	mkdir( "testdir" );
 	unlink( "testdir/nultest.db" );
 	rc = sqlite3_open( "testdir/nultest.db", &db);
 

@@ -285,8 +285,8 @@ void sqlite3Dequote(char *z){
 void sqlite3DequoteToken(struct ExprToken *token){
   char quote;
   int i, j;
-  char *z = token->zToken;
-  quote = token->zToken[0];
+  char *z = token->p;
+  quote = token->p[0];
   if( !sqlite3Isquote( quote ) ) return;
   if( quote == '[' ) quote = ']';
   for( i = 1, j = 0;; i++ ) {

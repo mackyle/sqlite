@@ -2344,7 +2344,7 @@ typedef int ynVar;
 ** help reduce memory requirements, sometimes an Expr object will be
 ** truncated.  And to reduce the number of memory allocations, sometimes
 ** two or more Expr objects will be stored in a single memory allocation,
-** together with Expr.zToken strings.
+** together with Expr.token strings.
 **
 ** If the EP_Reduced and EP_TokenOnly flags are set when
 ** an Expr object is truncated.  When EP_Reduced is set, then all
@@ -2359,9 +2359,9 @@ struct Expr {
   u32 flags;             /* Various flags.  EP_* See below */
   union {
     struct ExprToken{
-      char *zToken;      /* Token value string */
+      char *p;           /* Token value string */
       int len;           /* Token length */
-    } zToken;            /* Token value. length specified, if len < 0
+    } token;            /* Token value. length specified, if len < 0
                             treat as Zero-terminated. */
     int iValue;          /* Non-negative integer value if EP_IntValue */
   } u;
@@ -3518,7 +3518,7 @@ void *sqlite3DbMallocZero(sqlite3*, u64);
 void *sqlite3DbMallocRaw(sqlite3*, u64);
 void *sqlite3DbMallocRawNN(sqlite3*, u64);
 char *sqlite3DbStrDup(sqlite3*,const char*);
-struct ExprToken sqlite3DbStrDupToken( sqlite3*, struct ExprToken );
+struct ExprToken sqlite3DbStrDupToken( sqlite3*, struct ExprToken*);
 char *sqlite3DbStrNDup(sqlite3*,const char*, u64);
 char *sqlite3DbSpanDup(sqlite3*,const char*,const char*);
 void *sqlite3Realloc(void*, u64);

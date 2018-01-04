@@ -1244,12 +1244,12 @@ void sqlite3AddDefaultValue(
       sqlite3ExprDelete(db, pCol->pDflt);
       memset(&x, 0, sizeof(x));
       x.op = TK_SPAN;
-      x.u.zToken.zToken = sqlite3DbSpanDup(db, zStart, zEnd);
-      x.u.zToken.len = (int)(zEnd - zStart);
+      x.u.token.p = sqlite3DbSpanDup(db, zStart, zEnd);
+      x.u.token.len = (int)(zEnd - zStart);
       x.pLeft = pExpr;
       x.flags = EP_Skip;
       pCol->pDflt = sqlite3ExprDup(db, &x, EXPRDUP_REDUCE);
-      sqlite3DbFree(db, x.u.zToken.zToken);
+      sqlite3DbFree(db, x.u.token.p);
     }
   }
   sqlite3ExprDelete(db, pExpr);
@@ -1327,7 +1327,7 @@ void sqlite3AddPrimaryKey(
       assert( pCExpr!=0 );
       sqlite3StringToId(pCExpr);
       if( pCExpr->op==TK_ID ){
-        const char *zCName = pCExpr->u.zToken.zToken;
+        const char *zCName = pCExpr->u.token.p;
         for(iCol=0; iCol<pTab->nCol; iCol++){
           if( sqlite3StrICmp(zCName, pTab->aCol[iCol].zName)==0 ){
             pCol = &pTab->aCol[iCol];
@@ -3103,7 +3103,7 @@ void sqlite3CreateIndex(
     Expr *pExpr = pList->a[i].pExpr;
     assert( pExpr!=0 );
     if( pExpr->op==TK_COLLATE ){
-      nExtra += (1 + pExpr->u.zToken.len);
+      nExtra += (1 + pExpr->u.token.len);
     }
   }
 
@@ -3191,8 +3191,8 @@ void sqlite3CreateIndex(
     zColl = 0;
     if( pListItem->pExpr->op==TK_COLLATE ){
       int nColl;
-      zColl = pListItem->pExpr->u.zToken.zToken;
-      nColl = pListItem->pExpr->u.zToken.len + 1;
+      zColl = pListItem->pExpr->u.token.p;
+      nColl = pListItem->pExpr->u.token.len + 1;
       assert( nExtra>=nColl );
       memcpy(zExtra, zColl, nColl);
       zColl = zExtra;

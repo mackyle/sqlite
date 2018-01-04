@@ -228,8 +228,8 @@ static int isLikeOrGlob(
     sqlite3VdbeSetVarmask(pParse->pVdbe, iCol);
     assert( pRight->op==TK_VARIABLE || pRight->op==TK_REGISTER );
   }else if( op==TK_STRING ){
-    z = (u8*)pRight->u.zToken.zToken;
-    zLen = pRight->u.zToken.len;
+    z = (u8*)pRight->u.token.p;
+    zLen = pRight->u.token.len;
   }
   if( z ){
 
@@ -273,14 +273,14 @@ static int isLikeOrGlob(
       pPrefix = sqlite3ExprLen(db, TK_STRING, (char*)z, zLen);
       if( pPrefix ){
         int iFrom, iTo;
-        char *zNew = pPrefix->u.zToken.zToken;
+        char *zNew = pPrefix->u.token.p;
         zNew[cnt] = 0;
-        pPrefix->u.zToken.len = cnt;
+        pPrefix->u.token.len = cnt;
         for(iFrom=iTo=0; iFrom<cnt; iFrom++){
           if( zNew[iFrom]==wc[3] ) iFrom++;
           zNew[iTo++] = zNew[iFrom];
         }
-        pPrefix->u.zToken.len = iTo;
+        pPrefix->u.token.len = iTo;
         zNew[iTo] = 0;
       }
       *ppPrefix = pPrefix;
@@ -290,7 +290,7 @@ static int isLikeOrGlob(
       if( op==TK_VARIABLE ){
         Vdbe *v = pParse->pVdbe;
         sqlite3VdbeSetVarmask(v, pRight->iColumn);
-        if( *pisComplete && pRight->u.zToken.zToken[1] ){
+        if( *pisComplete && pRight->u.token.p[1] ){
           /* If the rhs of the LIKE expression is a variable, and the current
           ** value of the variable means there is no need to invoke the LIKE
           ** function, then no OP_Variable will be added to the program.
@@ -371,7 +371,7 @@ static int isAuxiliaryVtabOperator(
       return 0;
     }
     for(i=0; i<ArraySize(aOp); i++){
-      if( sqlite3StrICmp(pExpr->u.zToken.zToken, aOp[i].zOp)==0 ){
+      if( sqlite3StrICmp(pExpr->u.token.p, aOp[i].zOp)==0 ){
         *peOp2 = aOp[i].eOp2;
         *ppRight = pList->a[0].pExpr;
         *ppLeft = pCol;
@@ -1174,15 +1174,15 @@ static void exprAnalyze(
       int i;
       char c;
       pTerm->wtFlags |= TERM_LIKE;
-      for(i=0; (c = pStr1->u.zToken.zToken[i]),(i< pStr1->u.zToken.len); i++){
-        pStr1->u.zToken.zToken[i] = sqlite3Toupper(c);
-        pStr2->u.zToken.zToken[i] = sqlite3Tolower(c);
+      for(i=0; (c = pStr1->u.token.p[i]),(i< pStr1->u.token.len); i++){
+        pStr1->u.token.p[i] = sqlite3Toupper(c);
+        pStr2->u.token.p[i] = sqlite3Tolower(c);
       }
     }
 
     if( !db->mallocFailed ){
       u8 c, *pC;       /* Last character before the first wildcard */
-      pC = (u8*)&pStr2->u.zToken.zToken[pStr2->u.zToken.len-1];
+      pC = (u8*)&pStr2->u.token.p[pStr2->u.token.len-1];
       c = *pC;
       if( noCase ){
         /* The point is to increment the last character before the first

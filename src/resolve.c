@@ -78,23 +78,23 @@ static void resolveAlias(
   if( pDup==0 ) return;
   if( zType[0]!='G' ) incrAggFunctionDepth(pDup, nSubquery);
   if( pExpr->op==TK_COLLATE ){
-    pDup = sqlite3ExprAddCollateString(pParse, pDup, pExpr->u.zToken.zToken, pExpr->u.zToken.len);
+    pDup = sqlite3ExprAddCollateString(pParse, pDup, pExpr->u.token.p, pExpr->u.token.len);
   }
   ExprSetProperty(pDup, EP_Alias);
 
   /* Before calling sqlite3ExprDelete(), set the EP_Static flag. This 
   ** prevents ExprDelete() from deleting the Expr structure itself,
   ** allowing it to be repopulated by the memcpy() on the following line.
-  ** The pExpr->u.zToken might point into memory that will be freed by the
+  ** The pExpr->u.token might point into memory that will be freed by the
   ** sqlite3DbFree(db, pDup) on the last line of this block, so be sure to
   ** make a copy of the token before doing the sqlite3DbFree().
   */
   ExprSetProperty(pExpr, EP_Static);
   sqlite3ExprDelete(db, pExpr);
   memcpy(pExpr, pDup, sizeof(*pExpr));
-  if( !ExprHasProperty(pExpr, EP_IntValue) && pExpr->u.zToken.zToken!=0 ){
+  if( !ExprHasProperty(pExpr, EP_IntValue) && pExpr->u.token.p!=0 ){
     assert( (pExpr->flags & (EP_Reduced|EP_TokenOnly))==0 );
-    pExpr->u.zToken = sqlite3DbStrDupToken(db, pExpr->u.zToken);
+    pExpr->u.token = sqlite3DbStrDupToken(db, &pExpr->u.token);
     pExpr->flags |= EP_MemToken;
   }
   sqlite3DbFree(db, pDup);
@@ -550,7 +550,7 @@ static void notValid(
 static int exprProbability(Expr *p){
   double r = -1.0;
   if( p->op!=TK_FLOAT ) return -1;
-  sqlite3AtoF(p->u.zToken.zToken, &r, p->u.zToken.len, SQLITE_UTF8);
+  sqlite3AtoF(p->u.token.p, &r, p->u.token.len, SQLITE_UTF8);
   assert( r>=0.0 );
   if( r>1.0 ) return -1;
   return (int)(r*134217728.0);
@@ -626,19 +626,19 @@ static int resolveExprStep(Walker *pWalker, Expr *pExpr){
       if( pExpr->op==TK_ID ){
         zDb = 0;
         zTable = 0;
-        zColumn = pExpr->u.zToken.zToken;
+        zColumn = pExpr->u.token.p;
       }else{
         notValid(pParse, pNC, "the \".\" operator", NC_IdxExpr);
         pRight = pExpr->pRight;
         if( pRight->op==TK_ID ){
           zDb = 0;
-          zTable = pExpr->pLeft->u.zToken.zToken;
-          zColumn = pRight->u.zToken.zToken;
+          zTable = pExpr->pLeft->u.token.p;
+          zColumn = pRight->u.token.p;
         }else{
           assert( pRight->op==TK_DOT );
-          zDb = pExpr->pLeft->u.zToken.zToken;
-          zTable = pRight->pLeft->u.zToken.zToken;
-          zColumn = pRight->pRight->u.zToken.zToken;
+          zDb = pExpr->pLeft->u.token.p;
+          zTable = pRight->pLeft->u.token.p;
+          zColumn = pRight->pRight->u.token.p;
         }
       }
       return lookupName(pParse, zDb, zTable, zColumn, pNC, pExpr);
@@ -658,7 +658,7 @@ static int resolveExprStep(Walker *pWalker, Expr *pExpr){
       u8 enc = ENC(pParse->db);   /* The database encoding */
 
       assert( !ExprHasProperty(pExpr, EP_xIsSelect) );
-      zId = pExpr->u.zToken.zToken;
+      zId = pExpr->u.token.p;
       nId = sqlite3Strlen30(zId);
       pDef = sqlite3FindFunction(pParse->db, zId, n, enc, 0);
       if( pDef==0 ){
@@ -845,7 +845,7 @@ static int resolveAsName(
   UNUSED_PARAMETER(pParse);
 
   if( pE->op==TK_ID ){
-    char *zCol = pE->u.zToken.zToken;
+    char *zCol = pE->u.token.p;
     for(i=0; i<pEList->nExpr; i++){
       char *zAs = pEList->a[i].zName;
       if( zAs!=0 && sqlite3StrICmp(zAs, zCol)==0 ){

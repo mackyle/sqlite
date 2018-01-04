@@ -334,7 +334,7 @@ static void codeAttach(
   if( pAuthArg ){
     char *zAuthArg;
     if( pAuthArg->op==TK_STRING ){
-      zAuthArg = pAuthArg->u.zToken.zToken;
+      zAuthArg = pAuthArg->u.token.p;
     }else{
       zAuthArg = 0;
     }

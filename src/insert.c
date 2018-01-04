@@ -2079,8 +2079,8 @@ static int xferOptimization(
       assert( pDestCol->pDflt==0 || pDestCol->pDflt->op==TK_SPAN );
       assert( pSrcCol->pDflt==0 || pSrcCol->pDflt->op==TK_SPAN );
       if( (pDestCol->pDflt==0)!=(pSrcCol->pDflt==0) 
-       || (pDestCol->pDflt && strcmp(pDestCol->pDflt->u.zToken.zToken,
-                                       pSrcCol->pDflt->u.zToken.zToken)!=0)
+       || (pDestCol->pDflt && strcmp(pDestCol->pDflt->u.token.p,
+                                       pSrcCol->pDflt->u.token.p)!=0)
       ){
         return 0;    /* Default values must be the same for all columns */
       }

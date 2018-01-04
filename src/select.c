@@ -1716,7 +1716,7 @@ int sqlite3ColumnsFromExprList(
         zName = iCol>=0 ? pTab->aCol[iCol].zName : "rowid";
       }else if( pColExpr->op==TK_ID ){
         assert( !ExprHasProperty(pColExpr, EP_IntValue) );
-        zName = pColExpr->u.zToken.zToken;
+        zName = pColExpr->u.token.p;
       }else{
         /* Use the original text of the column expression as its name */
         zName = pEList->a[i].zSpan;
@@ -3920,7 +3920,7 @@ static u8 minMaxQuery(sqlite3 *db, Expr *pFunc, ExprList **ppMinMax){
   assert( *ppMinMax==0 );
   assert( pFunc->op==TK_AGG_FUNCTION );
   if( pEList==0 || pEList->nExpr!=1 ) return eRet;
-  zFunc = pFunc->u.zToken.zToken;
+  zFunc = pFunc->u.token.p;
   if( sqlite3StrICmp(zFunc, "min")==0 ){
     eRet = WHERE_ORDERBY_MIN;
     sortOrder = SQLITE_SO_ASC;
@@ -4472,7 +4472,7 @@ static int selectExpander(Walker *pWalker, Select *p){
         if( pE->op==TK_DOT ){
           assert( pE->pLeft!=0 );
           assert( !ExprHasProperty(pE->pLeft, EP_IntValue) );
-          zTName = pE->pLeft->u.zToken.zToken;
+          zTName = pE->pLeft->u.token.p;
         }
         for(i=0, pFrom=pTabList->a; i<pTabList->nSrc; i++, pFrom++){
           Table *pTab = pFrom->pTab;

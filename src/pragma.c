@@ -1113,7 +1113,7 @@ void sqlite3Pragma(
                sqlite3ColumnType(pCol,""),
                -1,
                pCol->notNull ? 1 : 0,
-               pCol->pDflt ? pCol->pDflt->u.zToken.zToken : 0,
+               pCol->pDflt ? pCol->pDflt->u.token.p : 0,
                -1,
                k);
       }

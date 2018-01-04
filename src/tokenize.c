@@ -317,10 +317,10 @@ int sqlite3GetToken(const unsigned char *z, int zBytes, int *tokenType){
       testcase( delim=='`' );
       testcase( delim=='\'' );
       testcase( delim=='"' );
-      for(i=1; (c=z[i]),(zBytes<0)?c:((i)<zBytes); i++){
+      for(i=1, z++; (c=z[0]),(zBytes<0)?c:((i)<zBytes); i++, z++){
         if( c==delim ){
-          if( z[i+1]==delim ){
-            i++;
+          if( z[1]==delim ){
+            i++; z++;
           }else{
             break;
           }
@@ -384,7 +384,8 @@ int sqlite3GetToken(const unsigned char *z, int zBytes, int *tokenType){
       return i;
     }
     case CC_QUOTE2: {
-      for(i=1, c=z[0]; c!=']' && (c=z[i])!=0; i++){}
+      if( zBytes < 0 ) for(i=1, z++, c=z[0]; c!=']' && (c=z[0]); i++, z++){}
+      else for(i=1, z++, c=z[0]; c!=']' && ((c=z[0]),((i)<zBytes)); i++, z++){}
       *tokenType = c==']' ? TK_ID : TK_ILLEGAL;
       return i;
     }

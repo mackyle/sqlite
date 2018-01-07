@@ -475,7 +475,8 @@ static Expr *exprTableRegister(
       pExpr->affinity = pCol->affinity;
       zColl = pCol->zColl;
       if( zColl==0 ) zColl = db->pDfltColl->zName;
-      pExpr = sqlite3ExprAddCollateString(pParse, pExpr, zColl);
+		pExpr = sqlite3ExprAddCollateString(pParse, pExpr, zColl,
+          sqlite3Strlen30(zColl));
     }else{
       pExpr->iTable = regBase;
       pExpr->affinity = SQLITE_AFF_INTEGER;
@@ -1212,8 +1213,9 @@ static Trigger *fkActionTrigger(
       assert( pIdx!=0 || (pTab->iPKey>=0 && pTab->iPKey<pTab->nCol) );
       assert( pIdx==0 || pIdx->aiColumn[i]>=0 );
       sqlite3TokenInit(&tToCol,
-                   pTab->aCol[pIdx ? pIdx->aiColumn[i] : pTab->iPKey].zName);
-      sqlite3TokenInit(&tFromCol, pFKey->pFrom->aCol[iFromCol].zName);
+                   pTab->aCol[pIdx ? pIdx->aiColumn[i] : pTab->iPKey].zName,
+                   -1);
+      sqlite3TokenInit(&tFromCol, pFKey->pFrom->aCol[iFromCol].zName, -1);
 
       /* Create the expression "OLD.zToCol = zFromCol". It is important
       ** that the "OLD.zToCol" term is on the LHS of the = operator, so

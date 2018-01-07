@@ -988,7 +988,7 @@ case OP_Halt: {
     }else{
       sqlite3VdbeError(p, "%s", pOp->p4.z);
     }
-    sqlite3_log(pOp->p1, "abort at %d in [%s]: %s", pcx, p->zSql, p->zErrMsg);
+    sqlite3_log(pOp->p1, "abort at %d in [%.*s]: %s", pcx, p->nSql, p->zSql, p->zErrMsg);
   }
   rc = sqlite3VdbeHalt(p);
   assert( rc==SQLITE_BUSY || rc==SQLITE_OK || rc==SQLITE_ERROR );
@@ -1054,11 +1054,12 @@ case OP_String8: {         /* same as TK_STRING, out2 */
   assert( pOp->p4.z!=0 );
   pOut = out2Prerelease(p, pOp);
   pOp->opcode = OP_String;
-  pOp->p1 = sqlite3Strlen30(pOp->p4.z);
+  if( pOp->p1 == 0 )
+    pOp->p1 = sqlite3Strlen30(pOp->p4.z);
 
 #ifndef SQLITE_OMIT_UTF16
   if( encoding!=SQLITE_UTF8 ){
-    rc = sqlite3VdbeMemSetStr(pOut, pOp->p4.z, -1, SQLITE_UTF8, SQLITE_STATIC);
+    rc = sqlite3VdbeMemSetStr(pOut, pOp->p4.z, pOp->p1, SQLITE_UTF8, SQLITE_STATIC);
     assert( rc==SQLITE_OK || rc==SQLITE_TOOBIG );
     if( SQLITE_OK!=sqlite3VdbeChangeEncoding(pOut, encoding) ) goto no_mem;
     assert( pOut->szMalloc>0 && pOut->zMalloc==pOut->z );
@@ -7074,6 +7075,7 @@ case OP_Function: {
 case OP_Trace:
 case OP_Init: {          /* jump */
   char *zTrace;
+  int nTrace;
   int i;
 
   /* If the P4 argument is not NULL, then it must be an SQL comment string.
@@ -7093,12 +7095,14 @@ case OP_Init: {          /* jump */
 #ifndef SQLITE_OMIT_TRACE
   if( (db->mTrace & (SQLITE_TRACE_STMT|SQLITE_TRACE_LEGACY))!=0
    && !p->doingRerun
-   && (zTrace = (pOp->p4.z ? pOp->p4.z : p->zSql))!=0
+   && (zTrace = (pOp->p4.z ? ((nTrace=pOp->p1),pOp->p4.z)
+           : ((nTrace=p->nSql),p->zSql)))!=0
   ){
 #ifndef SQLITE_OMIT_DEPRECATED
     if( db->mTrace & SQLITE_TRACE_LEGACY ){
       void (*x)(void*,const char*) = (void(*)(void*,const char*))db->xTrace;
-      char *z = sqlite3VdbeExpandSql(p, zTrace);
+      int len;
+      char *z = sqlite3VdbeExpandSql(p, zTrace, nTrace, &len);
       x(db->pTraceArg, z);
       sqlite3_free(z);
     }else

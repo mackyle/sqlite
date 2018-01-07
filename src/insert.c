@@ -285,7 +285,8 @@ void sqlite3AutoincrementBegin(Parse *pParse){
     memId = p->regCtr;
     assert( sqlite3SchemaMutexHeld(db, 0, pDb->pSchema) );
     sqlite3OpenTable(pParse, 0, p->iDb, pDb->pSchema->pSeqTab, OP_OpenRead);
-    sqlite3VdbeLoadString(v, memId-1, p->pTab->zName);
+    sqlite3VdbeLoadString(v, memId-1, p->pTab->zName,
+        sqlite3Strlen30(p->pTab->zName));
     aOp = sqlite3VdbeAddOpList(v, ArraySize(autoInc), autoInc, iLn);
     if( aOp==0 ) break;
     aOp[0].p2 = memId;
@@ -2078,8 +2079,8 @@ static int xferOptimization(
       assert( pDestCol->pDflt==0 || pDestCol->pDflt->op==TK_SPAN );
       assert( pSrcCol->pDflt==0 || pSrcCol->pDflt->op==TK_SPAN );
       if( (pDestCol->pDflt==0)!=(pSrcCol->pDflt==0) 
-       || (pDestCol->pDflt && strcmp(pDestCol->pDflt->u.zToken,
-                                       pSrcCol->pDflt->u.zToken)!=0)
+       || (pDestCol->pDflt && strcmp(pDestCol->pDflt->u.token.p,
+                                       pSrcCol->pDflt->u.token.p)!=0)
       ){
         return 0;    /* Default values must be the same for all columns */
       }

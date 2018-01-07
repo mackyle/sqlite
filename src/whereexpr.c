@@ -194,7 +194,8 @@ static int isLikeOrGlob(
   int *pisComplete, /* True if the only wildcard is % in the last character */
   int *pnoCase      /* True if uppercase is equivalent to lowercase */
 ){
-  const u8 *z = 0;         /* String on RHS of LIKE operator */
+  const u8 *z = 0;           /* String on RHS of LIKE operator */
+  int zLen = 0;              /* length of z token */
   Expr *pRight, *pLeft;      /* Right and left size of LIKE operator */
   ExprList *pList;           /* List of operands to the LIKE operator */
   int c;                     /* One character in z[] */
@@ -222,11 +223,13 @@ static int isLikeOrGlob(
     pVal = sqlite3VdbeGetBoundValue(pReprepare, iCol, SQLITE_AFF_BLOB);
     if( pVal && sqlite3_value_type(pVal)==SQLITE_TEXT ){
       z = sqlite3_value_text(pVal);
+      zLen = sqlite3_value_bytes(pVal);
     }
     sqlite3VdbeSetVarmask(pParse->pVdbe, iCol);
     assert( pRight->op==TK_VARIABLE || pRight->op==TK_REGISTER );
   }else if( op==TK_STRING ){
-    z = (u8*)pRight->u.zToken;
+    z = (u8*)pRight->u.token.p;
+    zLen = pRight->u.token.len;
   }
   if( z ){
 
@@ -249,9 +252,9 @@ static int isLikeOrGlob(
 
     /* Count the number of prefix characters prior to the first wildcard */
     cnt = 0;
-    while( (c=z[cnt])!=0 && c!=wc[0] && c!=wc[1] && c!=wc[2] ){
+    while( (c=z[cnt]),(cnt<zLen) && c!=wc[0] && c!=wc[1] && c!=wc[2] ){
       cnt++;
-      if( c==wc[3] && z[cnt]!=0 ) cnt++;
+      if( c==wc[3] && cnt<zLen ) cnt++;
     }
 
     /* The optimization is possible only if (1) the pattern does not begin
@@ -264,18 +267,20 @@ static int isLikeOrGlob(
       Expr *pPrefix;
 
       /* A "complete" match if the pattern ends with "*" or "%" */
-      *pisComplete = c==wc[0] && z[cnt+1]==0;
+      *pisComplete = c==wc[0] && cnt>=(zLen-1);
 
       /* Get the pattern prefix.  Remove all escapes from the prefix. */
-      pPrefix = sqlite3Expr(db, TK_STRING, (char*)z);
+      pPrefix = sqlite3ExprLen(db, TK_STRING, (char*)z, zLen);
       if( pPrefix ){
         int iFrom, iTo;
-        char *zNew = pPrefix->u.zToken;
+        char *zNew = pPrefix->u.token.p;
         zNew[cnt] = 0;
+        pPrefix->u.token.len = cnt;
         for(iFrom=iTo=0; iFrom<cnt; iFrom++){
           if( zNew[iFrom]==wc[3] ) iFrom++;
           zNew[iTo++] = zNew[iFrom];
         }
+        pPrefix->u.token.len = iTo;
         zNew[iTo] = 0;
       }
       *ppPrefix = pPrefix;
@@ -285,7 +290,7 @@ static int isLikeOrGlob(
       if( op==TK_VARIABLE ){
         Vdbe *v = pParse->pVdbe;
         sqlite3VdbeSetVarmask(v, pRight->iColumn);
-        if( *pisComplete && pRight->u.zToken[1] ){
+        if( *pisComplete && pRight->u.token.p[1] ){
           /* If the rhs of the LIKE expression is a variable, and the current
           ** value of the variable means there is no need to invoke the LIKE
           ** function, then no OP_Variable will be added to the program.
@@ -366,7 +371,7 @@ static int isAuxiliaryVtabOperator(
       return 0;
     }
     for(i=0; i<ArraySize(aOp); i++){
-      if( sqlite3StrICmp(pExpr->u.zToken, aOp[i].zOp)==0 ){
+      if( sqlite3StrICmp(pExpr->u.token.p, aOp[i].zOp)==0 ){
         *peOp2 = aOp[i].eOp2;
         *ppRight = pList->a[0].pExpr;
         *ppLeft = pCol;
@@ -1169,15 +1174,15 @@ static void exprAnalyze(
       int i;
       char c;
       pTerm->wtFlags |= TERM_LIKE;
-      for(i=0; (c = pStr1->u.zToken[i])!=0; i++){
-        pStr1->u.zToken[i] = sqlite3Toupper(c);
-        pStr2->u.zToken[i] = sqlite3Tolower(c);
+      for(i=0; (c = pStr1->u.token.p[i]),(i< pStr1->u.token.len); i++){
+        pStr1->u.token.p[i] = sqlite3Toupper(c);
+        pStr2->u.token.p[i] = sqlite3Tolower(c);
       }
     }
 
     if( !db->mallocFailed ){
       u8 c, *pC;       /* Last character before the first wildcard */
-      pC = (u8*)&pStr2->u.zToken[sqlite3Strlen30(pStr2->u.zToken)-1];
+      pC = (u8*)&pStr2->u.token.p[pStr2->u.token.len-1];
       c = *pC;
       if( noCase ){
         /* The point is to increment the last character before the first
@@ -1194,7 +1199,7 @@ static void exprAnalyze(
     zCollSeqName = noCase ? "NOCASE" : "BINARY";
     pNewExpr1 = sqlite3ExprDup(db, pLeft, 0);
     pNewExpr1 = sqlite3PExpr(pParse, TK_GE,
-           sqlite3ExprAddCollateString(pParse,pNewExpr1,zCollSeqName),
+           sqlite3ExprAddCollateString(pParse,pNewExpr1,zCollSeqName,-1),
            pStr1);
     transferJoinMarkings(pNewExpr1, pExpr);
     idxNew1 = whereClauseInsert(pWC, pNewExpr1, wtFlags);
@@ -1202,7 +1207,7 @@ static void exprAnalyze(
     exprAnalyze(pSrc, pWC, idxNew1);
     pNewExpr2 = sqlite3ExprDup(db, pLeft, 0);
     pNewExpr2 = sqlite3PExpr(pParse, TK_LT,
-           sqlite3ExprAddCollateString(pParse,pNewExpr2,zCollSeqName),
+           sqlite3ExprAddCollateString(pParse,pNewExpr2,zCollSeqName,-1),
            pStr2);
     transferJoinMarkings(pNewExpr2, pExpr);
     idxNew2 = whereClauseInsert(pWC, pNewExpr2, wtFlags);

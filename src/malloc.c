@@ -612,6 +612,15 @@ char *sqlite3DbStrDup(sqlite3 *db, const char *z){
   }
   return zNew;
 }
+struct ExprToken sqlite3DbStrDupToken(sqlite3 *db, struct ExprToken *token){
+  struct ExprToken tokNew;
+  tokNew.len = token->len;
+  tokNew.p = sqlite3DbMallocRaw( db, token->len + 1 );
+  if( tokNew.p ) {
+    memcpy( tokNew.p, token->p, token->len + 1 );
+  }
+  return tokNew;
+}
 char *sqlite3DbStrNDup(sqlite3 *db, const char *z, u64 n){
   char *zNew;
   assert( db!=0 );

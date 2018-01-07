@@ -266,7 +266,7 @@ void sqlite3NestedParse(Parse *pParse, const char *zFormat, ...){
   pParse->nested++;
   memcpy(saveBuf, PARSE_TAIL(pParse), PARSE_TAIL_SZ);
   memset(PARSE_TAIL(pParse), 0, PARSE_TAIL_SZ);
-  sqlite3RunParser(pParse, zSql, &zErrMsg);
+  sqlite3RunParser(pParse, zSql, sqlite3Strlen30(zSql), &zErrMsg);
   sqlite3DbFree(db, zErrMsg);
   sqlite3DbFree(db, zSql);
   memcpy(PARSE_TAIL(pParse), saveBuf, PARSE_TAIL_SZ);
@@ -1244,11 +1244,12 @@ void sqlite3AddDefaultValue(
       sqlite3ExprDelete(db, pCol->pDflt);
       memset(&x, 0, sizeof(x));
       x.op = TK_SPAN;
-      x.u.zToken = sqlite3DbSpanDup(db, zStart, zEnd);
+      x.u.token.p = sqlite3DbSpanDup(db, zStart, zEnd);
+      x.u.token.len = (int)(zEnd - zStart);
       x.pLeft = pExpr;
       x.flags = EP_Skip;
       pCol->pDflt = sqlite3ExprDup(db, &x, EXPRDUP_REDUCE);
-      sqlite3DbFree(db, x.u.zToken);
+      sqlite3DbFree(db, x.u.token.p);
     }
   }
   sqlite3ExprDelete(db, pExpr);
@@ -1326,7 +1327,7 @@ void sqlite3AddPrimaryKey(
       assert( pCExpr!=0 );
       sqlite3StringToId(pCExpr);
       if( pCExpr->op==TK_ID ){
-        const char *zCName = pCExpr->u.zToken;
+        const char *zCName = pCExpr->u.token.p;
         for(iCol=0; iCol<pTab->nCol; iCol++){
           if( sqlite3StrICmp(zCName, pTab->aCol[iCol].zName)==0 ){
             pCol = &pTab->aCol[iCol];
@@ -1727,7 +1728,7 @@ static void convertToWithoutRowidTable(Parse *pParse, Table *pTab){
   if( pTab->iPKey>=0 ){
     ExprList *pList;
     Token ipkToken;
-    sqlite3TokenInit(&ipkToken, pTab->aCol[pTab->iPKey].zName);
+    sqlite3TokenInit(&ipkToken, pTab->aCol[pTab->iPKey].zName, -1);
     pList = sqlite3ExprListAppend(pParse, 0, 
                   sqlite3ExprAlloc(db, TK_ID, &ipkToken, 0));
     if( pList==0 ) return;
@@ -3085,7 +3086,7 @@ void sqlite3CreateIndex(
   */
   if( pList==0 ){
     Token prevCol;
-    sqlite3TokenInit(&prevCol, pTab->aCol[pTab->nCol-1].zName);
+    sqlite3TokenInit(&prevCol, pTab->aCol[pTab->nCol-1].zName, -1);
     pList = sqlite3ExprListAppend(pParse, 0,
               sqlite3ExprAlloc(db, TK_ID, &prevCol, 0));
     if( pList==0 ) goto exit_create_index;
@@ -3102,7 +3103,7 @@ void sqlite3CreateIndex(
     Expr *pExpr = pList->a[i].pExpr;
     assert( pExpr!=0 );
     if( pExpr->op==TK_COLLATE ){
-      nExtra += (1 + sqlite3Strlen30(pExpr->u.zToken));
+      nExtra += (1 + pExpr->u.token.len);
     }
   }
 
@@ -3190,8 +3191,8 @@ void sqlite3CreateIndex(
     zColl = 0;
     if( pListItem->pExpr->op==TK_COLLATE ){
       int nColl;
-      zColl = pListItem->pExpr->u.zToken;
-      nColl = sqlite3Strlen30(zColl) + 1;
+      zColl = pListItem->pExpr->u.token.p;
+      nColl = pListItem->pExpr->u.token.len + 1;
       assert( nExtra>=nColl );
       memcpy(zExtra, zColl, nColl);
       zColl = zExtra;

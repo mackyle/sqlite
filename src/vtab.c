@@ -439,7 +439,7 @@ void sqlite3VtabFinishParse(Parse *pParse, Token *pEnd){
     sqlite3VdbeAddParseSchemaOp(v, iDb, zWhere);
 
     iReg = ++pParse->nMem;
-    sqlite3VdbeLoadString(v, iReg, pTab->zName);
+    sqlite3VdbeLoadString(v, iReg, pTab->zName, sqlite3Strlen30(pTab->zName));
     sqlite3VdbeAddOp2(v, OP_VCreate, iDb, iReg);
   }
 
@@ -761,7 +761,8 @@ int sqlite3_declare_vtab(sqlite3 *db, const char *zCreateTable){
   sParse.declareVtab = 1;
   sParse.db = db;
   sParse.nQueryLoop = 1;
-  if( SQLITE_OK==sqlite3RunParser(&sParse, zCreateTable, &zErr) 
+  if( SQLITE_OK==sqlite3RunParser(&sParse, zCreateTable,
+            sqlite3Strlen30(zCreateTable), &zErr)
    && sParse.pNewTable
    && !db->mallocFailed
    && !sParse.pNewTable->pSelect

@@ -5,9 +5,9 @@
 */
 
 /* The various pragma types */
-#define PragTyp_HEADER_VALUE                   0
-#define PragTyp_AUTO_VACUUM                    1
-#define PragTyp_FLAG                           2
+#define PragTyp_FLAG                           0
+#define PragTyp_HEADER_VALUE                   1
+#define PragTyp_AUTO_VACUUM                    2
 #define PragTyp_BUSY_TIMEOUT                   3
 #define PragTyp_CACHE_SIZE                     4
 #define PragTyp_CACHE_SPILL                    5
@@ -139,6 +139,11 @@ static const PragmaName aPragmaName[] = {
   /* ColNames:  */ 0, 0,
   /* iArg:      */ 0 },
 #endif
+ {/* zName:     */ "allow_inline_nul",
+  /* ePragTyp:  */ PragTyp_FLAG,
+  /* ePragFlg:  */ PragFlg_Result0|PragFlg_NoColumns1,
+  /* ColNames:  */ 0, 0,
+  /* iArg:      */ SQLITE_AllowInlineNul },
 #if !defined(SQLITE_OMIT_SCHEMA_VERSION_PRAGMAS)
  {/* zName:     */ "application_id",
   /* ePragTyp:  */ PragTyp_HEADER_VALUE,
@@ -646,4 +651,4 @@ static const PragmaName aPragmaName[] = {
   /* iArg:      */ SQLITE_WriteSchema },
 #endif
 };
-/* Number of pragmas: 60 on by default, 77 total. */
+/* Number of pragmas: 61 on by default, 78 total. */

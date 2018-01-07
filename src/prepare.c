@@ -568,9 +568,16 @@ static int sqlite3Prepare(
   }
 
   sqlite3VtabUnlockList(db);
-
+  if( !(db->flags&SQLITE_AllowInlineNul) ) {
+	  int len;
+	  len = sqlite3Strlen30( zSql );
+	  if( len < nBytes ) nBytes = len;
+	  else if( nBytes < 0 ) nBytes = len;
+  } else {
+	  if( nBytes < 0 ) nBytes = sqlite3Strlen30( zSql );
+  }
   sParse.db = db;
-  if( nBytes>=0 && (nBytes==0 || zSql[nBytes-1]!=0) ){
+  if( nBytes>=0 && (nBytes==0 || zSql[nBytes]!=0) ){
     char *zSqlCopy;
     int mxLen = db->aLimit[SQLITE_LIMIT_SQL_LENGTH];
     testcase( nBytes==mxLen );
@@ -582,14 +589,14 @@ static int sqlite3Prepare(
     }
     zSqlCopy = sqlite3DbStrNDup(db, zSql, nBytes);
     if( zSqlCopy ){
-      sqlite3RunParser(&sParse, zSqlCopy, &zErrMsg);
+      sqlite3RunParser(&sParse, zSqlCopy, nBytes, &zErrMsg);
       sParse.zTail = &zSql[sParse.zTail-zSqlCopy];
       sqlite3DbFree(db, zSqlCopy);
     }else{
       sParse.zTail = &zSql[nBytes];
     }
   }else{
-    sqlite3RunParser(&sParse, zSql, &zErrMsg);
+    sqlite3RunParser(&sParse, zSql, nBytes, &zErrMsg);
   }
   assert( 0==sParse.nQueryLoop );
 
@@ -813,6 +820,7 @@ static int sqlite3Prepare16(
   char *zSql8;
   const char *zTail8 = 0;
   int rc = SQLITE_OK;
+  int resultLen;
 
 #ifdef SQLITE_ENABLE_API_ARMOR
   if( ppStmt==0 ) return SQLITE_MISUSE_BKPT;
@@ -822,15 +830,24 @@ static int sqlite3Prepare16(
     return SQLITE_MISUSE_BKPT;
   }
   if( nBytes>=0 ){
+    if( !(db->flags&SQLITE_AllowInlineNul) ) {
+      int sz;
+      const char *z = (const char*)zSql;
+      for(sz=0; sz<nBytes && (z[sz]!=0 || z[sz+1]!=0); sz += 2){}
+      nBytes = sz*2;
+    }
+  } else { // nBytes < 0; calculate length by finding wide NUL character.
     int sz;
     const char *z = (const char*)zSql;
-    for(sz=0; sz<nBytes && (z[sz]!=0 || z[sz+1]!=0); sz += 2){}
+    for(sz=0; (z[sz]!=0 || z[sz+1]!=0); sz += 2){}
     nBytes = sz;
   }
   sqlite3_mutex_enter(db->mutex);
-  zSql8 = sqlite3Utf16to8(db, zSql, nBytes, SQLITE_UTF16NATIVE);
+  zSql8 = sqlite3Utf16to8(db, zSql, nBytes, &resultLen, SQLITE_UTF16NATIVE);
+  while( zSql8 && zSql8[resultLen-1] == 0 ) resultLen--;
   if( zSql8 ){
-    rc = sqlite3LockAndPrepare(db, zSql8, -1, prepFlags, 0, ppStmt, &zTail8);
+    rc = sqlite3LockAndPrepare(db, zSql8, resultLen, prepFlags, 0, ppStmt,
+        &zTail8);
   }
 
   if( zTail8 && pzTail ){

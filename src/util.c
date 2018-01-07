@@ -266,11 +266,54 @@ void sqlite3Dequote(char *z){
 }
 
 /*
+** Convert an SQL-style quoted string token into a normal string token
+** by removing the quote characters.  The conversion is done in-place.
+** If the input does not begin with a quote character, then this
+** routine is a no-op.
+**
+** The input string must be zero-terminated.  A new zero-terminator
+** is added to the dequoted string.
+**
+** The return value is -1 if no dequoting occurs or the length of the
+** dequoted string, exclusive of the zero terminator, if dequoting does
+** occur.
+**
+** 2002-Feb-14: This routine is extended to remove MS-Access style
+** brackets from around identifiers.  For example:  "[a-b-c]" becomes
+** "a-b-c".
+*/
+void sqlite3DequoteToken(struct ExprToken *token){
+  char quote;
+  int i, j;
+  char *z = token->p;
+  quote = token->p[0];
+  if( !sqlite3Isquote( quote ) ) return;
+  if( quote == '[' ) quote = ']';
+  for( i = 1, j = 0;; i++ ) {
+    //assert( z[i] );
+    if( z[i] == quote ) {
+      if( z[i + 1] == quote ) {
+        z[j++] = quote;
+        i++;
+      }
+      else {
+        break;
+      }
+    }
+    else {
+      z[j++] = z[i];
+    }
+  }
+  z[j] = 0;
+  token->len = j;
+}
+
+/*
 ** Generate a Token object from a string
 */
-void sqlite3TokenInit(Token *p, char *z){
+void sqlite3TokenInit(Token *p, char *z, int tokLen){
   p->z = z;
-  p->n = sqlite3Strlen30(z);
+  p->n = tokLen<0?sqlite3Strlen30(z):tokLen;
 }
 
 /* Convenient short-hand */

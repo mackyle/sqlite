@@ -1733,7 +1733,8 @@ int sqlite3IsLikeFunction(sqlite3 *db, Expr *pExpr, int *pIsNocase, char *aWc){
   }
   assert( !ExprHasProperty(pExpr, EP_xIsSelect) );
   nExpr = pExpr->x.pList->nExpr;
-  pDef = sqlite3FindFunction(db, pExpr->u.zToken, nExpr, SQLITE_UTF8, 0);
+  pDef = sqlite3FindFunction(db, pExpr->u.token.p, nExpr, SQLITE_UTF8,
+      0);
   if( NEVER(pDef==0) || (pDef->funcFlags & SQLITE_FUNC_LIKE)==0 ){
     return 0;
   }
@@ -1743,7 +1744,7 @@ int sqlite3IsLikeFunction(sqlite3 *db, Expr *pExpr, int *pIsNocase, char *aWc){
     Expr *pEscape = pExpr->x.pList->a[2].pExpr;
     char *zEscape;
     if( pEscape->op!=TK_STRING ) return 0;
-    zEscape = pEscape->u.zToken;
+    zEscape = pEscape->u.token.p;
     if( zEscape[0]==0 || zEscape[1]!=0 ) return 0;
     aWc[3] = zEscape[0];
   }

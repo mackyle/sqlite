@@ -33,7 +33,7 @@ static int findNextHostParameter(const char *zSql, int *pnToken){
 
   *pnToken = 0;
   while( zSql[0] ){
-    n = sqlite3GetToken((u8*)zSql, &tokenType);
+    n = sqlite3GetToken((u8*)zSql, -1, &tokenType);
     assert( n>0 && tokenType!=TK_ILLEGAL );
     if( tokenType==TK_VARIABLE ){
       *pnToken = n;
@@ -71,7 +71,9 @@ static int findNextHostParameter(const char *zSql, int *pnToken){
 */
 char *sqlite3VdbeExpandSql(
   Vdbe *p,                 /* The prepared statement being evaluated */
-  const char *zRawSql      /* Raw text of the SQL statement */
+  const char *zRawSql,     /* Raw text of the SQL statement */
+  int nRawSql,             /* length of Raw text of the SQL statement */
+  int *pnSqlResult         /* pointer to result sql length */
 ){
   sqlite3 *db;             /* The database connection */
   int idx = 0;             /* Index of a host parameter */
@@ -92,7 +94,7 @@ char *sqlite3VdbeExpandSql(
   if( db->nVdbeExec>1 ){
     while( *zRawSql ){
       const char *zStart = zRawSql;
-      while( *(zRawSql++)!='\n' && *zRawSql );
+      while( *(zRawSql++)!='\n' && (zRawSql-zStart)<nRawSql );
       sqlite3StrAccumAppend(&out, "-- ", 3);
       assert( (zRawSql - zStart) > 0 );
       sqlite3StrAccumAppend(&out, zStart, (int)(zRawSql-zStart));
@@ -155,8 +157,10 @@ char *sqlite3VdbeExpandSql(
           nOut = SQLITE_TRACE_SIZE_LIMIT;
           while( nOut<pVar->n && (pVar->z[nOut]&0xc0)==0x80 ){ nOut++; }
         }
-#endif    
-        sqlite3XPrintf(&out, "'%.*q'", nOut, pVar->z);
+#endif
+        sqlite3StrAccumAppend(&out, "'", 1);
+        sqlite3StrAccumAppendEscapedQuote(&out, pVar->z, nOut);
+        sqlite3StrAccumAppend(&out, "'", 1);
 #ifdef SQLITE_TRACE_SIZE_LIMIT
         if( nOut<pVar->n ){
           sqlite3XPrintf(&out, "/*+%d bytes*/", pVar->n-nOut);
@@ -188,6 +192,7 @@ char *sqlite3VdbeExpandSql(
     }
   }
   if( out.accError ) sqlite3StrAccumReset(&out);
+  if( pnSqlResult ) pnSqlResult[0] = out.nChar;
   return sqlite3StrAccumFinish(&out);
 }
 

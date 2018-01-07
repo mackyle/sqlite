@@ -182,7 +182,7 @@ int sqlite3VdbeAddOp0(Vdbe*,int);
 int sqlite3VdbeAddOp1(Vdbe*,int,int);
 int sqlite3VdbeAddOp2(Vdbe*,int,int,int);
 int sqlite3VdbeGoto(Vdbe*,int);
-int sqlite3VdbeLoadString(Vdbe*,int,const char*);
+int sqlite3VdbeLoadString(Vdbe*,int,const char*,int);
 void sqlite3VdbeMultiLoad(Vdbe*,int,const char*,...);
 int sqlite3VdbeAddOp3(Vdbe*,int,int,int,int);
 int sqlite3VdbeAddOp4(Vdbe*,int,int,int,int,const char *zP4,int);
@@ -237,7 +237,7 @@ VdbeOp *sqlite3VdbeTakeOpArray(Vdbe*, int*, int*);
 sqlite3_value *sqlite3VdbeGetBoundValue(Vdbe*, int, u8);
 void sqlite3VdbeSetVarmask(Vdbe*, int);
 #ifndef SQLITE_OMIT_TRACE
-  char *sqlite3VdbeExpandSql(Vdbe*, const char*);
+  char *sqlite3VdbeExpandSql(Vdbe*, const char*, int, int*);
 #endif
 int sqlite3MemCompare(const Mem*, const Mem*, const CollSeq*);
 

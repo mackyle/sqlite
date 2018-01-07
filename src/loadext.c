@@ -430,7 +430,9 @@ static const sqlite3_api_routines sqlite3Apis = {
   sqlite3_prepare16_v3,
   sqlite3_bind_pointer,
   sqlite3_result_pointer,
-  sqlite3_value_pointer
+  sqlite3_value_pointer,
+  sqlite3_sql_utf8,
+  sqlite3_expanded_sql_utf8
 };
 
 /*

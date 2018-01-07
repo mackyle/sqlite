@@ -72,7 +72,7 @@ static void renameTableFunc(
       */
       do {
         zCsr += len;
-        len = sqlite3GetToken(zCsr, &token);
+        len = sqlite3GetToken(zCsr, -1, &token);
       } while( token==TK_SPACE );
       assert( len>0 );
     } while( token!=TK_LP && token!=TK_USING );
@@ -118,12 +118,12 @@ static void renameParentFunc(
   UNUSED_PARAMETER(NotUsed);
   if( zInput==0 || zOld==0 ) return;
   for(z=zInput; *z; z=z+n){
-    n = sqlite3GetToken(z, &token);
+    n = sqlite3GetToken(z, -1, &token);
     if( token==TK_REFERENCES ){
       char *zParent;
       do {
         z += n;
-        n = sqlite3GetToken(z, &token);
+        n = sqlite3GetToken(z, -1, &token);
       }while( token==TK_SPACE );
 
       if( token==TK_ILLEGAL ) break;
@@ -196,7 +196,7 @@ static void renameTriggerFunc(
       */
       do {
         zCsr += len;
-        len = sqlite3GetToken(zCsr, &token);
+        len = sqlite3GetToken(zCsr, -1, &token);
       }while( token==TK_SPACE );
       assert( len>0 );
 
@@ -485,7 +485,7 @@ void sqlite3AlterRenameTable(
 #ifndef SQLITE_OMIT_VIRTUALTABLE
   if( pVTab ){
     int i = ++pParse->nMem;
-    sqlite3VdbeLoadString(v, i, zName);
+    sqlite3VdbeLoadString(v, i, zName, sqlite3Strlen30(zName));
     sqlite3VdbeAddOp4(v, OP_VRename, i, 0, 0,(const char*)pVTab, P4_VTAB);
     sqlite3MayAbort(pParse);
   }

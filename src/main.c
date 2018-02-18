@@ -1391,7 +1391,7 @@ const char *sqlite3ErrName(int rc){
       case SQLITE_WARNING_AUTOINDEX:  zName = "SQLITE_WARNING_AUTOINDEX"; break;
       case SQLITE_DONE:               zName = "SQLITE_DONE";              break;
       case SQLITE_NOTLEADER:          zName = "SQLITE_NOTLEADER";         break;
-      case SQLITE_REPLICATION         zName = "SQLITE_REPLICATION";       break;
+      case SQLITE_REPLICATION:        zName = "SQLITE_REPLICATION";       break;
     }
   }
   if( zName==0 ){

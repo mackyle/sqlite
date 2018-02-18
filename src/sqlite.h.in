@@ -8803,7 +8803,7 @@ SQLITE_EXPERIMENTAL int sqlite3_snapshot_recover(sqlite3 *db, const char *zDb);
 #define SQLITE_REPLICATION_LEADER      1   /* Fire replication commands */
 #define SQLITE_REPLICATION_FOLLOWER    2   /* Execute replication commands */
 
-  typedef struct sqlite3_replication_page sqlite3_replication_page;
+typedef struct sqlite3_replication_page sqlite3_replication_page;
 struct sqlite3_replication_page {
   void *pBuf;        /* The content of the page */
   unsigned flags;    /* Page flags used internaly by the WAL */

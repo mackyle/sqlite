@@ -8794,6 +8794,45 @@ SQLITE_EXPERIMENTAL int sqlite3_snapshot_cmp(
 SQLITE_EXPERIMENTAL int sqlite3_snapshot_recover(sqlite3 *db, const char *zDb);
 
 /*
+** CAPI3REF: Write-Ahead Log Replication Page Object
+** EXPERIMENTAL
+**
+** The sqlite3_replication_page object represents a new page about to be
+** appended to the write-ahead log of a [WAL mode] database.
+**
+** When an implementation for the replication interface is provided (using
+** [SQLITE_CONFIG_REPLICATION]) and a connection is set to leader replication
+** mode (using [sqlite3_replication_leader], this object is used to inform
+** third-party replication libraries about the content of the new write-ahead
+** log frame.
+**
+** See [sqlite3_replication_methods] for additional information.
+*/
+typedef struct sqlite3_replication_page {
+  void *pBuf;        /* The content of the WAL frame to be written */
+  unsigned flags;    /* Flags used internaly by the WAL */
+  unsigned pgno;     /* Page number */
+} sqlite3_replication_page;
+
+/*
+** CAPI3REF: Write-Ahead Log Replication Methods
+** EXPERIMENTAL
+**
+** An instance of this structure defines a set of write-ahead log lifecycle
+** hooks that can be used by third party libraries to replicate the write-ahead
+** log across all SQLite instances that are part of a cluster.
+*/
+typedef struct sqlite3_replication_methods {
+  int (*xBegin)(void*);
+  int (*xAbort)(void*);
+  int (*xFrames)(void*, int szPage, int nList,
+      sqlite3_replication_page *pList, unsigned nTruncate, int isCommit,
+      unsigned sync_flags);
+  int (*xUndo)(void*);
+  int (*xEnd)(void*);
+} sqlite3_replication_methods;
+
+/*
 ** Undo the hack that converts floating point types to integer for
 ** builds on processors without floating point support.
 */

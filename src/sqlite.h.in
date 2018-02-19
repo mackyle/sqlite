@@ -1923,6 +1923,20 @@ struct sqlite3_mem_methods {
 ** I/O required to support statement rollback.
 ** The default value for this setting is controlled by the
 ** [SQLITE_STMTJRNL_SPILL] compile-time option.
+**
+** [[SQLITE_CONFIG_REPLICATION]]
+** <dt>SQLITE_CONFIG_REPLICATION
+** <dd>The SQLITE_CONFIG_REPLICATION option is only available if SQLite is
+** compiled with the [SQLITE_ENABLE_REPLICATION] pre-processor macro defined.
+** SQLITE_CONFIG_REPLICATION takes a single argument which is a pointer to an
+** [sqlite3_replication_methods] object. This object specifies the interface to
+** a write-ahead log replication implementation.
+** SQLite makes a copy of the [sqlite3_replication_methods] object.
+**
+** [[SQLITE_CONFIG_GETREPLICATION]] <dt>SQLITE_CONFIG_GETREPLICATION</dt>
+** <dd> The SQLITE_CONFIG_GETREPLICATION option takes a single argument which
+** is a pointer to an [sqlite3_replication_methods] object.  SQLite copies of
+** the current write-ahead log replication implementation into that object.
 ** </dl>
 */
 #define SQLITE_CONFIG_SINGLETHREAD  1  /* nil */
@@ -1952,6 +1966,8 @@ struct sqlite3_mem_methods {
 #define SQLITE_CONFIG_PMASZ               25  /* unsigned int szPma */
 #define SQLITE_CONFIG_STMTJRNL_SPILL      26  /* int nByte */
 #define SQLITE_CONFIG_SMALL_MALLOC        27  /* boolean */
+#define SQLITE_CONFIG_REPLICATION         28  /* sqlite3_replication_methods* */
+#define SQLITE_CONFIG_GETREPLICATION      29  /* sqlite3_replication_methods* */
 
 /*
 ** CAPI3REF: Database Connection Configuration Options

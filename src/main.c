@@ -637,6 +637,23 @@ int sqlite3_config(int op, ...){
       break;
     }
 
+#if defined(SQLITE_ENABLE_REPLICATION) && !defined(SQLITE_OMIT_WAL)
+    case SQLITE_CONFIG_REPLICATION: {
+      /* The SQLITE_CONFIG_REPLICATION option takes a single argument which is a
+      ** pointer to an sqlite3_replication_methods object. This object specifies the
+      ** interface to a write-ahead log replication implementation. */
+      sqlite3GlobalConfig.replication = *va_arg(ap, sqlite3_replication_methods*);
+      break;
+    }
+    case SQLITE_CONFIG_GETREPLICATION: {
+      /* The SQLITE_CONFIG_REPLICATION option takes a single argument which is a
+      ** pointer to an sqlite3_replication_methods object. SQLite copies the
+      ** current write-ahead log replication implementation into that object. */
+      *va_arg(ap, sqlite3_replication_methods*) = sqlite3GlobalConfig.replication;
+      break;
+    }
+#endif
+
     default: {
       rc = SQLITE_ERROR;
       break;

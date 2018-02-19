@@ -1,0 +1,43 @@
+# 2018 February 15
+#
+# The author disclaims copyright to this source code.  In place of
+# a legal notice, here is a blessing:
+#
+#    May you do good and not evil.
+#    May you find forgiveness for yourself and forgive others.
+#    May you share freely, never taking more than you give.
+#
+#***********************************************************************
+# This file implements regression tests for SQLite library. The focus
+# of this file is the sqlite3_replication_xxx() APIs.
+#
+
+set testdir [file dirname $argv0]
+source $testdir/tester.tcl
+ifcapable !replication {finish_test; return}
+set testprefix replication
+
+# Configure SQLite with the test replication implementation and create
+# a test database in WAL mode.
+#
+proc reset_replication {} {
+  catch {db close}
+  sqlite3_shutdown
+  sqlite3_config_test_replication 1
+  reset_db
+  execsql {
+    PRAGMA journal_mode = WAL;
+  }
+}
+
+do_test replication-1.1 {
+  sqlite3_config_test_replication 1
+} {}
+
+# Reset the replication configuration for subsequent tests.
+sqlite3_shutdown
+sqlite3_config_test_replication 0
+sqlite3_initialize
+autoinstall_test_functions
+
+finish_test

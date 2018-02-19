@@ -30,11 +30,34 @@ proc reset_replication {} {
   }
 }
 
-do_test replication-1.1 {
-  sqlite3_config_test_replication 1
-} {}
+#-------------------------------------------------------------------------
+# The following block of tests - wal-1.* - focus on testing the
+# implementation of the sqlite3_replication_mode() interface.
+
+# Test that an error is returned if the database is not in WAL mode.
+#
+do_test 1.0 {
+  execsql {
+    PRAGMA journal_mode = DELETE;
+  }
+  list [catch {sqlite3_replication_mode db main} msg] $msg
+} {1 SQLITE_ERROR}
+
+# Test that an error is returned if the given schema name does not exist.
+#
+do_test 1.1 {
+  list [catch {sqlite3_replication_mode db garbage} msg] $msg
+} {1 SQLITE_ERROR}
+
+# Test that by default no write-ahead log replication is setup.
+#
+do_test 1.2 {
+  reset_replication
+  sqlite3_replication_mode db main
+} {SQLITE_REPLICATION_NONE}
 
 # Reset the replication configuration for subsequent tests.
+db close
 sqlite3_shutdown
 sqlite3_config_test_replication 0
 sqlite3_initialize

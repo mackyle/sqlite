@@ -8849,6 +8849,40 @@ typedef struct sqlite3_replication_methods {
 } sqlite3_replication_methods;
 
 /*
+** CAPI3REF: Replication Mode Values
+** EXPERIMENTAL
+**
+** These constants define all valid values for the "replication mode" a certain
+** database connection might be set to. The current mode for a connection can
+** be inspected using [sqlite3_replication_mode].
+*/
+#define SQLITE_REPLICATION_NONE        0   /* No replication (the default) */
+#define SQLITE_REPLICATION_LEADER      1   /* Fire replication commands */
+#define SQLITE_REPLICATION_FOLLOWER    2   /* Execute replication commands */
+
+/*
+** CAPI3REF: Obtain the replication mode of a connection.
+** EXPERIMENTAL
+**
+** The [sqlite3_replication_mode(D,S,M) interface copies into M the current
+** replication mode value for schema S of [database connection] D.
+**
+** The [sqlite3_replication_mode()] interface returns SQLITE_OK on success
+** or an appropriate [error code] if it fails.
+**
+** In order to succeed, a call to [sqlite3_replication_mode(D,S,P)]
+** requires the [database connection] D to be in [WAL mode].
+**
+** The [sqlite3_replication_mode()] interface is only available when the
+** SQLITE_ENABLE_REPLICATION compile-time option is used.
+**/
+int sqlite3_replication_mode(
+  sqlite3 *db,                          /* Database handle */
+  const char *zSchema,                  /* Name of attached database (or NULL) */
+  int *eMode                            /* OUT: Replication mode value */
+);
+
+/*
 ** Undo the hack that converts floating point types to integer for
 ** builds on processors without floating point support.
 */

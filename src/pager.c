@@ -716,7 +716,10 @@ struct Pager {
 #ifndef SQLITE_OMIT_WAL
   Wal *pWal;                  /* Write-ahead log used by "journal_mode=wal" */
   char *zWal;                 /* File name for write-ahead log */
-#endif
+#ifdef SQLITE_ENABLE_REPLICATION
+  u8 replicationMode;         /* Replication mode (NONE, LEADER, FOLLOWER) */
+#endif /* SQLITE_ENABLE_REPLICATION */
+#endif /* SQLITE_OMIT_WAL */
 };
 
 /*
@@ -7613,6 +7616,16 @@ int sqlite3PagerSnapshotRecover(Pager *pPager){
   return rc;
 }
 #endif /* SQLITE_ENABLE_SNAPSHOT */
+
+#ifdef SQLITE_ENABLE_REPLICATION
+/*
+** Return the current write-ahead log replication mode set for this pager.
+*/
+int sqlite3PagerReplicationModeGet(Pager *pPager) {
+  return (int)(pPager->replicationMode);
+}
+#endif /* SQLITE_ENABLE_REPLICATION */
+
 #endif /* !SQLITE_OMIT_WAL */
 
 #ifdef SQLITE_ENABLE_ZIPVFS

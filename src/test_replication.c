@@ -32,6 +32,11 @@
 #include "sqlite3.h"
 #include <assert.h>
 
+extern const char *sqlite3ErrName(int);
+
+/* These functions are implemented in test1.c. */
+extern int getDbPointer(Tcl_Interp *, const char *, sqlite3 **);
+
 /*
 ** A no-op version of sqlite3_replication_methods.xBegin().
 */
@@ -128,6 +133,59 @@ static int SQLITE_TCLAPI test_replication(
   return TCL_OK;
 }
 
+/*
+** Usage:    sqlite3_replication_mode HANDLE SCHEMA
+**
+** Return the the name of the replication mode value of the given database.
+*/
+static int SQLITE_TCLAPI test_replication_mode(
+  void * clientData,
+  Tcl_Interp *interp,
+  int objc,
+  Tcl_Obj *CONST objv[]
+){
+  int rc;
+  sqlite3 *db;
+  const char *zSchema;
+  int mode;
+  int iDb;
+  Btree *pBt;
+  Pager *pPager;
+
+  if( objc!=3 ){
+    Tcl_WrongNumArgs(interp, 1, objv,
+        "HANDLE SCHEMA");
+    return TCL_ERROR;
+  }
+
+  if( getDbPointer(interp, Tcl_GetString(objv[1]), &db) ){
+    return TCL_ERROR;
+  }
+  zSchema = Tcl_GetString(objv[2]);
+
+  rc = sqlite3_replication_mode(db, zSchema, &mode);
+
+  if( rc!=SQLITE_OK ){
+    Tcl_AppendResult(interp, sqlite3ErrName(rc), (char*)0);
+    return TCL_ERROR;
+  }
+
+  const char *zMode = 0;
+  switch( mode ){
+    case SQLITE_REPLICATION_NONE:  zMode = "SQLITE_REPLICATION_NONE";    break;
+    case SQLITE_REPLICATION_LEADER:  zMode = "SQLITE_REPLICATION_LEADER";    break;
+    case SQLITE_REPLICATION_FOLLOWER:  zMode = "SQLITE_REPLICATION_FOLLOWER";    break;
+  }
+  if( zMode==0 ){
+    static char zBuf[50];
+    sqlite3_snprintf(sizeof(zBuf), zBuf, "SQLITE_REPLICATION_UNKNOWN(%d)", mode);
+    zMode = zBuf;
+  }
+
+  Tcl_AppendResult(interp, zMode, (char*)0);
+  return TCL_OK;
+}
+
 #endif  /* SQLITE_ENABLE_REPLICATION */
 
 /*
@@ -139,6 +197,8 @@ int Sqlitetestreplication_Init(Tcl_Interp *interp){
 #if defined(SQLITE_ENABLE_REPLICATION) && !defined(SQLITE_OMIT_WAL)
   Tcl_CreateObjCommand(interp, "sqlite3_config_test_replication",
           test_replication,0,0);
+  Tcl_CreateObjCommand(interp, "sqlite3_replication_mode",
+          test_replication_mode, 0, 0);
 #endif  /* SQLITE_ENABLE_REPLICATION */
   return TCL_OK;
 }

@@ -3154,6 +3154,20 @@ static int pagerRollbackWal(Pager *pPager){
   **   + Reload page content from the database (if refcount>0).
   */
   pPager->dbSize = pPager->dbOrigSize;
+#if defined(SQLITE_ENABLE_REPLICATION) && !defined(SQLITE_OMIT_WAL)
+  if( pPager->replicationMode==SQLITE_REPLICATION_LEADER ){
+    /* When in leader replication mode fire the xUndo callback of the
+    ** replication implementation. The hook implementation is typically in
+    ** charge of broadcasting the event to other nodes, and ensure that a
+    ** quorum of them have received the message.
+    **
+    ** The return code is currently ignored, since in any case we want to
+    ** rollback the transaction on this node. The replication implementation
+    ** should ensure graceful recovery after a failure due to loss of quorum.
+    */
+    sqlite3GlobalConfig.replication.xUndo(pPager->pReplicationCtx);
+  }
+#endif /* SQLITE_ENABLE_REPLICATION */
   rc = sqlite3WalUndo(pPager->pWal, pagerUndoCallback, (void *)pPager);
   pList = sqlite3PcacheDirtyList(pPager->pPCache);
   while( pList && rc==SQLITE_OK ){
@@ -7848,6 +7862,32 @@ int sqlite3PagerReplicationFrames(
     sqlite3WalEndReadTransaction(pPager->pWal);
   }
 
+  return rc;
+}
+
+/* No-op undo callback for follower replication mode */
+static int pagerNoopUndoCallback(void *pCtx, Pgno iPg) {
+  return SQLITE_OK;
+}
+
+/*
+** Undo WAL changes in the context of a replicated transaction, performing a
+** rollback.
+*/
+int sqlite3PagerReplicationUndo(Pager *pPager){
+  int rc;
+  int mode = sqlite3PagerReplicationModeGet(pPager);
+
+  /* Make sure we are in follower replication mode */
+  assert( mode==SQLITE_REPLICATION_FOLLOWER );
+
+  rc = sqlite3WalUndo(pPager->pWal, pagerNoopUndoCallback, (void *)pPager);
+
+  /* Finalize the transaction */
+  if( rc==SQLITE_OK ){
+    rc = sqlite3WalEndWriteTransaction(pPager->pWal);
+    sqlite3WalEndReadTransaction(pPager->pWal);
+  }
   return rc;
 }
 #endif /* SQLITE_ENABLE_REPLICATION */

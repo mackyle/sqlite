@@ -9012,6 +9012,28 @@ int sqlite3_replication_frames(
 );
 
 /*
+** CAPI3REF: Undo WAL changes in the context of a replicated transaction.
+** EXPERIMENTAL
+**
+** The [sqlite3_replication_undo(D,S)] interface reverts the changes
+** of a WAL write transaction for schema S of [database connection] D.
+**
+** The [sqlite3_replication_undo()] interface returns SQLITE_OK on success
+** or an appropriate [error code] if it fails.
+**
+** In order to succeed, a call to [sqlite3_replication_undo()] requires that
+** schema S of [database connection] D has been set to follower replication mode
+** using [sqlite3_replication_follower].
+**
+** The [sqlite3_replication_undo()] interface is only available when the
+** SQLITE_ENABLE_REPLICATION compile-time option is used.
+*/
+int sqlite3_replication_undo(
+  sqlite3 *db,                      /* Database handle */
+  const char *zSchema               /* Name of attached database (or NULL) */
+);
+
+/*
 ** Undo the hack that converts floating point types to integer for
 ** builds on processors without floating point support.
 */

@@ -115,6 +115,21 @@ do_test 2.5 {
   }
 } {1}
 
+# Test that a connection in leader replication mode works transparently from the
+# user point of view, and that regular rollbacks can be performed.
+#
+do_test 2.6 {
+  reset_replication
+  sqlite3_replication_leader db main
+  execsql {
+    CREATE TABLE test (n INT);
+    BEGIN;
+    INSERT INTO test(n) VALUES(1);
+    ROLLBACK;
+    SELECT n FROM test;
+  }
+} {}
+
 #-------------------------------------------------------------------------
 # The following block of tests - wal-3.* - focus on testing the
 # implementation of the sqlite3_replication_follower() interface.

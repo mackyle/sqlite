@@ -139,6 +139,45 @@ do_test 3.3 {
   sqlite3_replication_mode db main
 } {SQLITE_REPLICATION_FOLLOWER}
 
+#-------------------------------------------------------------------------
+# The following block of tests - wal-4.* - focus on testing the
+# implementation of the sqlite3_replication_none() interface.
+
+# Test that an error is returned if the given schema name is invalid.
+#
+do_test 4.0 {
+  reset_replication
+  list [catch {sqlite3_replication_none db garbage} msg] $msg
+} {1 SQLITE_ERROR}
+
+# Test that an error is returned if the current mode is neither leader
+# or follower.
+#
+do_test 4.1 {
+  reset_replication
+  list [catch {sqlite3_replication_none db main} msg] $msg
+} {1 SQLITE_ERROR}
+
+# Test that a connection can be set back to no replication after it
+# was set to leader replication.
+#
+do_test 4.2 {
+  reset_replication
+  sqlite3_replication_leader db main
+  sqlite3_replication_none db main
+  sqlite3_replication_mode db main
+} {SQLITE_REPLICATION_NONE}
+
+# Test that a connection can be set back to no replication after it
+# was set to follower replication.
+#
+do_test 4.3 {
+  reset_replication
+  sqlite3_replication_follower db main
+  sqlite3_replication_none db main
+  sqlite3_replication_mode db main
+} {SQLITE_REPLICATION_NONE}
+
 # Reset the replication configuration for subsequent tests.
 db close
 sqlite3_shutdown

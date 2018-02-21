@@ -8948,6 +8948,35 @@ int sqlite3_replication_follower(
 );
 
 /*
+** CAPI3REF: Disable leader or follower replication mode on a connection.
+** EXPERIMENTAL
+**
+** The [sqlite3_replication_none(D,S)] interface disables leader or follower
+** write-ahead log replication on schema S of [database connection] D.
+**
+** The [sqlite3_replication_none()] interface returns SQLITE_OK on success
+** or an appropriate [error code] if it fails.
+**
+** In order to succeed, a call to [sqlite3_replication_none(D,S)] requires that
+** the database file for schema S is in [WAL mode], and that the current
+** replication mode value is either [SQLITE_REPLICATION_LEADER] or
+** [SQLITE_REPLICATION_FOLLOWER].
+**
+** After the call returns, the replication mode for this database will be set to
+** SQLITE_REPLICATION_NONE. If the database was set to leader replication, from
+** this point on SQLite won't invoke any more hooks on the configured
+** [sqlite3_replication_methods] implementation, for WAL events associated with
+** schema S of [database connection] D.
+**
+** The [sqlite3_replication_none()] interface is only available when the
+** SQLITE_ENABLE_REPLICATION compile-time option is used.
+*/
+int sqlite3_replication_none(
+  sqlite3 *db,                      /* Database handle */
+  const char *zSchema               /* Name of attached database (or NULL) */
+);
+
+/*
 ** Undo the hack that converts floating point types to integer for
 ** builds on processors without floating point support.
 */

@@ -7644,6 +7644,11 @@ int sqlite3PagerReplicationModeGet(Pager *pPager) {
 ** If the given mode is SQLITE_REPLICATION_FOLLOWER, this pager is expected to
 ** be used only for replicating write transactions. If the current replication
 ** mode of this pager is not SQLITE_REPLICATION_NONE, then an error is returned.
+**
+** If the given mode is SQLITE_REPLICATION_NONE, this pager will disable leader
+** or follower replication. If the current mode is neither
+** SQLITE_REPLICATION_LEADER or SQLITE_REPLICATION_FOLLOWER, trying to set
+** SQLITE_REPLICATION_NONE produces an error.
 */
 int sqlite3PagerReplicationModeSet(
   Pager *pPager,
@@ -7687,6 +7692,13 @@ int sqlite3PagerReplicationModeSet(
     }
     case SQLITE_REPLICATION_FOLLOWER: {
       if( pPager->replicationMode!=SQLITE_REPLICATION_NONE ){
+        rc = SQLITE_ERROR;
+      }
+      break;
+    }
+    case SQLITE_REPLICATION_NONE: {
+      if( pPager->replicationMode!=SQLITE_REPLICATION_LEADER
+       && pPager->replicationMode!=SQLITE_REPLICATION_FOLLOWER ){
         rc = SQLITE_ERROR;
       }
       break;

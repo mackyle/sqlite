@@ -4246,6 +4246,36 @@ int sqlite3_replication_follower(sqlite3 *db, const char *zSchema){
 #endif /* SQLITE_OMIT_WAL */
   return rc;
 }
+
+/*
+** Disable write-ahead log leader or follower replication on the given schema of
+** the given connection.
+*/
+int sqlite3_replication_none(sqlite3 *db, const char *zSchema){
+  int rc = SQLITE_ERROR;
+#ifndef SQLITE_OMIT_WAL
+
+#ifdef SQLITE_ENABLE_API_ARMOR
+  if( !sqlite3SafetyCheckOk(db) ){
+    return SQLITE_MISUSE_BKPT;
+  }
+#endif
+
+  sqlite3_mutex_enter(db->mutex);
+  Btree *pBt = sqlite3DbNameToBtree(db, zSchema);
+  if( pBt ){
+      sqlite3BtreeEnter(pBt);
+      Pager *pPager = sqlite3BtreePager(pBt);
+      assert( pPager );
+      rc = sqlite3PagerReplicationModeSet(
+        pPager, db, SQLITE_REPLICATION_NONE, 0);
+      sqlite3BtreeLeave(pBt);
+  }
+  sqlite3_mutex_leave(db->mutex);
+
+#endif /* SQLITE_OMIT_WAL */
+  return rc;
+}
 #endif /* SQLITE_ENABLE_REPLICATION */
 
 #ifndef SQLITE_OMIT_COMPILEOPTION_DIAGS

@@ -4194,6 +4194,10 @@ int sqlite3PagerClose(Pager *pPager, sqlite3 *db){
       (db && (db->flags & SQLITE_NoCkptOnClose) ? 0 : pTmp)
   );
   pPager->pWal = 0;
+#ifdef SQLITE_ENABLE_REPLICATION
+  pPager->replicationMode = SQLITE_REPLICATION_NONE;
+  pPager->pReplicationCtx = 0;
+#endif
 #endif
   pager_reset(pPager);
   if( MEMDB ){

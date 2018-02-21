@@ -102,6 +102,19 @@ do_test 2.4 {
   sqlite3_replication_mode db main
 } {SQLITE_REPLICATION_LEADER}
 
+# Test that a connection in leader replication mode works transparently from the
+# user point of view, and that regular write queries can be performed.
+#
+do_test 2.5 {
+  reset_replication
+  sqlite3_replication_leader db main
+  execsql {
+    CREATE TABLE test (n INT);
+    INSERT INTO test(n) VALUES(1);
+    SELECT n FROM test;
+  }
+} {1}
+
 #-------------------------------------------------------------------------
 # The following block of tests - wal-3.* - focus on testing the
 # implementation of the sqlite3_replication_follower() interface.

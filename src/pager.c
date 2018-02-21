@@ -5819,12 +5819,28 @@ int sqlite3PagerBegin(Pager *pPager, int exFlag, int subjInMemory){
         (void)sqlite3WalExclusiveMode(pPager->pWal, 1);
       }
 
-      /* Grab the write lock on the log file. If successful, upgrade to
-      ** PAGER_RESERVED state. Otherwise, return an error code to the caller.
-      ** The busy-handler is not invoked if another connection already
-      ** holds the write-lock. If possible, the upper layer will call it.
-      */
-      rc = sqlite3WalBeginWriteTransaction(pPager->pWal);
+#if defined(SQLITE_ENABLE_REPLICATION) && !defined(SQLITE_OMIT_WAL)
+      if( pPager->replicationMode==SQLITE_REPLICATION_LEADER ){
+        /* Fire the xBegin hook of the configured replication interface. The
+        ** hook implementation is typically responsible of checking that
+        ** this SQLite node is the cluster leader, and to clear any dangling
+        ** transactions on connections in follower replication mode that might
+        ** have been left around after a leadership change.
+        */
+        assert( sqlite3GlobalConfig.replication.xBegin );
+        rc = sqlite3GlobalConfig.replication.xBegin(pPager->pReplicationCtx);
+      }
+      if( rc==SQLITE_OK ){
+#else
+      if( 1 ){
+#endif /* SQLITE_ENABLE_REPLICATION */
+        /* Grab the write lock on the log file. If successful, upgrade to
+        ** PAGER_RESERVED state. Otherwise, return an error code to the caller.
+        ** The busy-handler is not invoked if another connection already
+        ** holds the write-lock. If possible, the upper layer will call it.
+        */
+        rc = sqlite3WalBeginWriteTransaction(pPager->pWal);
+      }
     }else{
       /* Obtain a RESERVED lock on the database file. If the exFlag parameter
       ** is true, then immediately upgrade this to an EXCLUSIVE lock. The

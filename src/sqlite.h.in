@@ -8939,7 +8939,7 @@ int sqlite3_replication_leader(
 ** wait for a quorum before returning from the relevant WAL hooks (begin, write
 ** frames, undo).
 **
-** The [sqlite3_replication_follower()] interface is only available when the
+** The [sqlite3_replication_leader()] interface is only available when the
 ** SQLITE_ENABLE_REPLICATION compile-time option is used.
 */
 int sqlite3_replication_follower(
@@ -8967,6 +8967,9 @@ int sqlite3_replication_follower(
 ** this point on SQLite won't invoke any more hooks on the configured
 ** [sqlite3_replication_methods] implementation, for WAL events associated with
 ** schema S of [database connection] D.
+**
+** When a database is in follower replication mode, no backup can be performed
+** on it.
 **
 ** The [sqlite3_replication_none()] interface is only available when the
 ** SQLITE_ENABLE_REPLICATION compile-time option is used.

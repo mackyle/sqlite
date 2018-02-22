@@ -4369,6 +4369,44 @@ int sqlite3_replication_undo(sqlite3 *db, const char *zSchema){
 #endif /* SQLITE_OMIT_WAL */
   return rc;
 }
+
+/*
+** Checkpoint a database in follower replication mode.
+**
+** This interface must be called only on connections that have been switched
+** to follower replication mode using sqlite3_replication_follower().
+*/
+int sqlite3_replication_checkpoint(
+  sqlite3 *db,
+  const char *zSchema,
+  int eMode,
+  int *pnLog,
+  int *pnCkpt
+){
+  int rc = SQLITE_ERROR;
+#ifndef SQLITE_OMIT_WAL
+  Btree *pBt;
+  Pager *pPager;
+
+#ifdef SQLITE_ENABLE_API_ARMOR
+  if( !sqlite3SafetyCheckOk(db) ){
+    return SQLITE_MISUSE_BKPT;
+  }
+#endif
+
+  sqlite3_mutex_enter(db->mutex);
+  pBt = sqlite3DbNameToBtree(db, zSchema);
+  if( pBt ){
+      sqlite3BtreeEnter(pBt);
+      pPager = sqlite3BtreePager(pBt);
+      assert( pPager );
+      rc = sqlite3PagerReplicationCheckpoint(pPager, db, eMode, pnLog, pnCkpt);
+      sqlite3BtreeLeave(pBt);
+  }
+  sqlite3_mutex_leave(db->mutex);
+#endif /* SQLITE_OMIT_WAL */
+  return rc;
+}
 #endif /* SQLITE_ENABLE_REPLICATION */
 
 #ifndef SQLITE_OMIT_COMPILEOPTION_DIAGS

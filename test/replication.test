@@ -350,6 +350,19 @@ do_test 5.3 {
   } db2
 } {}
 
+# Test that checkpointing leader or follower databases works.
+#
+do_test 5.4 {
+  reset_replication
+  execsql {
+    CREATE TABLE test (n INT);
+  }
+  sqlite3_replication_follower db main
+  sqlite3_replication_checkpoint db main
+
+  file size ./test.db-wal
+} {0}
+
 # Reset the replication configuration for subsequent tests.
 catch {db close}
 catch {db2 close}

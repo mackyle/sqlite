@@ -9037,6 +9037,33 @@ int sqlite3_replication_undo(
 );
 
 /*
+** CAPI3REF: Checkpoint a replicated WAL
+** EXPERIMENTAL
+**
+** The [sqlite3_replication_checkpoint(D,S,M,L,C)] interface checkpoints the
+** replicated WAL for schema S of [database connection] D.
+**
+** The [sqlite3_replication_checkpoint()] interface returns SQLITE_OK on success
+** or an appropriate [error code] if it fails.
+**
+** This interface is meant to be used by replication implementations to perform
+** a checkpoint on a database in follower replication mode.
+**
+** The parameters have the same meaning as for the [sqlite3_wal_checkpoint_v2]
+** interface.
+**
+** The [sqlite3_replication_checkpoint()] interface is only available when the
+** SQLITE_ENABLE_REPLICATION compile-time option is used.
+*/
+int sqlite3_replication_checkpoint(
+  sqlite3 *db,                    /* Database handle */
+  const char *zSchema,            /* Name of attached database (or NULL) */
+  int eMode,                      /* Type of checkpoint */
+  int *pnLog,                     /* OUT: Final number of frames in log */
+  int *pnCkpt                     /* OUT: Final number of checkpointed frames */
+);
+
+/*
 ** Undo the hack that converts floating point types to integer for
 ** builds on processors without floating point support.
 */

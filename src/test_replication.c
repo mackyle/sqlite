@@ -377,6 +377,54 @@ static int SQLITE_TCLAPI test_replication_none(
   return TCL_OK;
 }
 
+/*
+** Usage:    sqlite3_replication_checkpoint HANDLE SCHEMA
+**
+** Checkpoint a database in follower replication mode, using the
+** SQLITE_CHECKPOINT_TRUNCATE checkpoint mode.
+*/
+static int SQLITE_TCLAPI test_replication_checkpoint(
+  void * clientData,
+  Tcl_Interp *interp,
+  int objc,
+  Tcl_Obj *CONST objv[]
+){
+  int rc;
+  sqlite3 *db;
+  const char *zSchema;
+  int nLog;
+  int nCkpt;
+
+  if( objc!=3 ){
+    Tcl_WrongNumArgs(interp, 1, objv,
+        "HANDLE SCHEMA");
+    return TCL_ERROR;
+  }
+
+  if( getDbPointer(interp, Tcl_GetString(objv[1]), &db) ){
+    return TCL_ERROR;
+  }
+  zSchema = Tcl_GetString(objv[2]);
+
+  rc = sqlite3_replication_checkpoint(db, zSchema,
+      SQLITE_CHECKPOINT_TRUNCATE, &nLog, &nCkpt);
+
+  if( rc!=SQLITE_OK ){
+    Tcl_AppendResult(interp, sqlite3ErrName(rc), (char*)0);
+    return TCL_ERROR;
+  }
+  if( nLog!=0 ){
+    Tcl_AppendResult(interp, "the WAL was not truncated", (char*)0);
+    return TCL_ERROR;
+  }
+  if( nCkpt!=0 ){
+    Tcl_AppendResult(interp, "only some frames were checkpointed", (char*)0);
+    return TCL_ERROR;
+  }
+
+  return TCL_OK;
+}
+
 #endif  /* SQLITE_ENABLE_REPLICATION */
 
 /*
@@ -396,6 +444,8 @@ int Sqlitetestreplication_Init(Tcl_Interp *interp){
           test_replication_follower, 0, 0);
   Tcl_CreateObjCommand(interp, "sqlite3_replication_none",
           test_replication_none, 0, 0);
+  Tcl_CreateObjCommand(interp, "sqlite3_replication_checkpoint",
+          test_replication_checkpoint, 0, 0);
 #endif  /* SQLITE_ENABLE_REPLICATION */
   return TCL_OK;
 }

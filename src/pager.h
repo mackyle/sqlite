@@ -193,6 +193,7 @@ int sqlite3PagerSharedLock(Pager *pPager);
   int sqlite3PagerReplicationFrames(Pager *pPager,
       int, int, int, sqlite3_replication_page*, unsigned, int isCommit, int);
   int sqlite3PagerReplicationUndo(Pager *pPager);
+  int sqlite3PagerReplicationCheckpoint(Pager*, sqlite3*, int, int*, int*);
 #endif /* SQLITE_ENABLE_REPLICATION */
 #else
 # define sqlite3PagerUseWal(x,y) 0

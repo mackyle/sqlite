@@ -38,40 +38,112 @@ extern const char *sqlite3ErrName(int);
 extern int getDbPointer(Tcl_Interp *, const char *, sqlite3 **);
 
 /*
-** A no-op version of sqlite3_replication_methods.xBegin().
+** Global replication context used by this stub implementation of
+** sqlite3_replication_methods. It holds a pointer to a connection in follower
+** replication mode.
+*/
+typedef struct testreplicationContextGlobalType testreplicationContextGlobalType;
+struct testreplicationContextGlobalType {
+  sqlite3 *db;         /* Follower connection */
+  const char *zSchema; /* Follower schema name */
+  int eState;          /* Replication state (IDLE, PENDING, WRITING, etc) */
+};
+static testreplicationContextGlobalType testreplicationContextGlobal;
+
+#define STATE_IDLE      0
+#define STATE_PENDING   1
+#define STATE_WRITING   2
+#define STATE_COMMITTED 3
+#define STATE_UNDONE    4
+
+/*
+** A version of sqlite3_replication_methods.xBegin() that transitions the global
+** replication context state to STATE_PENDING.
 */
 static int testreplicationBegin(void *pCtx){
+  assert( pCtx==&testreplicationContextGlobal );
+  assert( testreplicationContextGlobal.eState==STATE_IDLE );
+  testreplicationContextGlobal.eState = STATE_PENDING;
   return 0;
 }
 
 /*
-** A no-op version of sqlite3_replication_methods.xAbort().
+** A version of sqlite3_replication_methods.xAbort() that transitions the global
+** replication context state to STATE_IDLE.
 */
 static int testreplicationAbort(void *pCtx){
+  assert( testreplicationContextGlobal.eState==STATE_PENDING );
+  testreplicationContextGlobal.eState = STATE_IDLE;
   return 0;
 }
 
 /*
-** A no-op version of sqlite3_replication_methods.xFrames().
+** A version of sqlite3_replication_methods.xFrames() that invokes
+** sqlite3_replication_frames() on the follower connection configured in the
+** global test replication context (if present).
 */
 static int testreplicationFrames(void *pCtx, int szPage, int nList,
   sqlite3_replication_page *pList, unsigned nTruncate, int isCommit,
   unsigned sync_flags
 ){
-  return 0;
+  int rc = SQLITE_OK;
+  int isBegin;
+  assert( pCtx==&testreplicationContextGlobal );
+  assert( testreplicationContextGlobal.eState==STATE_PENDING
+       || testreplicationContextGlobal.eState==STATE_WRITING
+  );
+  if( testreplicationContextGlobal.db ){
+    /* If the replication state is STATE_PENDING, it means that this is the
+    ** first batch of frames of a new transaction. */
+    if( testreplicationContextGlobal.eState==STATE_PENDING ){
+      isBegin = 1;
+      testreplicationContextGlobal.eState = STATE_WRITING;
+    }
+    rc = sqlite3_replication_frames(
+          testreplicationContextGlobal.db,
+          testreplicationContextGlobal.zSchema,
+          isBegin, szPage, nList, pList, nTruncate, isCommit, sync_flags
+    );
+    if( isCommit ){
+      testreplicationContextGlobal.eState = STATE_COMMITTED;
+    }
+  }
+  return rc;
 }
 
 /*
-** A no-op version of sqlite3_replication_methods.xUndo().
+** A version of sqlite3_replication_methods.xUndo() that invokes
+** sqlite3_replication_undo() on the follower connection configured in the
+** global test replication context (if present).
 */
 static int testreplicationUndo(void *pCtx){
-  return 0;
+  int rc = SQLITE_OK;
+  assert( pCtx==&testreplicationContextGlobal );
+  assert( testreplicationContextGlobal.eState==STATE_PENDING
+       || testreplicationContextGlobal.eState==STATE_WRITING
+  );
+  if( testreplicationContextGlobal.db
+   && testreplicationContextGlobal.eState==STATE_WRITING ){
+    rc = sqlite3_replication_undo(
+        testreplicationContextGlobal.db,
+        testreplicationContextGlobal.zSchema
+    );
+    testreplicationContextGlobal.eState = STATE_UNDONE;
+  }
+  return rc;
 }
 
 /*
-** A no-op version of sqlite3_replication_methods.xEnd().
+** A version of sqlite3_replication_methods.xEnd() that transitions the global
+** replication context state to STATE_IDLE.
 */
 static int testreplicationEnd(void *pCtx){
+  assert( pCtx==&testreplicationContextGlobal );
+  assert( testreplicationContextGlobal.eState==STATE_PENDING
+       || testreplicationContextGlobal.eState==STATE_COMMITTED
+       || testreplicationContextGlobal.eState==STATE_UNDONE
+  );
+  testreplicationContextGlobal.eState = STATE_IDLE;
   return 0;
 }
 
@@ -99,6 +171,12 @@ void installTestReplication(
     if( installFlag ){
       sqlite3_config(SQLITE_CONFIG_GETREPLICATION, &defaultReplication);
       assert( defaultReplication.xBegin==0 );
+
+      /* Reset any previous state */
+      testreplicationContextGlobal.db = 0;
+      testreplicationContextGlobal.zSchema = 0;
+      testreplicationContextGlobal.eState = STATE_IDLE;
+
       sqlite3_config(SQLITE_CONFIG_REPLICATION, &testReplication);
     }else{
       assert( defaultReplication.xBegin==0 );
@@ -212,7 +290,7 @@ static int SQLITE_TCLAPI test_replication_leader(
   }
   zSchema = Tcl_GetString(objv[2]);
 
-  rc = sqlite3_replication_leader(db, zSchema, 0);
+  rc = sqlite3_replication_leader(db, zSchema, &testreplicationContextGlobal);
 
   if( rc!=SQLITE_OK ){
     Tcl_AppendResult(interp, sqlite3ErrName(rc), (char*)0);
@@ -225,7 +303,9 @@ static int SQLITE_TCLAPI test_replication_leader(
 /*
 ** Usage:    sqlite3_replication_follower HANDLE SCHEMA
 **
-** Enable follower replication for the given connection/schema.
+** Enable follower replication for the given connection/schema. The global test
+** replication context will be set to point to this connection/schema and WAL
+** events will be replicated to it.
 */
 static int SQLITE_TCLAPI test_replication_follower(
   void * clientData,
@@ -254,6 +334,9 @@ static int SQLITE_TCLAPI test_replication_follower(
     Tcl_AppendResult(interp, sqlite3ErrName(rc), (char*)0);
     return TCL_ERROR;
   }
+
+  testreplicationContextGlobal.db = db;
+  testreplicationContextGlobal.zSchema = zSchema;
 
   return TCL_OK;
 }

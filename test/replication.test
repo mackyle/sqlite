@@ -23,6 +23,7 @@ set testprefix replication
 proc reset_replication {} {
   catch {db close}
   sqlite3_shutdown
+  sqlite3_config_test_replication 0
   sqlite3_config_test_replication 1
   reset_db
   execsql {

@@ -503,6 +503,8 @@ int sqlite3_exec(
 #define SQLITE_IOERR_BEGIN_ATOMIC      (SQLITE_IOERR | (29<<8))
 #define SQLITE_IOERR_COMMIT_ATOMIC     (SQLITE_IOERR | (30<<8))
 #define SQLITE_IOERR_ROLLBACK_ATOMIC   (SQLITE_IOERR | (31<<8))
+#define SQLITE_IOERR_NOT_LEADER        (SQLITE_IOERR | (32<<8))
+#define SQLITE_IOERR_LEADERSHIP_LOST   (SQLITE_IOERR | (33<<8))
 #define SQLITE_LOCKED_SHAREDCACHE      (SQLITE_LOCKED |  (1<<8))
 #define SQLITE_BUSY_RECOVERY           (SQLITE_BUSY   |  (1<<8))
 #define SQLITE_BUSY_SNAPSHOT           (SQLITE_BUSY   |  (2<<8))
@@ -8837,6 +8839,22 @@ typedef struct sqlite3_replication_page {
 ** An instance of this structure defines a set of write-ahead log lifecycle
 ** hooks that can be used by third party libraries to replicate the write-ahead
 ** log across all SQLite instances that are part of a cluster.
+**
+** A replication library should set a connection to leader replication mode
+** using [sqlite3_replication_leader]. At that point SQLite will invoke the
+** replication hooks whenever queries in that connection trigger WAL
+** changes. The replication library is then in charge of broadcasting the events
+** to other nodes and wait for a quorum.
+**
+** In case the node running the hook is not the current leader, then
+** [SQLITE_IOERR_NOT_LEADER] should be returned. This means that no broadcast
+** attempt was made at all.
+**
+** In case the node running the hook was the leader when the hook fired but was
+** the deposed half way while broadcasting, then [SQLITE_IOERR_LEADERSHIP_LOST]
+** should be returned. No assumption can be made whether the broadcast was
+** successful or not, and the replication library should take appropriate
+** recovery measures when a new leader gets elected.
 */
 typedef struct sqlite3_replication_methods {
   int (*xBegin)(void*);

@@ -4211,6 +4211,12 @@ int sqlite3_replication_leader(sqlite3 *db, const char *zSchema, void *pCtx){
       assert( pPager );
       rc = sqlite3PagerReplicationModeSet(
           pPager, db, SQLITE_REPLICATION_LEADER, pCtx);
+      if( rc==SQLITE_OK ) {
+        /* Disable checkpointing the WAL on close, since the replication
+        ** implementation should take care of checkpointing explicitly. */
+        int ckpt;
+        rc = sqlite3_db_config(db, SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, 1, &ckpt);
+      }
       sqlite3BtreeLeave(pBt);
   }
   sqlite3_mutex_leave(db->mutex);
@@ -4240,6 +4246,18 @@ int sqlite3_replication_follower(sqlite3 *db, const char *zSchema){
       assert( pPager );
       rc = sqlite3PagerReplicationModeSet(
         pPager, db, SQLITE_REPLICATION_FOLLOWER, 0);
+      if( rc==SQLITE_OK ){
+	/* Disable checkpointing the WAL on close, since the replication
+	** implementation should take care of checkpointing explicitly. */
+	int ckpt;
+	rc = sqlite3_db_config(db, SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, 1, &ckpt);
+
+        /* Invalidate all current cursors for this backend. Trying to create
+        ** a new cursor will also fail when in follower replication mode. */
+	if( rc==SQLITE_OK ){
+	  rc = sqlite3BtreeTripAllCursors(pBt, SQLITE_MISUSE, 0);
+	}
+      }
       sqlite3BtreeLeave(pBt);
   }
   sqlite3_mutex_leave(db->mutex);

@@ -130,6 +130,20 @@ do_test 2.6 {
   }
 } {}
 
+# Test that checkpoint-on-close is disabled for leader connections.
+#
+do_test 2.7 {
+  reset_replication
+  sqlite3_replication_leader db main
+  execsql {
+    CREATE TABLE test (n INT);
+    INSERT INTO test(n) VALUES(1);
+    SELECT n FROM test;
+  }
+  db close
+  file exists test.db-wal
+} {1}
+
 #-------------------------------------------------------------------------
 # The following block of tests - wal-3.* - focus on testing the
 # implementation of the sqlite3_replication_follower() interface.

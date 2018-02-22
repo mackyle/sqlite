@@ -2100,7 +2100,8 @@ int setReplicationMode(
   sqlite3 *db,
   const char *zDbName,
   u8 mode,
-  sqlite3_replication_methods *methods
+  sqlite3_replication_methods *methods,
+  void *pCtx
 ){
   int rc = SQLITE_OK;
   Btree *pBt;
@@ -2119,7 +2120,7 @@ int setReplicationMode(
       sqlite3BtreeEnter(pBt);
       pPager = sqlite3BtreePager(pBt);
       assert( pPager );
-      rc = sqlite3PagerSetReplicationMode(pPager, mode, methods);
+      rc = sqlite3PagerSetReplicationMode(pPager, mode, methods, pCtx);
 
       if ( rc==SQLITE_OK && mode==PAGER_REPLICATION_FOLLOWER ) {
 	// Invalidate all current cursors for this backend. Trying to create
@@ -2238,7 +2239,7 @@ int sqlite3_replication_none(
   const char *zDbName                   /* Enable follower replication on this backend */
 ) {
 #ifndef SQLITE_OMIT_WAL
-  return setReplicationMode(db, zDbName, PAGER_REPLICATION_NONE, 0);
+  return setReplicationMode(db, zDbName, PAGER_REPLICATION_NONE, 0, 0);
 #else
   return SQLITE_MISUSE_BKPT;
 #endif
@@ -2283,10 +2284,11 @@ int sqlite3_replication_mode(
 int sqlite3_replication_leader(
   sqlite3 *db,                          /* The db handle to use */
   const char *zDbName,                  /* Enable replication on this database */
-  sqlite3_replication_methods *methods  /* Replication implementation */
+  sqlite3_replication_methods *methods,  /* Replication implementation */
+  void *pCtx
 ) {
 #ifndef SQLITE_OMIT_WAL
-  return setReplicationMode(db, zDbName, PAGER_REPLICATION_LEADER, methods);
+  return setReplicationMode(db, zDbName, PAGER_REPLICATION_LEADER, methods, pCtx);
 #else
   return SQLITE_MISUSE_BKPT;
 #endif
@@ -2297,7 +2299,7 @@ int sqlite3_replication_follower(
   const char *zDbName                   /* Enable follower replication on this backend */
 ) {
 #ifndef SQLITE_OMIT_WAL
-  return setReplicationMode(db, zDbName, PAGER_REPLICATION_FOLLOWER, 0);
+  return setReplicationMode(db, zDbName, PAGER_REPLICATION_FOLLOWER, 0, 0);
 #else
   return SQLITE_MISUSE_BKPT;
 #endif

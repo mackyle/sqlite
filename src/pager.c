@@ -717,6 +717,7 @@ struct Pager {
   Wal *pWal;                  /* Write-ahead log used by "journal_mode=wal" */
   char *zWal;                 /* File name for write-ahead log */
   u8 replicationMode;         /* Pager state (OPEN, READER, WRITER_LOCKED) */
+  void* replicationCtx;
   sqlite3_replication_methods *replicationMethods;
 #endif
 };
@@ -2118,7 +2119,7 @@ static int pager_end_transaction(Pager *pPager, int hasMaster, int bCommit){
       /* When in leader replication mode fire the xEnd callback of the
       ** replication implementation.
       */
-      rc2 = pPager->replicationMethods->xEnd(pPager->replicationMethods->pArg);
+      rc2 = pPager->replicationMethods->xEnd(pPager->replicationCtx);
     }else{
       /* Drop the WAL write-lock, if any. Also, if the connection was in 
       ** locking_mode=exclusive mode but is no longer, drop the EXCLUSIVE 
@@ -3168,7 +3169,7 @@ static int pagerRollbackWal(Pager *pPager){
   if ( pPager->replicationMode==PAGER_REPLICATION_LEADER ) {
     /* When in leader replication mode fire the xUndo callback of the
     ** replication implementation. */
-    rc = pPager->replicationMethods->xUndo(pPager->replicationMethods->pArg);
+    rc = pPager->replicationMethods->xUndo(pPager->replicationCtx);
   }else{
     rc = sqlite3WalUndo(pPager->pWal, pagerUndoCallback, (void *)pPager);
   }
@@ -3249,7 +3250,7 @@ static int pagerWalFrames(
 	pReplPg += 1;
       }
       pReplPg -= nList;
-      rc = pPager->replicationMethods->xWalFrames(pPager->replicationMethods->pArg,
+      rc = pPager->replicationMethods->xWalFrames(pPager->replicationCtx,
           pPager->pageSize, nList, pReplPg, nTruncate, isCommit, pPager->walSyncFlags
       );
       sqlite3_free(pReplPg);
@@ -5870,7 +5871,7 @@ int sqlite3PagerBegin(Pager *pPager, int exFlag, int subjInMemory){
       */
       if ( pPager->replicationMode==PAGER_REPLICATION_LEADER ) {
         assert( pPager->replicationMethods );
-        rc = pPager->replicationMethods->xBegin(pPager->replicationMethods->pArg);
+        rc = pPager->replicationMethods->xBegin(pPager->replicationCtx);
       }else{
         rc = sqlite3WalBeginWriteTransaction(pPager->pWal);
       }
@@ -7458,7 +7459,7 @@ int sqlite3PagerCheckpoint(
   if( pPager->pWal ){
     if ( pPager->replicationMode==PAGER_REPLICATION_LEADER ){
       assert( pPager->replicationMethods );
-      rc = pPager->replicationMethods->xCheckpoint(pPager->replicationMethods->pArg,
+      rc = pPager->replicationMethods->xCheckpoint(pPager->replicationCtx,
           eMode, pnLog, pnCkpt);
     }else{
       rc = sqlite3WalCheckpoint(pPager->pWal, db, eMode,
@@ -7703,7 +7704,8 @@ int sqlite3PagerSnapshotRecover(Pager *pPager){
 int sqlite3PagerSetReplicationMode(
   Pager *pPager,
   u8 mode,
-  sqlite3_replication_methods *methods
+  sqlite3_replication_methods *methods,
+  void *pCtx
 ){
   int rc = SQLITE_OK;
 
@@ -7727,6 +7729,7 @@ int sqlite3PagerSetReplicationMode(
     if ( rc==SQLITE_OK ) {
       pPager->replicationMode = mode;
       pPager->replicationMethods = methods;
+      pPager->replicationCtx = pCtx;
     }
   }
 

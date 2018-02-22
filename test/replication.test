@@ -196,6 +196,15 @@ do_test 3.4 {
   list [catch {sqlite3_backup B db2 main db main} msg] $msg
 } {1 {sqlite3_backup_init() failed}}
 
+# Test that an error is returned when trying to perform a query on a database
+# in follower replication mode.
+#
+do_test 3.5 {
+  reset_replication
+  sqlite3_replication_follower db main
+  list [catch {db eval {SELECT 1}} msg] $msg
+} {1 {database is in follower replication mode: main}}
+
 #-------------------------------------------------------------------------
 # The following block of tests - wal-4.* - focus on testing the
 # implementation of the sqlite3_replication_none() interface.

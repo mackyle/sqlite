@@ -231,6 +231,16 @@ do_test 4.3 {
   sqlite3_replication_mode db main
 } {SQLITE_REPLICATION_NONE}
 
+# Test that a connection that is set back to no replication after
+# follower replication can perform queries again.
+#
+do_test 4.4 {
+  reset_replication
+  sqlite3_replication_follower db main
+  sqlite3_replication_none db main
+  execsql {SELECT 1}
+} {1}
+
 # Reset the replication configuration for subsequent tests.
 db close
 sqlite3_shutdown

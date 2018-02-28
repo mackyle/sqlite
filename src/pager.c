@@ -718,6 +718,7 @@ struct Pager {
   char *zWal;                 /* File name for write-ahead log */
 #ifdef SQLITE_ENABLE_REPLICATION
   u8 replicationMode;         /* Replication mode (NONE, LEADER, FOLLOWER) */
+  void *pReplicationCtx;      /* Replication context (user-defined) */
 #endif /* SQLITE_ENABLE_REPLICATION */
 #endif /* SQLITE_OMIT_WAL */
 };
@@ -7623,6 +7624,71 @@ int sqlite3PagerSnapshotRecover(Pager *pPager){
 */
 int sqlite3PagerReplicationModeGet(Pager *pPager) {
   return (int)(pPager->replicationMode);
+}
+
+/*
+** Set the pager's replication mode.
+**
+** If this is not a WAL database, return an error.
+**
+** If the given mode is SQLITE_REPLICATION_LEADER, this pager will fire the
+** various callbacks defined in the sqlite3_replication_methods interface (which
+** must have been configured with SQLITE_CONFIG_REPLICATION), notifying the
+** replication implementation of events such as beginning a write transaction,
+** writing new frames to the write-ahead log, undoing a write transaction and
+** ending a write transaction. In all these cases, the given context pointer
+** will be passed as argument to the sqlite3_replication_methods hooks. If the
+** current mode is not SQLITE_REPLICATION_NONE, trying to set
+** SQLITE_REPLICATION_LEADER produces an error.
+*/
+int sqlite3PagerReplicationModeSet(
+  Pager *pPager,
+  sqlite3 *db,
+  u8 mode,
+  void *pCtx
+){
+  int rc = SQLITE_OK;
+
+  /* We require the database to be in WAL mode */
+  if( pPager->journalMode!=PAGER_JOURNALMODE_WAL ){
+    return SQLITE_ERROR;
+  }
+
+  /* Make sure the given mode is a valid one */
+  assert( mode==SQLITE_REPLICATION_NONE
+       || mode==SQLITE_REPLICATION_LEADER
+       || mode==SQLITE_REPLICATION_FOLLOWER
+  );
+
+  if( mode==SQLITE_REPLICATION_LEADER ){
+    /* When setting leader replication, the replication methods must
+    ** have been configured. */
+    assert( sqlite3GlobalConfig.replication.xBegin
+         || sqlite3GlobalConfig.replication.xFrames
+         || sqlite3GlobalConfig.replication.xUndo
+         || sqlite3GlobalConfig.replication.xEnd
+    );
+  }else{
+    /* Passing a context is not legal for non-leader replication modes */
+    assert( !pCtx );
+  }
+
+  /* Check the requested state transition is legal. */
+  switch( mode ){
+    case SQLITE_REPLICATION_LEADER: {
+      if( pPager->replicationMode!=SQLITE_REPLICATION_NONE ){
+        rc = SQLITE_ERROR;
+      }
+      break;
+    }
+  }
+
+  if( rc==SQLITE_OK ){
+    pPager->replicationMode = mode;
+    pPager->pReplicationCtx = pCtx;
+  }
+
+  return rc;
 }
 #endif /* SQLITE_ENABLE_REPLICATION */
 

@@ -8883,6 +8883,41 @@ int sqlite3_replication_mode(
 );
 
 /*
+** CAPI3REF: Enable leader replication mode on a connection.
+** EXPERIMENTAL
+**
+** The [sqlite3_replication_leader(D,S,P)] interface enables leader write-ahead
+** log replication for schema S of [database connection] D, saving P as context
+** argument to be passed to the [sqlite3_replication_methods] hooks.
+**
+** The [sqlite3_replication_leader()] interface returns SQLITE_OK on success
+** or an appropriate [error code] if it fails.
+**
+** In order to succeed, a call to [sqlite3_replication_leader(D,S,P)] requires
+** that SQLite has been configured with a valid [sqlite3_replication_methods]
+** implementation (using the [SQLITE_CONFIG_REPLICATION] configuration
+** option), that the database file for schema S is in [WAL mode], and that the
+** current replication mode value is [SQLITE_REPLICATION_NONE].
+**
+** After the call returns, the replication mode for this database will be set to
+** SQLITE_REPLICATION_LEADER and from this point on SQLite will notify the
+** configured [sqlite3_replication_methods] implementation whenever a WAL event
+** involving a write transaction occurs (begin, write frames, undo, end). SQLite
+** will block on the particular [sqlite3_replication_methods] hook that was
+** fired. The hook implementation should typically broadcast WAL-changing events
+** such as writing frames or undoing changes to a number of other nodes and wait
+** for a quorum of them to acknowledge it.
+**
+** The [sqlite3_replication_leader()] interface is only available when the
+** SQLITE_ENABLE_REPLICATION compile-time option is used.
+*/
+int sqlite3_replication_leader(
+  sqlite3 *db,                      /* Database handle */
+  const char *zSchema,              /* Name of attached database (or NULL) */
+  void *pCtx                        /* Application-defined context */
+);
+
+/*
 ** Undo the hack that converts floating point types to integer for
 ** builds on processors without floating point support.
 */

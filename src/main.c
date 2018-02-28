@@ -4185,6 +4185,39 @@ int sqlite3_replication_mode(sqlite3 *db, const char *zSchema, int *eMode){
 #endif /* SQLITE_OMIT_WAL */
   return rc;
 }
+
+/*
+** Put the given schema on the given connection in write-ahead log leader
+** replication mode, registering a context to be passed back to the configured
+** sqlite3_replication_methods implementation upon WAL lifecycle events, such as
+** begin a write transaction, write new frames to the log, undo a write
+** transaction and end a write transaction.
+*/
+int sqlite3_replication_leader(sqlite3 *db, const char *zSchema, void *pCtx){
+  int rc = SQLITE_ERROR;
+#ifndef SQLITE_OMIT_WAL
+
+#ifdef SQLITE_ENABLE_API_ARMOR
+  if( !sqlite3SafetyCheckOk(db) ){
+    return SQLITE_MISUSE_BKPT;
+  }
+#endif
+
+  sqlite3_mutex_enter(db->mutex);
+  Btree *pBt = sqlite3DbNameToBtree(db, zSchema);
+  if( pBt ){
+      sqlite3BtreeEnter(pBt);
+      Pager *pPager = sqlite3BtreePager(pBt);
+      assert( pPager );
+      rc = sqlite3PagerReplicationModeSet(
+          pPager, db, SQLITE_REPLICATION_LEADER, pCtx);
+      sqlite3BtreeLeave(pBt);
+  }
+  sqlite3_mutex_leave(db->mutex);
+#endif /* SQLITE_OMIT_WAL */
+  return rc;
+}
+
 #endif /* SQLITE_ENABLE_REPLICATION */
 
 #ifndef SQLITE_OMIT_COMPILEOPTION_DIAGS

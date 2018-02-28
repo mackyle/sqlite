@@ -186,6 +186,42 @@ static int SQLITE_TCLAPI test_replication_mode(
   return TCL_OK;
 }
 
+/*
+** Usage:    sqlite3_replication_leader HANDLE SCHEMA
+**
+** Enable leader replication for the given connection/schema.
+*/
+static int SQLITE_TCLAPI test_replication_leader(
+  void * clientData,
+  Tcl_Interp *interp,
+  int objc,
+  Tcl_Obj *CONST objv[]
+){
+  int rc;
+  sqlite3 *db;
+  const char *zSchema;
+
+  if( objc!=3 ){
+    Tcl_WrongNumArgs(interp, 1, objv,
+        "HANDLE SCHEMA");
+    return TCL_ERROR;
+  }
+
+  if( getDbPointer(interp, Tcl_GetString(objv[1]), &db) ){
+    return TCL_ERROR;
+  }
+  zSchema = Tcl_GetString(objv[2]);
+
+  rc = sqlite3_replication_leader(db, zSchema, 0);
+
+  if( rc!=SQLITE_OK ){
+    Tcl_AppendResult(interp, sqlite3ErrName(rc), (char*)0);
+    return TCL_ERROR;
+  }
+
+  return TCL_OK;
+}
+
 #endif  /* SQLITE_ENABLE_REPLICATION */
 
 /*
@@ -199,6 +235,8 @@ int Sqlitetestreplication_Init(Tcl_Interp *interp){
           test_replication,0,0);
   Tcl_CreateObjCommand(interp, "sqlite3_replication_mode",
           test_replication_mode, 0, 0);
+  Tcl_CreateObjCommand(interp, "sqlite3_replication_leader",
+          test_replication_leader, 0, 0);
 #endif  /* SQLITE_ENABLE_REPLICATION */
   return TCL_OK;
 }

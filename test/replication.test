@@ -22,6 +22,9 @@ set testprefix replication
 #
 proc reset_replication {} {
   catch {db close}
+  catch {db2 close}
+  forcedelete test2.db
+  forcedelete test2.db-wal
   sqlite3_shutdown
   sqlite3_config_test_replication 0
   sqlite3_config_test_replication 1
@@ -242,8 +245,105 @@ do_test 4.4 {
   execsql {SELECT 1}
 } {1}
 
+#-------------------------------------------------------------------------
+# The following block of tests - wal-5.* - focus on testing the
+# implementation of the sqlite3_replication_{begin,frames,undo,end}()
+# interfaces, by running them both on a leader and an follower
+# connection, using the test replication implementation.
+
+# Test that replicated transactions work transparently from the leader
+# connection user's point of view.
+#
+do_test 5.0 {
+  reset_replication
+  sqlite3 db2 ./test2.db
+  execsql {
+    PRAGMA journal_mode = WAL;
+  } db2
+  sqlite3_replication_leader db main
+  sqlite3_replication_follower db2 main
+  execsql {
+    CREATE TABLE test (n INT);
+    INSERT INTO test(n) VALUES(1);
+    SELECT n FROM test;
+  }
+} {1}
+
+# Test that the content of the WAL is replicated to the follower
+# connection.
+#
+do_test 5.1 {
+  reset_replication
+  sqlite3 db2 ./test2.db
+  execsql {
+    PRAGMA journal_mode = WAL;
+  } db2
+  sqlite3_replication_leader db main
+  sqlite3_replication_follower db2 main
+  execsql {
+    CREATE TABLE test (n INT);
+    INSERT INTO test(n) VALUES(1);
+  }
+  db close
+  db2 close
+
+  # checkpoint-on-close is disabled for both leader and follower
+  # connections
+  file exists test.db-wal
+  file exists test2.db-wal
+
+  set size1 [file size test.db-wal]
+  set size2 [file size test2.db-wal]
+
+  expr {$size1 > 0 && $size1 == $size2 }
+} {1}
+
+# Test that opening and querying a replicated database works normally.
+#
+do_test 5.2 {
+  reset_replication
+  sqlite3 db2 ./test2.db
+  execsql {
+    PRAGMA journal_mode = WAL;
+  } db2
+  sqlite3_replication_leader db main
+  sqlite3_replication_follower db2 main
+  execsql {
+    CREATE TABLE test (n INT);
+    INSERT INTO test(n) VALUES(1);
+  }
+  sqlite3_replication_none db2 main
+  execsql {
+    SELECT n FROM TEST;
+  } db2
+} {1}
+
+# Test that rolling back a transaction reverts the changes in the
+# follower database as well.
+#
+do_test 5.3 {
+  reset_replication
+  sqlite3 db2 ./test2.db
+  execsql {
+    PRAGMA journal_mode = WAL;
+  } db2
+  sqlite3_replication_leader db main
+  sqlite3_replication_follower db2 main
+  execsql {
+    CREATE TABLE test (n INT);
+    BEGIN;
+    INSERT INTO test(n) VALUES(1);
+    ROLLBACK;
+  }
+  sqlite3_replication_none db2 main
+  execsql {
+    SELECT n FROM TEST;
+  } db2
+} {}
+
 # Reset the replication configuration for subsequent tests.
-db close
+catch {db close}
+catch {db2 close}
 sqlite3_shutdown
 sqlite3_config_test_replication 0
 sqlite3_initialize

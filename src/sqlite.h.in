@@ -8977,6 +8977,41 @@ int sqlite3_replication_none(
 );
 
 /*
+** CAPI3REF: Write WAL frames in the context of a replicated transaction.
+** EXPERIMENTAL
+**
+** The [sqlite3_replication_frames(D,S,B,P,N,L,T,C,F)] interface writes new
+** frames into the write-ahead log for schema S of [database connection] D.
+**
+** The [sqlite3_replication_frames()] interface returns SQLITE_OK on success
+** or an appropriate [error code] if it fails.
+**
+** In order to succeed, a call to [sqlite3_replication_frames()] requires that
+** schema S of [database connection] D has been set to follower replication mode
+** using [sqlite3_replication_follower].
+**
+** The B, P, N, L, T, C, and F parameters contain information about the new
+** pages to append to the write-ahead log. If B is non-zero, then this is the
+** first batch of frames of a new WAL write transaction, and a new transaction
+** will be started. If C is non-zero, then this is the final batch of frames of
+** a WAL write transaction, and a commit will be performed.
+**
+** The [sqlite3_replication_frames()] interface is only available when the
+** SQLITE_ENABLE_REPLICATION compile-time option is used.
+*/
+int sqlite3_replication_frames(
+  sqlite3 *db,                      /* Database handle */
+  const char *zSchema,              /* Name of attached database (or NULL) */
+  int isBegin,                      /* Begin flag, used for new transactions */
+  int szPage,                       /* Database page-size in bytes */
+  int nList,                        /* Number of pages to write */
+  sqlite3_replication_page *pList,  /* List of pages to write */
+  unsigned nTruncate,               /* Truncate flag, used by the WAL */
+  int isCommit,                     /* Commit flag, used for committing */
+  int sync_flags                    /* Sync flags, used by the WAL */
+);
+
+/*
 ** Undo the hack that converts floating point types to integer for
 ** builds on processors without floating point support.
 */

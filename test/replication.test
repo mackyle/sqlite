@@ -85,14 +85,59 @@ do_test 2.2 {
   list [catch {sqlite3_replication_leader db main} msg] $msg
 } {1 SQLITE_ERROR}
 
+# Test that an error is returned if the current mode is follower.
+#
+do_test 2.3 {
+  reset_replication
+  sqlite3_replication_follower db main
+  list [catch {sqlite3_replication_leader db main} msg] $msg
+} {1 SQLITE_ERROR}
+
 # Test that the replication mode value is set to
 # SQLITE_REPLICATION_LEADER after a successful call.
 #
-do_test 2.3 {
+do_test 2.4 {
   reset_replication
   sqlite3_replication_leader db main
   sqlite3_replication_mode db main
 } {SQLITE_REPLICATION_LEADER}
+
+#-------------------------------------------------------------------------
+# The following block of tests - wal-3.* - focus on testing the
+# implementation of the sqlite3_replication_follower() interface.
+
+# Test that an error is returned if the given schema name is invalid.
+#
+do_test 3.0 {
+  reset_replication
+  list [catch {sqlite3_replication_follower db garbage} msg] $msg
+} {1 SQLITE_ERROR}
+
+# Test that trying to enable follower replication twice for the same
+# database results in an error.
+#
+do_test 3.1 {
+  reset_replication
+  sqlite3_replication_follower db main
+  list [catch {sqlite3_replication_follower db main} msg] $msg
+} {1 SQLITE_ERROR}
+
+# Test that an error is returned if the current mode is leader.
+#
+do_test 3.2 {
+  reset_replication
+  sqlite3_replication_leader db main
+  list [catch {sqlite3_replication_follower db main} msg] $msg
+} {1 SQLITE_ERROR}
+
+# Test that the replication mode value is set to
+# SQLITE_REPLICATION_FOLLOWER after a successful call.
+#
+do_test 3.3 {
+  reset_replication
+  sqlite3_replication_follower db main
+  sqlite3_replication_mode db main
+} {SQLITE_REPLICATION_FOLLOWER}
 
 # Reset the replication configuration for subsequent tests.
 db close

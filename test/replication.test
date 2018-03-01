@@ -363,6 +363,87 @@ do_test 5.4 {
   file size ./test.db-wal
 } {0}
 
+# Test that if the xBegin or xFrame hook returns a replication error,
+# then the transaction fails.
+#
+foreach { i method error } {
+1 xBegin  NOT_LEADER
+2 xBegin  LEADERSHIP_LOST
+3 xFrames NOT_LEADER
+4 xFrames LEADERSHIP_LOST
+} {
+  do_test 5.5.$i {
+    catch {db close}
+    sqlite3_shutdown
+    sqlite3_config_test_replication 0
+    sqlite3_config_test_replication 1 $method $error
+    reset_db
+    execsql {
+      PRAGMA journal_mode = WAL;
+    }
+    sqlite3_replication_leader db main
+    list [catch {db eval {CREATE TABLE test (n INT)}} msg] $msg
+  } {1 {disk I/O error}}
+}
+
+# Test that if the pager fails to begin a WAL write transaction,
+# the xAbort hook is fired.
+#
+do_test 5.6 {
+  reset_replication
+  execsql {
+    CREATE TABLE test (n INT);
+  }
+  sqlite3_replication_leader db main
+  sqlite3 db2 ./test.db
+  db2 eval {
+    BEGIN;
+    INSERT INTO test VALUES(1);
+  }
+
+  # Trying to start a write transaction now fails with
+  # SQLITE_BUSY, and should trigger the xAbort hook.
+  catch {db eval {
+    BEGIN;
+    INSERT INTO test VALUES(2);
+  }}
+  db eval { ROLLBACK }
+  db2 eval { COMMIT; }
+
+  # Re-trying the failed insert succeeds, as the xAbort
+  # hook has reset the state of the global replication.
+  execsql {
+    BEGIN;
+    INSERT INTO test VALUES(2);
+    COMMIT;
+  }
+} {}
+
+# Test that if the xUndo hook returns a replication error, the
+# rollback still succeeds.
+#
+foreach { i method error } {
+1 xUndo  NOT_LEADER
+2 xUndo  LEADERSHIP_LOST
+} {
+  do_test 5.7.$i {
+    catch {db close}
+    sqlite3_shutdown
+    sqlite3_config_test_replication 0
+    sqlite3_config_test_replication 1 $method $error
+    reset_db
+    execsql {
+      PRAGMA journal_mode = WAL;
+    }
+    sqlite3_replication_leader db main
+    execsql {
+      BEGIN;
+      CREATE TABLE test (n INT);
+      ROLLBACK;
+    }
+  } {}
+}
+
 # Reset the replication configuration for subsequent tests.
 catch {db close}
 catch {db2 close}

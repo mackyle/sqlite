@@ -47,6 +47,8 @@ struct testreplicationContextGlobalType {
   sqlite3 *db;         /* Follower connection */
   const char *zSchema; /* Follower schema name */
   int eState;          /* Replication state (IDLE, PENDING, WRITING, etc) */
+  int eFailing;        /* Code of a method that should fail when triggered */
+  int rc;              /* If non-zero, the eFailing method will error */
 };
 static testreplicationContextGlobalType testreplicationContextGlobal;
 
@@ -56,15 +58,26 @@ static testreplicationContextGlobalType testreplicationContextGlobal;
 #define STATE_COMMITTED 3
 #define STATE_UNDONE    4
 
+#define FAILING_BEGIN  1
+#define FAILING_FRAMES 2
+#define FAILING_UNDO   3
+#define FAILING_END    4
+
 /*
 ** A version of sqlite3_replication_methods.xBegin() that transitions the global
 ** replication context state to STATE_PENDING.
 */
 static int testreplicationBegin(void *pCtx){
+  int rc = SQLITE_OK;
   assert( pCtx==&testreplicationContextGlobal );
   assert( testreplicationContextGlobal.eState==STATE_IDLE );
   testreplicationContextGlobal.eState = STATE_PENDING;
-  return 0;
+  if( testreplicationContextGlobal.eFailing==FAILING_BEGIN ){
+    rc = testreplicationContextGlobal.rc;
+    /* Switch back to IDLE, since xEnd won't be invoked */
+    testreplicationContextGlobal.eState = STATE_IDLE;
+  }
+  return rc;
 }
 
 /*
@@ -92,7 +105,9 @@ static int testreplicationFrames(void *pCtx, int szPage, int nList,
   assert( testreplicationContextGlobal.eState==STATE_PENDING
        || testreplicationContextGlobal.eState==STATE_WRITING
   );
-  if( testreplicationContextGlobal.db ){
+  if( testreplicationContextGlobal.eFailing==FAILING_FRAMES ){
+    rc = testreplicationContextGlobal.rc;
+  }else if( testreplicationContextGlobal.db ){
     /* If the replication state is STATE_PENDING, it means that this is the
     ** first batch of frames of a new transaction. */
     if( testreplicationContextGlobal.eState==STATE_PENDING ){
@@ -122,7 +137,9 @@ static int testreplicationUndo(void *pCtx){
   assert( testreplicationContextGlobal.eState==STATE_PENDING
        || testreplicationContextGlobal.eState==STATE_WRITING
   );
-  if( testreplicationContextGlobal.db
+  if( testreplicationContextGlobal.eFailing==FAILING_UNDO ){
+    rc = testreplicationContextGlobal.rc;
+  }else if( testreplicationContextGlobal.db
    && testreplicationContextGlobal.eState==STATE_WRITING ){
     rc = sqlite3_replication_undo(
         testreplicationContextGlobal.db,
@@ -138,13 +155,17 @@ static int testreplicationUndo(void *pCtx){
 ** replication context state to STATE_IDLE.
 */
 static int testreplicationEnd(void *pCtx){
+  int rc = SQLITE_OK;
   assert( pCtx==&testreplicationContextGlobal );
   assert( testreplicationContextGlobal.eState==STATE_PENDING
        || testreplicationContextGlobal.eState==STATE_COMMITTED
        || testreplicationContextGlobal.eState==STATE_UNDONE
   );
   testreplicationContextGlobal.eState = STATE_IDLE;
-  return 0;
+  if( testreplicationContextGlobal.eFailing==FAILING_END ){
+    rc = testreplicationContextGlobal.rc;
+  }
+  return rc;
 }
 
 /*
@@ -153,9 +174,13 @@ static int testreplicationEnd(void *pCtx){
 **
 ** Install the test replication if installFlag is 1 and uninstall it if
 ** installFlag is 0.
+**
+** If hook
 */
 void installTestReplication(
-  int installFlag            /* True to install.  False to uninstall. */
+  int installFlag,            /* True to install.  False to uninstall. */
+  int eFailing,               /* Code of a method that will fail. */
+  int rc                      /* Error that a failing method will return. */
 ){
   static const sqlite3_replication_methods testReplication = {
     testreplicationBegin,
@@ -176,6 +201,8 @@ void installTestReplication(
       testreplicationContextGlobal.db = 0;
       testreplicationContextGlobal.zSchema = 0;
       testreplicationContextGlobal.eState = STATE_IDLE;
+      testreplicationContextGlobal.eFailing = eFailing;
+      testreplicationContextGlobal.rc = rc;
 
       sqlite3_config(SQLITE_CONFIG_REPLICATION, &testReplication);
     }else{
@@ -187,10 +214,13 @@ void installTestReplication(
 }
 
 /*
-** Usage:    sqlite3_config_test_replication INSTALL_FLAG
+** Usage:    sqlite3_config_test_replication INSTALL_FLAG [FAILING_METHOD ERROR]
 **
 ** Set up the test write-ahead log replication.  Install if INSTALL_FLAG is true
 ** and uninstall (reverting to no replication at all) if INSTALL_FLAG is false.
+**
+** If FAILING_METHOD is given (either "xBegin", "xFrames" or "xEnd"), then that
+** method will fail returning ERROR (either "NOT_LEADER" or "LEADERSHIP_LOST").
 */
 static int SQLITE_TCLAPI test_replication(
   void * clientData,
@@ -199,14 +229,46 @@ static int SQLITE_TCLAPI test_replication(
   Tcl_Obj *CONST objv[]
 ){
   int installFlag;
-  extern void installTestReplication(int);
-  if( objc<2 || objc>2 ){
+  const char *zFailing;
+  const char *zError;
+  int eFailing;
+  int rc;
+  extern void installTestReplication(int, int, int);
+  if( objc<2 || objc==3 || objc>4 ){
     Tcl_WrongNumArgs(interp, 1, objv,
-        "INSTALLFLAG");
+        "INSTALL_FLAG [FAILING_METHOD RC]");
     return TCL_ERROR;
   }
   if( Tcl_GetIntFromObj(interp, objv[1], &installFlag) ) return TCL_ERROR;
-  installTestReplication(installFlag);
+  if( objc>=3 ){
+    /* Failing method */
+    zFailing = Tcl_GetString(objv[2]);
+    if( strcmp(zFailing, "xBegin")==0 ){
+      eFailing = FAILING_BEGIN;
+    }else if( strcmp(zFailing, "xFrames")==0 ){
+      eFailing = FAILING_FRAMES;
+    }else if( strcmp(zFailing, "xUndo")==0 ){
+      eFailing = FAILING_UNDO;
+    }else if( strcmp(zFailing, "xEnd")==0 ){
+      eFailing = FAILING_END;
+    }else{
+      Tcl_AppendResult(interp, "unknown replication method", (char*)0);
+      return TCL_ERROR;
+    }
+
+    /* Error code */
+    zError = Tcl_GetString(objv[3]);
+    if( strcmp(zError, "NOT_LEADER")==0 ){
+      rc = SQLITE_IOERR_NOT_LEADER;
+    }else if( strcmp(zError, "LEADERSHIP_LOST")==0 ){
+      rc = SQLITE_IOERR_LEADERSHIP_LOST;
+    }else{
+      Tcl_AppendResult(interp, "unknown error", (char*)0);
+      return TCL_ERROR;
+    }
+  }
+
+  installTestReplication(installFlag, eFailing, rc);
 
   return TCL_OK;
 }

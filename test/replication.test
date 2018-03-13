@@ -444,6 +444,25 @@ foreach { i method error } {
   } {}
 }
 
+# Test that read transactions don't trigger any replication hook.
+#
+do_test 5.7 {
+  catch {db close}
+  sqlite3_shutdown
+  sqlite3_config_test_replication 0
+  sqlite3_config_test_replication 1 xBegin NOT_LEADER
+  reset_db
+  execsql {
+    PRAGMA journal_mode = WAL;
+    CREATE TABLE test (n INT);
+    INSERT INTO test(n) VALUES(1);
+  }
+  sqlite3_replication_leader db main
+  execsql {
+    SELECT n FROM test;
+  }
+} {1}
+
 # Reset the replication configuration for subsequent tests.
 catch {db close}
 catch {db2 close}

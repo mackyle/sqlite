@@ -463,6 +463,26 @@ do_test 5.7 {
   }
 } {1}
 
+# Test that the WAL write lock is released if the xBegin replication
+# hook fails.
+#
+do_test 5.8 {
+  catch {db close}
+  sqlite3_shutdown
+  sqlite3_config_test_replication 0
+  sqlite3_config_test_replication 1 xBegin LEADERSHIP_LOST 1
+  reset_db
+  execsql {
+    PRAGMA journal_mode = WAL;
+  }
+  sqlite3_replication_leader db main
+  catch {db eval {
+    BEGIN;
+    CREATE TABLE test (n INT);
+  }}
+  db eval {BEGIN; CREATE TABLE test (n INT); COMMIT;}
+} {}
+
 # Reset the replication configuration for subsequent tests.
 catch {db close}
 catch {db2 close}

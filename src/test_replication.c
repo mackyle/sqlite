@@ -49,6 +49,7 @@ struct testreplicationContextGlobalType {
   int eState;          /* Replication state (IDLE, PENDING, WRITING, etc) */
   int eFailing;        /* Code of a method that should fail when triggered */
   int rc;              /* If non-zero, the eFailing method will error */
+  int n;               /* Number of times the eFailing method will error */
 };
 static testreplicationContextGlobalType testreplicationContextGlobal;
 
@@ -72,8 +73,10 @@ static int testreplicationBegin(void *pCtx){
   assert( pCtx==&testreplicationContextGlobal );
   assert( testreplicationContextGlobal.eState==STATE_IDLE );
   testreplicationContextGlobal.eState = STATE_PENDING;
-  if( testreplicationContextGlobal.eFailing==FAILING_BEGIN ){
+  if( testreplicationContextGlobal.n > 0
+   && testreplicationContextGlobal.eFailing==FAILING_BEGIN ){
     rc = testreplicationContextGlobal.rc;
+    testreplicationContextGlobal.n--;
     /* Switch back to IDLE, since xEnd won't be invoked */
     testreplicationContextGlobal.eState = STATE_IDLE;
   }
@@ -105,8 +108,10 @@ static int testreplicationFrames(void *pCtx, int szPage, int nList,
   assert( testreplicationContextGlobal.eState==STATE_PENDING
        || testreplicationContextGlobal.eState==STATE_WRITING
   );
-  if( testreplicationContextGlobal.eFailing==FAILING_FRAMES ){
+  if( testreplicationContextGlobal.n > 0
+   && testreplicationContextGlobal.eFailing==FAILING_FRAMES ){
     rc = testreplicationContextGlobal.rc;
+    testreplicationContextGlobal.n--;
   }else if( testreplicationContextGlobal.db ){
     /* If the replication state is STATE_PENDING, it means that this is the
     ** first batch of frames of a new transaction. */
@@ -137,8 +142,10 @@ static int testreplicationUndo(void *pCtx){
   assert( testreplicationContextGlobal.eState==STATE_PENDING
        || testreplicationContextGlobal.eState==STATE_WRITING
   );
-  if( testreplicationContextGlobal.eFailing==FAILING_UNDO ){
+  if( testreplicationContextGlobal.n > 0
+   && testreplicationContextGlobal.eFailing==FAILING_UNDO ){
     rc = testreplicationContextGlobal.rc;
+    testreplicationContextGlobal.n--;
   }else if( testreplicationContextGlobal.db
    && testreplicationContextGlobal.eState==STATE_WRITING ){
     rc = sqlite3_replication_undo(
@@ -162,8 +169,10 @@ static int testreplicationEnd(void *pCtx){
        || testreplicationContextGlobal.eState==STATE_UNDONE
   );
   testreplicationContextGlobal.eState = STATE_IDLE;
-  if( testreplicationContextGlobal.eFailing==FAILING_END ){
+  if( testreplicationContextGlobal.n > 0
+   && testreplicationContextGlobal.eFailing==FAILING_END ){
     rc = testreplicationContextGlobal.rc;
+    testreplicationContextGlobal.n--;
   }
   return rc;
 }
@@ -180,7 +189,8 @@ static int testreplicationEnd(void *pCtx){
 void installTestReplication(
   int installFlag,            /* True to install.  False to uninstall. */
   int eFailing,               /* Code of a method that will fail. */
-  int rc                      /* Error that a failing method will return. */
+  int rc,                     /* Error that a failing method will return. */
+  int n                       /* Number of subsequent failures of the failing. */
 ){
   static const sqlite3_replication_methods testReplication = {
     testreplicationBegin,
@@ -203,6 +213,7 @@ void installTestReplication(
       testreplicationContextGlobal.eState = STATE_IDLE;
       testreplicationContextGlobal.eFailing = eFailing;
       testreplicationContextGlobal.rc = rc;
+      testreplicationContextGlobal.n = n;
 
       sqlite3_config(SQLITE_CONFIG_REPLICATION, &testReplication);
     }else{
@@ -214,13 +225,15 @@ void installTestReplication(
 }
 
 /*
-** Usage:    sqlite3_config_test_replication INSTALL_FLAG [FAILING_METHOD ERROR]
+** Usage:    sqlite3_config_test_replication INSTALL_FLAG [FAILING_METHOD ERROR [N]]
 **
 ** Set up the test write-ahead log replication.  Install if INSTALL_FLAG is true
 ** and uninstall (reverting to no replication at all) if INSTALL_FLAG is false.
 **
 ** If FAILING_METHOD is given (either "xBegin", "xFrames" or "xEnd"), then that
-** method will fail returning ERROR (either "NOT_LEADER" or "LEADERSHIP_LOST").
+** method will fail returning ERROR (either "NOT_LEADER" or
+** "LEADERSHIP_LOST"). If N is also given, the method will fail only N times,
+** and the N+1 invokation will be successful.
 */
 static int SQLITE_TCLAPI test_replication(
   void * clientData,
@@ -233,8 +246,9 @@ static int SQLITE_TCLAPI test_replication(
   const char *zError;
   int eFailing;
   int rc;
-  extern void installTestReplication(int, int, int);
-  if( objc<2 || objc==3 || objc>4 ){
+  int n = 8192; // Set an effectively "infinite" number of failures by default.
+  extern void installTestReplication(int, int, int, int);
+  if( objc<2 || objc==3 || objc>5 ){
     Tcl_WrongNumArgs(interp, 1, objv,
         "INSTALL_FLAG [FAILING_METHOD RC]");
     return TCL_ERROR;
@@ -266,9 +280,14 @@ static int SQLITE_TCLAPI test_replication(
       Tcl_AppendResult(interp, "unknown error", (char*)0);
       return TCL_ERROR;
     }
+
+    /* Number of subsequent failures */
+    if( objc>=5 ){
+      if( Tcl_GetIntFromObj(interp, objv[4], &n) ) return TCL_ERROR;
+    }
   }
 
-  installTestReplication(installFlag, eFailing, rc);
+  installTestReplication(installFlag, eFailing, rc, n);
 
   return TCL_OK;
 }

@@ -2116,6 +2116,15 @@ static int pager_end_transaction(Pager *pPager, int hasMaster, int bCommit){
   }
 
   if( pagerUseWal(pPager) ){
+#if defined(SQLITE_ENABLE_REPLICATION) && !defined(SQLITE_OMIT_WAL)
+    if( pPager->replicationMode==SQLITE_REPLICATION_LEADER ){
+      /* Fire the xEnd hook of the configured replication interface. The hook
+      ** implementation will typically use it to update its internal state.
+      ** The return code is currently ignored. */
+      assert( sqlite3GlobalConfig.replication.xEnd );
+      sqlite3GlobalConfig.replication.xEnd(pPager->pReplicationCtx);
+    }
+#endif /* SQLITE_ENABLE_REPLICATION */
     /* Drop the WAL write-lock, if any. Also, if the connection was in 
     ** locking_mode=exclusive mode but is no longer, drop the EXCLUSIVE 
     ** lock held on the database file.

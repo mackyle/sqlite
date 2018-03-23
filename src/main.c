@@ -637,6 +637,23 @@ int sqlite3_config(int op, ...){
       break;
     }
 
+#if defined(SQLITE_ENABLE_REPLICATION) && !defined(SQLITE_OMIT_WAL)
+    case SQLITE_CONFIG_REPLICATION: {
+      /* The SQLITE_CONFIG_REPLICATION option takes a single argument which is a
+      ** pointer to an sqlite3_replication_methods object. This object specifies the
+      ** interface to a write-ahead log replication implementation. */
+      sqlite3GlobalConfig.replication = *va_arg(ap, sqlite3_replication_methods*);
+      break;
+    }
+    case SQLITE_CONFIG_GETREPLICATION: {
+      /* The SQLITE_CONFIG_REPLICATION option takes a single argument which is a
+      ** pointer to an sqlite3_replication_methods object. SQLite copies the
+      ** current write-ahead log replication implementation into that object. */
+      *va_arg(ap, sqlite3_replication_methods*) = sqlite3GlobalConfig.replication;
+      break;
+    }
+#endif
+
     default: {
       rc = SQLITE_ERROR;
       break;
@@ -1390,8 +1407,6 @@ const char *sqlite3ErrName(int rc){
       case SQLITE_WARNING:            zName = "SQLITE_WARNING";           break;
       case SQLITE_WARNING_AUTOINDEX:  zName = "SQLITE_WARNING_AUTOINDEX"; break;
       case SQLITE_DONE:               zName = "SQLITE_DONE";              break;
-      case SQLITE_NOTLEADER:          zName = "SQLITE_NOTLEADER";         break;
-      case SQLITE_REPLICATION:        zName = "SQLITE_REPLICATION";       break;
     }
   }
   if( zName==0 ){
@@ -1440,10 +1455,6 @@ const char *sqlite3ErrStr(int rc){
     /* SQLITE_FORMAT      */ 0,
     /* SQLITE_RANGE       */ "column index out of range",
     /* SQLITE_NOTADB      */ "file is not a database",
-    /* SQLITE_NOTICE      */ 0,
-    /* SQLITE_WARNING     */ 0,
-    /* SQLITE_NOTLEADER   */ "attempt to write on a non-leader replicated node",
-    /* SQLITE_REPLICATION */ "failed to replicate write transaction",
   };
   const char *zErr = "unknown error";
   switch( rc ){
@@ -2030,9 +2041,8 @@ int sqlite3WalDefaultHook(
   int nFrame             /* Size of WAL */
 ){
   if( nFrame>=SQLITE_PTR_TO_INT(pClientData) ){
-    int rc;
     sqlite3BeginBenignMalloc();
-    rc = sqlite3_wal_checkpoint(db, zDb);
+    sqlite3_wal_checkpoint(db, zDb);
     sqlite3EndBenignMalloc();
   }
   return SQLITE_OK;
@@ -2092,362 +2102,6 @@ void *sqlite3_wal_hook(
   return pRet;
 #else
   return 0;
-#endif
-}
-
-#ifndef SQLITE_OMIT_WAL
-int setReplicationMode(
-  sqlite3 *db,
-  const char *zDbName,
-  u8 mode,
-  sqlite3_replication_methods *methods,
-  void *pCtx
-){
-  int rc = SQLITE_OK;
-  Btree *pBt;
-  Pager *pPager;
-#ifdef SQLITE_ENABLE_API_ARMOR
-  if( !sqlite3SafetyCheckOk(db) ){
-    rc = SQLITE_MISUSE_BKPT;
-  }
-#endif
-  if ( rc==SQLITE_OK ) {
-    sqlite3_mutex_enter(db->mutex);
-    pBt = sqlite3DbNameToBtree(db, zDbName);
-    if ( !pBt ) {
-      rc = SQLITE_MISUSE_BKPT;
-    }else {
-      sqlite3BtreeEnter(pBt);
-      pPager = sqlite3BtreePager(pBt);
-      assert( pPager );
-      rc = sqlite3PagerSetReplicationMode(pPager, mode, methods, pCtx);
-
-      if ( rc==SQLITE_OK && mode==PAGER_REPLICATION_FOLLOWER ) {
-	// Invalidate all current cursors for this backend. Trying to create
-	// a new cursor will also fail when in follower replication mode.
-	rc = sqlite3BtreeTripAllCursors(pBt, SQLITE_MISUSE, 0);
-	if ( rc==SQLITE_OK ) {
-	  // In follower mode we also need to manually open the WAL, since it
-	  // won't happen as consequence of regular pager operations.
-	  assert( sqlite3PagerGetJournalMode(pPager)==PAGER_JOURNALMODE_WAL );
-	  rc = sqlite3WalOpen(pPager->pVfs,
-	      pPager->fd, pPager->zWal, pPager->exclusiveMode,
-	      pPager->journalSizeLimit, &pPager->pWal
-          );
-	}
-      }
-      sqlite3BtreeLeave(pBt);
-    }
-    sqlite3_mutex_leave(db->mutex);
-  }
-  return rc;
-}
-
-static int enterReplication(
-  sqlite3 *db,                          /* The db handle to use */
-  const char *zDbName,
-  u8 *pMode,
-  Btree **ppBt,
-  Wal **ppWal,
-  int *pDbEntered,
-  int *pBtEntered
-){
-  int rc = SQLITE_OK;
-  u8 mode;
-  Btree *pBt;
-  Pager *pPager;
-  Wal *pWal;
-  int dbEntered = 0;
-  int btEntered = 0;
-#ifdef SQLITE_ENABLE_API_ARMOR
-  if( !sqlite3SafetyCheckOk(db) ){
-    rc = SQLITE_MISUSE;
-  }
-#endif
-  if ( rc==SQLITE_OK ){
-    if( sqlite3_mutex_try(db->mutex)==SQLITE_BUSY ){
-      /* If obtaining the db mutex fails, we assume that we are in
-      ** leader replication mode and that the mutex was already obtained
-      ** by the very same logic that eventually triggered this function
-      ** via replication hooks. That logic is blocked until the replication
-      ** hook returns so it's safe to modify the database, since once
-      ** a replication hook is in flight no other replication hook can
-      ** be fired (since the database is locked throughout their execution).
-      ** We'll double check this assumption below. */
-      mode = PAGER_REPLICATION_LEADER;
-    }else{
-      /* If obtaining the db mutex succeeds, we can't make any assumption about
-      ** the replication mode, so we'll use sqlite3PagerGetReplicationMode
-      ** below in order to get it.
-      */
-      mode = 255;
-      dbEntered = 1;
-    }
-    pBt = sqlite3DbNameToBtree(db, zDbName);
-    if ( !pBt ) {
-      rc = SQLITE_MISUSE_BKPT;
-    }else {
-      if( mode!=PAGER_REPLICATION_LEADER ){
-	sqlite3BtreeEnter(pBt);
-	btEntered = 1;
-      }
-      pPager = sqlite3BtreePager(pBt);
-      if( mode==PAGER_REPLICATION_LEADER ){
-	/* Assert that the leader mode we inferred by the fact that the db mutex
-	** is busy actually matches the replication mode set in the pager. */
-	assert( sqlite3PagerGetReplicationMode(pPager)==mode );
-      }else{
-	mode = sqlite3PagerGetReplicationMode(pPager);
-	assert( mode==PAGER_REPLICATION_NONE
-	     ||	mode==PAGER_REPLICATION_LEADER
-	     ||	mode==PAGER_REPLICATION_FOLLOWER );
-      }
-      if ( mode==PAGER_REPLICATION_NONE ){
-	rc = SQLITE_MISUSE_BKPT;
-      } else {
-	pWal = pPager->pWal;
-	assert( pWal );
-      }
-    }
-  }
-
-  *pMode = mode;
-  *ppBt = pBt;
-  *ppWal = pWal;
-  *pDbEntered = dbEntered;
-  *pBtEntered = btEntered;
-
-  return rc;
-}
-
-static void leaveReplication(sqlite3 *db, Btree *pBt, int dbEntered, int btEntered) {
-  if( btEntered ){
-    sqlite3BtreeLeave(pBt);
-  }
-  if( dbEntered ){
-    sqlite3_mutex_leave(db->mutex);
-  }
-}
-
-static int nullUndoCallback(void *pCtx, Pgno iPg) {
-  return SQLITE_OK;
-}
-#endif
-
-int sqlite3_replication_none(
-  sqlite3 *db,                          /* The db handle to use */
-  const char *zDbName                   /* Enable follower replication on this backend */
-) {
-#ifndef SQLITE_OMIT_WAL
-  return setReplicationMode(db, zDbName, PAGER_REPLICATION_NONE, 0, 0);
-#else
-  return SQLITE_MISUSE_BKPT;
-#endif
-}
-
-int sqlite3_replication_mode(
-  sqlite3 *db,                          /* The db handle to use */
-  const char *zDbName,                  /* Enable follower replication on this backend */
-  int *eMode
-){
-#ifndef SQLITE_OMIT_WAL
-  int rc = SQLITE_OK;
-  Btree *pBt;
-  Pager *pPager;
-#ifdef SQLITE_ENABLE_API_ARMOR
-  if( !sqlite3SafetyCheckOk(db) ){
-    rc = SQLITE_MISUSE_BKPT;
-  }
-#endif
-  if ( rc==SQLITE_OK ) {
-    assert( sqlite3_mutex_held(db->mutex) );
-    pBt = sqlite3DbNameToBtree(db, zDbName);
-    if ( !pBt ) {
-      rc = SQLITE_MISUSE_BKPT;
-    }else {
-      assert( sqlite3BtreeHoldsMutex(pBt) );
-      pPager = sqlite3BtreePager(pBt);
-      assert( pPager );
-      *eMode = (int)sqlite3PagerGetReplicationMode(pPager);
-    }
-  }
-  return rc;
-#else
-  return SQLITE_MISUSE_BKPT;
-#endif
-}
-
-/*
-** Put this connection in leader replication mode, registering callbacks for
-** write transactions and write-ahead-log frames events.
-*/
-int sqlite3_replication_leader(
-  sqlite3 *db,                          /* The db handle to use */
-  const char *zDbName,                  /* Enable replication on this database */
-  sqlite3_replication_methods *methods,  /* Replication implementation */
-  void *pCtx
-) {
-#ifndef SQLITE_OMIT_WAL
-  return setReplicationMode(db, zDbName, PAGER_REPLICATION_LEADER, methods, pCtx);
-#else
-  return SQLITE_MISUSE_BKPT;
-#endif
-}
-
-int sqlite3_replication_follower(
-  sqlite3 *db,                          /* The db handle to use */
-  const char *zDbName                   /* Enable follower replication on this backend */
-) {
-#ifndef SQLITE_OMIT_WAL
-  return setReplicationMode(db, zDbName, PAGER_REPLICATION_FOLLOWER, 0, 0);
-#else
-  return SQLITE_MISUSE_BKPT;
-#endif
-}
-
-int sqlite3_replication_begin(
-  sqlite3 *db,                          /* The db handle to use */
-  const char *zDbName                   /* Enable replication on this database */
-) {
-#ifndef SQLITE_OMIT_WAL
-  int rc;
-  u8 mode;
-  Btree *pBt;
-  Wal *pWal;
-  int dbEntered;
-  int btEntered;
-  rc = enterReplication(db, zDbName, &mode, &pBt, &pWal, &dbEntered, &btEntered);
-  if( rc==SQLITE_OK ){
-    if( mode==PAGER_REPLICATION_FOLLOWER ){
-      int changed;
-      rc = sqlite3WalBeginReadTransaction(pWal, &changed);
-    }
-    if( rc == SQLITE_OK ){
-      rc = sqlite3WalBeginWriteTransaction(pWal);
-    }
-  }
-  leaveReplication(db, pBt, dbEntered, btEntered);
-  return rc;
-#else
-  return SQLITE_MISUSE_BKPT;
-#endif
-}
-
-/*
-** Write the given replication pages to the WAL of the database with the given
-** backend name.
- */
-int sqlite3_replication_wal_frames(
-  sqlite3 *db,
-  const char *zDbName,            /* Write WAL replication frames for this backend */
-  int szPage,                     /* Database page-size in bytes */
-  int nList,
-  sqlite3_replication_page *pList,
-  unsigned nTruncate,
-  int isCommit,
-  int sync_flags) {
-#ifndef SQLITE_OMIT_WAL
-  int rc;
-  u8 mode;
-  Btree *pBt;
-  Wal *pWal;
-  int dbEntered;
-  int btEntered;
-  rc = enterReplication(db, zDbName, &mode, &pBt, &pWal, &dbEntered, &btEntered);
-  if ( rc==SQLITE_OK ) {
-    rc = sqlite3WalReplicateFrames(pWal,
-            szPage, nList, pList, nTruncate, isCommit, sync_flags
-    );
-  }
-  leaveReplication(db, pBt, dbEntered, btEntered);
-  return rc;
-#else
-  return SQLITE_MISUSE_BKPT;
-#endif
-}
-
-int sqlite3_replication_undo(
-  sqlite3 *db,                          /* The db handle to use */
-  const char *zDbName                   /* Enable replication on this database */
-) {
-#ifndef SQLITE_OMIT_WAL
-  int rc;
-  u8 mode;
-  Btree *pBt;
-  Wal *pWal;
-  int dbEntered;
-  int btEntered;
-  rc = enterReplication(db, zDbName, &mode, &pBt, &pWal, &dbEntered, &btEntered);
-  if ( rc==SQLITE_OK ) {
-    int (*xUndo)(void *, Pgno);
-    if ( mode==PAGER_REPLICATION_LEADER ){
-      xUndo = sqlite3PagerUndoCallback;
-    }else{
-      xUndo = nullUndoCallback;
-    }
-    rc = sqlite3WalUndo(pWal, xUndo, (void *)sqlite3BtreePager(pBt));
-  }
-  leaveReplication(db, pBt, dbEntered, btEntered);
-  return rc;
-#else
-  return SQLITE_MISUSE_BKPT;
-#endif
-}
-
-int sqlite3_replication_end(
-  sqlite3 *db,                          /* The db handle to use */
-  const char *zDbName                  /* Enable replication on this database */
-) {
-#ifndef SQLITE_OMIT_WAL
-  int rc;
-  u8 mode;
-  Btree *pBt;
-  Wal *pWal;
-  int dbEntered;
-  int btEntered;
-  rc = enterReplication(db, zDbName, &mode, &pBt, &pWal, &dbEntered, &btEntered);
-  if ( rc==SQLITE_OK ) {
-    rc = sqlite3WalEndWriteTransaction(pWal);
-    if( rc==SQLITE_OK && mode==PAGER_REPLICATION_FOLLOWER){
-      sqlite3WalEndReadTransaction(pWal);
-    }
-  }
-  leaveReplication(db, pBt, dbEntered, btEntered);
-  return rc;
-#else
-  return SQLITE_MISUSE_BKPT;
-#endif
-}
-
-int sqlite3_replication_checkpoint(
-  sqlite3 *db,                          /* The db handle to use */
-  const char *zDbName,                  /* Enable replication on this database */
-  int eMode,                      /* Type of checkpoint */
-  int *pnLog,                     /* OUT: Final number of frames in log */
-  int *pnCkpt                     /* OUT: Final number of checkpointed frames */
-) {
-#ifndef SQLITE_OMIT_WAL
-  int rc;
-  u8 mode;
-  Btree *pBt;
-  Pager *pPager;
-  Wal *pWal;
-  int dbEntered;
-  int btEntered;
-  rc = enterReplication(db, zDbName, &mode, &pBt, &pWal, &dbEntered, &btEntered);
-  if ( rc==SQLITE_OK ) {
-    pPager = sqlite3BtreePager(pBt);
-    rc = sqlite3WalCheckpoint(pWal, db, eMode,
-        (eMode==SQLITE_CHECKPOINT_PASSIVE ? 0 : pPager->xBusyHandler),
-        pPager->pBusyHandlerArg,
-        pPager->walSyncFlags, pPager->pageSize, (u8 *)pPager->pTmpSpace,
-        pnLog, pnCkpt
-    );
-  }
-  leaveReplication(db, pBt, dbEntered, btEntered);
-  return rc;
-#else
-  return SQLITE_MISUSE_BKPT;
 #endif
 }
 
@@ -4499,6 +4153,261 @@ void sqlite3_snapshot_free(sqlite3_snapshot *pSnapshot){
   sqlite3_free(pSnapshot);
 }
 #endif /* SQLITE_ENABLE_SNAPSHOT */
+
+#ifdef SQLITE_ENABLE_REPLICATION
+/*
+** Obtain the current replication mode for the given schema of the
+** given database connection.
+*/
+int sqlite3_replication_mode(sqlite3 *db, const char *zSchema, int *eMode){
+  int rc = SQLITE_ERROR;
+#ifndef SQLITE_OMIT_WAL
+
+#ifdef SQLITE_ENABLE_API_ARMOR
+  if( !sqlite3SafetyCheckOk(db) ){
+    return SQLITE_MISUSE_BKPT;
+  }
+#endif
+
+  sqlite3_mutex_enter(db->mutex);
+  Btree *pBt = sqlite3DbNameToBtree(db, zSchema);
+  if( pBt ){
+    sqlite3BtreeEnter(pBt);
+    Pager *pPager = sqlite3BtreePager(pBt);
+    assert( pPager );
+    if( sqlite3PagerGetJournalMode(pPager)==PAGER_JOURNALMODE_WAL ){
+      *eMode = sqlite3PagerReplicationModeGet(pPager);
+      rc = SQLITE_OK;
+    }
+    sqlite3BtreeLeave(pBt);
+  }
+  sqlite3_mutex_leave(db->mutex);
+#endif /* SQLITE_OMIT_WAL */
+  return rc;
+}
+
+/*
+** Put the given schema on the given connection in write-ahead log leader
+** replication mode, registering a context to be passed back to the configured
+** sqlite3_replication_methods implementation upon WAL lifecycle events, such as
+** begin a write transaction, write new frames to the log, undo a write
+** transaction and end a write transaction.
+*/
+int sqlite3_replication_leader(sqlite3 *db, const char *zSchema, void *pCtx){
+  int rc = SQLITE_ERROR;
+#ifndef SQLITE_OMIT_WAL
+
+#ifdef SQLITE_ENABLE_API_ARMOR
+  if( !sqlite3SafetyCheckOk(db) ){
+    return SQLITE_MISUSE_BKPT;
+  }
+#endif
+
+  sqlite3_mutex_enter(db->mutex);
+  Btree *pBt = sqlite3DbNameToBtree(db, zSchema);
+  if( pBt ){
+      sqlite3BtreeEnter(pBt);
+      Pager *pPager = sqlite3BtreePager(pBt);
+      assert( pPager );
+      rc = sqlite3PagerReplicationModeSet(
+          pPager, db, SQLITE_REPLICATION_LEADER, pCtx);
+      if( rc==SQLITE_OK ) {
+        /* Disable checkpointing the WAL on close, since the replication
+        ** implementation should take care of checkpointing explicitly. */
+        int ckpt;
+        rc = sqlite3_db_config(db, SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, 1, &ckpt);
+      }
+      sqlite3BtreeLeave(pBt);
+  }
+  sqlite3_mutex_leave(db->mutex);
+#endif /* SQLITE_OMIT_WAL */
+  return rc;
+}
+
+/*
+** Put the given schema on the given connection in write-ahead log
+** follower replication mode.
+*/
+int sqlite3_replication_follower(sqlite3 *db, const char *zSchema){
+  int rc = SQLITE_ERROR;
+#ifndef SQLITE_OMIT_WAL
+
+#ifdef SQLITE_ENABLE_API_ARMOR
+  if( !sqlite3SafetyCheckOk(db) ){
+    return SQLITE_MISUSE_BKPT;
+  }
+#endif
+
+  sqlite3_mutex_enter(db->mutex);
+  Btree *pBt = sqlite3DbNameToBtree(db, zSchema);
+  if( pBt ){
+      sqlite3BtreeEnter(pBt);
+      Pager *pPager = sqlite3BtreePager(pBt);
+      assert( pPager );
+      rc = sqlite3PagerReplicationModeSet(
+        pPager, db, SQLITE_REPLICATION_FOLLOWER, 0);
+      if( rc==SQLITE_OK ){
+	/* Disable checkpointing the WAL on close, since the replication
+	** implementation should take care of checkpointing explicitly. */
+	int ckpt;
+	rc = sqlite3_db_config(db, SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, 1, &ckpt);
+
+        /* Invalidate all current cursors for this backend. Trying to create
+        ** a new cursor will also fail when in follower replication mode. */
+	if( rc==SQLITE_OK ){
+	  rc = sqlite3BtreeTripAllCursors(pBt, SQLITE_MISUSE, 0);
+	}
+      }
+      sqlite3BtreeLeave(pBt);
+  }
+  sqlite3_mutex_leave(db->mutex);
+#endif /* SQLITE_OMIT_WAL */
+  return rc;
+}
+
+/*
+** Disable write-ahead log leader or follower replication on the given schema of
+** the given connection.
+*/
+int sqlite3_replication_none(sqlite3 *db, const char *zSchema){
+  int rc = SQLITE_ERROR;
+#ifndef SQLITE_OMIT_WAL
+
+#ifdef SQLITE_ENABLE_API_ARMOR
+  if( !sqlite3SafetyCheckOk(db) ){
+    return SQLITE_MISUSE_BKPT;
+  }
+#endif
+
+  sqlite3_mutex_enter(db->mutex);
+  Btree *pBt = sqlite3DbNameToBtree(db, zSchema);
+  if( pBt ){
+      sqlite3BtreeEnter(pBt);
+      Pager *pPager = sqlite3BtreePager(pBt);
+      assert( pPager );
+      rc = sqlite3PagerReplicationModeSet(
+        pPager, db, SQLITE_REPLICATION_NONE, 0);
+      sqlite3BtreeLeave(pBt);
+  }
+  sqlite3_mutex_leave(db->mutex);
+
+#endif /* SQLITE_OMIT_WAL */
+  return rc;
+}
+
+/*
+** Write new WAL frames in the context of a replicated transaction.
+**
+** If the isBegin flag is true, also start a new WAL write transaction. If the
+** commit flag true, also commit the transaction.
+**
+** This interface must be called only on connections that have been switched
+** to follower replication mode using sqlite3_replication_follower().
+*/
+int sqlite3_replication_frames(
+  sqlite3 *db,
+  const char *zSchema,
+  int isBegin,
+  int szPage,
+  int nList,
+  sqlite3_replication_page *pList,
+  unsigned nTruncate,
+  int isCommit,
+  int sync_flags
+){
+  int rc = SQLITE_ERROR;
+#ifndef SQLITE_OMIT_WAL
+
+#ifdef SQLITE_ENABLE_API_ARMOR
+  if( !sqlite3SafetyCheckOk(db) ){
+    return SQLITE_MISUSE;
+  }
+#endif
+
+  sqlite3_mutex_enter(db->mutex);
+  Btree *pBt = sqlite3DbNameToBtree(db, zSchema);
+  if( pBt ){
+    sqlite3BtreeEnter(pBt);
+    Pager *pPager = sqlite3BtreePager(pBt);
+    rc = sqlite3PagerReplicationFrames(pPager,
+        isBegin, szPage, nList, pList, nTruncate, isCommit, sync_flags);
+    sqlite3BtreeLeave(pBt);
+  }
+  sqlite3_mutex_leave(db->mutex);
+
+#endif /* SQLITE_OMIT_WAL */
+  return rc;
+}
+
+/*
+** Undo WAL changes in the context of a replicated transaction that is
+** being rolled back.
+**
+** This interface must be called only on connections that have been switched
+** to follower replication mode using sqlite3_replication_follower().
+*/
+int sqlite3_replication_undo(sqlite3 *db, const char *zSchema){
+  int rc = SQLITE_ERROR;
+#ifndef SQLITE_OMIT_WAL
+
+#ifdef SQLITE_ENABLE_API_ARMOR
+  if( !sqlite3SafetyCheckOk(db) ){
+    return SQLITE_MISUSE;
+  }
+#endif
+
+  sqlite3_mutex_enter(db->mutex);
+  Btree *pBt = sqlite3DbNameToBtree(db, zSchema);
+  if( pBt ){
+    sqlite3BtreeEnter(pBt);
+    Pager *pPager = sqlite3BtreePager(pBt);
+    assert( pPager );
+    rc = sqlite3PagerReplicationUndo(pPager);
+    sqlite3BtreeLeave(pBt);
+  }
+  sqlite3_mutex_leave(db->mutex);
+#endif /* SQLITE_OMIT_WAL */
+  return rc;
+}
+
+/*
+** Checkpoint a database in follower replication mode.
+**
+** This interface must be called only on connections that have been switched
+** to follower replication mode using sqlite3_replication_follower().
+*/
+int sqlite3_replication_checkpoint(
+  sqlite3 *db,
+  const char *zSchema,
+  int eMode,
+  int *pnLog,
+  int *pnCkpt
+){
+  int rc = SQLITE_ERROR;
+#ifndef SQLITE_OMIT_WAL
+  Btree *pBt;
+  Pager *pPager;
+
+#ifdef SQLITE_ENABLE_API_ARMOR
+  if( !sqlite3SafetyCheckOk(db) ){
+    return SQLITE_MISUSE_BKPT;
+  }
+#endif
+
+  sqlite3_mutex_enter(db->mutex);
+  pBt = sqlite3DbNameToBtree(db, zSchema);
+  if( pBt ){
+      sqlite3BtreeEnter(pBt);
+      pPager = sqlite3BtreePager(pBt);
+      assert( pPager );
+      rc = sqlite3PagerReplicationCheckpoint(pPager, db, eMode, pnLog, pnCkpt);
+      sqlite3BtreeLeave(pBt);
+  }
+  sqlite3_mutex_leave(db->mutex);
+#endif /* SQLITE_OMIT_WAL */
+  return rc;
+}
+#endif /* SQLITE_ENABLE_REPLICATION */
 
 #ifndef SQLITE_OMIT_COMPILEOPTION_DIAGS
 /*

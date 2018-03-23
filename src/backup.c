@@ -189,19 +189,25 @@ sqlite3_backup *sqlite3_backup_init(
     p->iNext = 1;
     p->isAttached = 0;
 
-    if ( sqlite3PagerGetReplicationMode(sqlite3BtreePager(p->pSrc))==PAGER_REPLICATION_FOLLOWER ) {
-      /* Can't perform any operation while in replication follower mode */
-      sqlite3Error(pDestDb, SQLITE_MISUSE_BKPT);
-      p->pSrc = 0;
+#if defined(SQLITE_ENABLE_REPLICATION) && !defined(SQLITE_OMIT_WAL)
+    if( p->pSrc ){
+      Pager *pPager = sqlite3BtreePager(p->pSrc);
+      int replicationMode;
+      replicationMode = sqlite3PagerReplicationModeGet(pPager);
+      if( replicationMode==SQLITE_REPLICATION_FOLLOWER ){
+        /* Can't perform any operation while in replication follower mode */
+        sqlite3Error(pDestDb, SQLITE_ERROR);
+        p->pSrc = 0;
+      }
     }
+#endif
 
     if( 0==p->pSrc || 0==p->pDest 
      || checkReadTransaction(pDestDb, p->pDest)!=SQLITE_OK 
      ){
       /* One (or both) of the named databases did not exist or an OOM
       ** error was hit. Or there is a transaction open on the destination
-      ** database. Or the source database is in follower replication
-      ** mode. The error has already been written into the pDestDb 
+      ** database. The error has already been written into the pDestDb 
       ** handle. All that is left to do here is free the sqlite3_backup 
       ** structure.  */
       sqlite3_free(p);

@@ -107,13 +107,6 @@ typedef struct PgHdr DbPage;
 #define PAGER_FLAGS_MASK            0x38  /* All above except SYNCHRONOUS */
 
 /*
-** Numeric constants that encode replication modes (when WAL is on)
-*/
-#define PAGER_REPLICATION_NONE        0   /* No replication */
-#define PAGER_REPLICATION_LEADER      1   /* Fire replication commands */
-#define PAGER_REPLICATION_FOLLOWER    2   /* Execute replication commands */
-
-/*
 ** The remainder of this file contains the declarations of the functions
 ** that make up the Pager sub-system API. See source code comments for 
 ** a detailed description of each routine.
@@ -186,7 +179,6 @@ int sqlite3PagerSharedLock(Pager *pPager);
   int sqlite3PagerWalCallback(Pager *pPager);
   int sqlite3PagerOpenWal(Pager *pPager, int *pisOpen);
   int sqlite3PagerCloseWal(Pager *pPager, sqlite3*);
-  int sqlite3PagerUndoCallback(void *pCtx, Pgno iPg);
 # ifdef SQLITE_DIRECT_OVERFLOW_READ
   int sqlite3PagerUseWal(Pager *pPager, Pgno);
 # endif
@@ -195,8 +187,14 @@ int sqlite3PagerSharedLock(Pager *pPager);
   int sqlite3PagerSnapshotOpen(Pager *pPager, sqlite3_snapshot *pSnapshot);
   int sqlite3PagerSnapshotRecover(Pager *pPager);
 # endif
-  int sqlite3PagerSetReplicationMode(Pager *pPager, u8, sqlite3_replication_methods*, void*);
-  u8 sqlite3PagerGetReplicationMode(Pager *pPager);
+#ifdef SQLITE_ENABLE_REPLICATION
+  int sqlite3PagerReplicationModeGet(Pager *pPager);
+  int sqlite3PagerReplicationModeSet(Pager *pPager, sqlite3*, u8, void*);
+  int sqlite3PagerReplicationFrames(Pager *pPager,
+      int, int, int, sqlite3_replication_page*, unsigned, int isCommit, int);
+  int sqlite3PagerReplicationUndo(Pager *pPager);
+  int sqlite3PagerReplicationCheckpoint(Pager*, sqlite3*, int, int*, int*);
+#endif /* SQLITE_ENABLE_REPLICATION */
 #else
 # define sqlite3PagerUseWal(x,y) 0
 #endif

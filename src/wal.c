@@ -3509,45 +3509,6 @@ int sqlite3WalFrames(
   return rc;
 }
 
-int sqlite3WalReplicateFrames(
-  Wal *pWal,
-  int szPage,
-  int nList,
-  sqlite3_replication_page *pList,
-  Pgno nTruncate,
-  int isCommit,
-  u8 sync_flags
-) {
-  int rc;
-  int i;
-  sqlite3_replication_page *pNext;
-  PgHdr* pPgHdr;
-
-  /* Create a buffer of nList page headers and link them together
-  ** using the PgHdr->pDirty pointer. */
-  pNext = pList;
-  pPgHdr = (PgHdr*)sqlite3_malloc(sizeof(PgHdr) * (nList));
-  for (i=0; i<nList; i++) {
-
-    /* Initialize only the PgHdr fields that matter for sqlite3WalFrames, namely
-    ** pData, pDirty, pgno and flags. */
-    pPgHdr->pData = pNext->pBuf;
-    pPgHdr->pDirty = i==nList-1 ? 0 : pPgHdr + 1;
-    pPgHdr->pgno = pNext->pgno;
-    pPgHdr->flags = pNext->flags;
-
-    pNext += 1;
-    pPgHdr += 1;
-  }
-  pPgHdr -= nList;
-
-  rc = sqlite3WalFrames(pWal, 
-      szPage, pPgHdr, nTruncate, isCommit, sync_flags
-  );
-  sqlite3_free(pPgHdr);
-  return rc;
-}
-
 /* 
 ** This routine is called to implement sqlite3_wal_checkpoint() and
 ** related interfaces.

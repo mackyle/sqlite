@@ -716,9 +716,6 @@ struct Pager {
 #ifndef SQLITE_OMIT_WAL
   Wal *pWal;                  /* Write-ahead log used by "journal_mode=wal" */
   char *zWal;                 /* File name for write-ahead log */
-  u8 replicationMode;         /* Pager state (OPEN, READER, WRITER_LOCKED) */
-  void* replicationCtx;
-  sqlite3_replication_methods *replicationMethods;
 #endif
 };
 
@@ -2115,19 +2112,12 @@ static int pager_end_transaction(Pager *pPager, int hasMaster, int bCommit){
   }
 
   if( pagerUseWal(pPager) ){
-    if ( pPager->replicationMode==PAGER_REPLICATION_LEADER ) {
-      /* When in leader replication mode fire the xEnd callback of the
-      ** replication implementation.
-      */
-      rc2 = pPager->replicationMethods->xEnd(pPager->replicationCtx);
-    }else{
-      /* Drop the WAL write-lock, if any. Also, if the connection was in 
-      ** locking_mode=exclusive mode but is no longer, drop the EXCLUSIVE 
-      ** lock held on the database file.
-      */
-      rc2 = sqlite3WalEndWriteTransaction(pPager->pWal);
-      assert( rc2==SQLITE_OK );
-    }
+    /* Drop the WAL write-lock, if any. Also, if the connection was in 
+    ** locking_mode=exclusive mode but is no longer, drop the EXCLUSIVE 
+    ** lock held on the database file.
+    */
+    rc2 = sqlite3WalEndWriteTransaction(pPager->pWal);
+    assert( rc2==SQLITE_OK );
   }else if( rc==SQLITE_OK && bCommit && pPager->dbFileSize>pPager->dbSize ){
     /* This branch is taken when committing a transaction in rollback-journal
     ** mode if the database file on disk is larger than the database image.
@@ -2147,9 +2137,7 @@ static int pager_end_transaction(Pager *pPager, int hasMaster, int bCommit){
   if( !pPager->exclusiveMode 
    && (!pagerUseWal(pPager) || sqlite3WalExclusiveMode(pPager->pWal, 0))
   ){
-    if ( rc2==SQLITE_OK ) {
-      rc2 = pagerUnlockDb(pPager, SHARED_LOCK);
-    }
+    rc2 = pagerUnlockDb(pPager, SHARED_LOCK);
     pPager->changeCountDone = 0;
   }
   pPager->eState = PAGER_READER;
@@ -3147,10 +3135,6 @@ static int pagerUndoCallback(void *pCtx, Pgno iPg){
   return rc;
 }
 
-int sqlite3PagerUndoCallback(void *pCtx, Pgno iPg){
-  return pagerUndoCallback(pCtx, iPg);
-}
-
 /*
 ** This function is called to rollback a transaction on a WAL database.
 */
@@ -3166,13 +3150,7 @@ static int pagerRollbackWal(Pager *pPager){
   **   + Reload page content from the database (if refcount>0).
   */
   pPager->dbSize = pPager->dbOrigSize;
-  if ( pPager->replicationMode==PAGER_REPLICATION_LEADER ) {
-    /* When in leader replication mode fire the xUndo callback of the
-    ** replication implementation. */
-    rc = pPager->replicationMethods->xUndo(pPager->replicationCtx);
-  }else{
-    rc = sqlite3WalUndo(pPager->pWal, pagerUndoCallback, (void *)pPager);
-  }
+  rc = sqlite3WalUndo(pPager->pWal, pagerUndoCallback, (void *)pPager);
   pList = sqlite3PcacheDirtyList(pPager->pPCache);
   while( pList && rc==SQLITE_OK ){
     PgHdr *pNext = pList->pDirty;
@@ -3198,7 +3176,7 @@ static int pagerWalFrames(
   Pgno nTruncate,                 /* Database size after this commit */
   int isCommit                    /* True if this is a commit */
 ){
-  int rc = SQLITE_OK;             /* Return code */
+  int rc;                         /* Return code */
   int nList;                      /* Number of pages in pList */
   PgHdr *p;                       /* For looping over pages */
 
@@ -3232,34 +3210,9 @@ static int pagerWalFrames(
   pPager->aStat[PAGER_STAT_WRITE] += nList;
 
   if( pList->pgno==1 ) pager_write_changecounter(pList);
-
-  /* When in leader replication mode fire the xWalFrames callback of the
-  ** replication implementation. */
-  if ( pPager->replicationMode==PAGER_REPLICATION_LEADER ) {
-    assert( pPager->replicationMethods );
-    /* Allocate a new buffer of replication pages to pass to the callback. */
-    sqlite3_replication_page *pReplPg;
-    pReplPg = (sqlite3_replication_page*)sqlite3_malloc(sizeof(sqlite3_replication_page) * (nList));
-    if( pReplPg==0 ){
-      rc = SQLITE_NOMEM_BKPT;
-    }else{
-      for(p=pList; p; p=p->pDirty){
-	pReplPg->pBuf = p->pData;
-	pReplPg->flags = p->flags;
-	pReplPg->pgno = p->pgno;
-	pReplPg += 1;
-      }
-      pReplPg -= nList;
-      rc = pPager->replicationMethods->xWalFrames(pPager->replicationCtx,
-          pPager->pageSize, nList, pReplPg, nTruncate, isCommit, pPager->walSyncFlags
-      );
-      sqlite3_free(pReplPg);
-    }
-  }else{
-    rc = sqlite3WalFrames(pPager->pWal, 
-        pPager->pageSize, pList, nTruncate, isCommit, pPager->walSyncFlags
-    );
-  }
+  rc = sqlite3WalFrames(pPager->pWal, 
+      pPager->pageSize, pList, nTruncate, isCommit, pPager->walSyncFlags
+  );
   if( rc==SQLITE_OK && pPager->pBackup ){
     for(p=pList; p; p=p->pDirty){
       sqlite3BackupUpdate(pPager->pBackup, p->pgno, (u8 *)p->pData);
@@ -4180,8 +4133,6 @@ int sqlite3PagerClose(Pager *pPager, sqlite3 *db){
       (db && (db->flags & SQLITE_NoCkptOnClose) ? 0 : pTmp)
   );
   pPager->pWal = 0;
-  pPager->replicationMode = PAGER_REPLICATION_NONE;
-  pPager->replicationMethods = 0;
 #endif
   pager_reset(pPager);
   if( MEMDB ){
@@ -5869,12 +5820,7 @@ int sqlite3PagerBegin(Pager *pPager, int exFlag, int subjInMemory){
       ** The busy-handler is not invoked if another connection already
       ** holds the write-lock. If possible, the upper layer will call it.
       */
-      if ( pPager->replicationMode==PAGER_REPLICATION_LEADER ) {
-        assert( pPager->replicationMethods );
-        rc = pPager->replicationMethods->xBegin(pPager->replicationCtx);
-      }else{
-        rc = sqlite3WalBeginWriteTransaction(pPager->pWal);
-      }
+      rc = sqlite3WalBeginWriteTransaction(pPager->pWal);
     }else{
       /* Obtain a RESERVED lock on the database file. If the exFlag parameter
       ** is true, then immediately upgrade this to an EXCLUSIVE lock. The
@@ -6441,7 +6387,6 @@ int sqlite3PagerCommitPhaseOne(
       if( ALWAYS(pList) ){
         rc = pagerWalFrames(pPager, pList, pPager->dbSize, 1);
       }
-
       sqlite3PagerUnref(pPageOne);
       if( rc==SQLITE_OK ){
         sqlite3PcacheCleanAll(pPager->pPCache);
@@ -6712,8 +6657,7 @@ int sqlite3PagerRollback(Pager *pPager){
   assert( pPager->eState==PAGER_READER || rc!=SQLITE_OK );
   assert( rc==SQLITE_OK || rc==SQLITE_FULL || rc==SQLITE_CORRUPT
           || rc==SQLITE_NOMEM || (rc&0xFF)==SQLITE_IOERR 
-          || rc==SQLITE_CANTOPEN || rc==SQLITE_NOTLEADER
-	  || rc==SQLITE_REPLICATION
+          || rc==SQLITE_CANTOPEN
   );
 
   /* If an error occurs during a ROLLBACK, we can no longer trust the pager
@@ -7457,18 +7401,12 @@ int sqlite3PagerCheckpoint(
 ){
   int rc = SQLITE_OK;
   if( pPager->pWal ){
-    if ( pPager->replicationMode==PAGER_REPLICATION_LEADER ){
-      assert( pPager->replicationMethods );
-      rc = pPager->replicationMethods->xCheckpoint(pPager->replicationCtx,
-          eMode, pnLog, pnCkpt);
-    }else{
-      rc = sqlite3WalCheckpoint(pPager->pWal, db, eMode,
-          (eMode==SQLITE_CHECKPOINT_PASSIVE ? 0 : pPager->xBusyHandler),
-          pPager->pBusyHandlerArg,
-          pPager->walSyncFlags, pPager->pageSize, (u8 *)pPager->pTmpSpace,
-          pnLog, pnCkpt
-      );
-    }
+    rc = sqlite3WalCheckpoint(pPager->pWal, db, eMode,
+        (eMode==SQLITE_CHECKPOINT_PASSIVE ? 0 : pPager->xBusyHandler),
+        pPager->pBusyHandlerArg,
+        pPager->walSyncFlags, pPager->pageSize, (u8 *)pPager->pTmpSpace,
+        pnLog, pnCkpt
+    );
   }
   return rc;
 }
@@ -7675,111 +7613,6 @@ int sqlite3PagerSnapshotRecover(Pager *pPager){
   return rc;
 }
 #endif /* SQLITE_ENABLE_SNAPSHOT */
-
-/*
-** Set the pager to replication mode.
-**
-** If the pager journal mode is currently not PAGER_JOURNALMODE_WAL, then
-** SQLITE_MISUSE is returned.
-**
-** If the given mode is PAGE_REPLICATION_LEADER, this pager will fire the
-** various callbacks defined in the sqlite3_replication_methods pointer,
-** notifying the replication implementation of events such beginning a write
-** transaction, writing new frames to the write-ahead log, or committing a
-** write transaction. If the current replication mode of this pager
-** is PAGE_REPLICATION_FOLLOWER, then SQLITE_MISUSE will be returned.
-**
-** If the given mode is PAGE_REPLICATION_FOLLOWER, this pager is expected
-** to be used only for beginning/ending write transactions and writing frames
-** to the write-ahead log. If the current replication mode of this pager
-** is PAGE_REPLICATION_LEADER, then SQLITE_MISUSE will be returned.
-**
-** If the given mode is PAGE_REPLICATION_NONE, this pager will stop firing
-** any replication callbacks previously set with PAGE_REPLICATION_LEADER. If
-** the current replication mode of this pager is PAGE_REPLICATION_FOLLOWER,
-** then SQLITE_MISUSE is returned, since it's not possible to switch back
-** the follower state to any other state. If so desired, the pager must
-** be closed an a new one created.
-*/
-int sqlite3PagerSetReplicationMode(
-  Pager *pPager,
-  u8 mode,
-  sqlite3_replication_methods *methods,
-  void *pCtx
-){
-  int rc = SQLITE_OK;
-
-  if ( pPager->journalMode!=PAGER_JOURNALMODE_WAL ) {
-    rc = SQLITE_MISUSE_BKPT; // Replication is supported only in WAL mode
-  }else if ( mode==PAGER_REPLICATION_NONE || mode==PAGER_REPLICATION_FOLLOWER) {
-    assert( methods==0 );
-  }else if ( mode==PAGER_REPLICATION_LEADER) {
-    assert( methods );
-  }else {
-    rc = SQLITE_MISUSE_BKPT; // Invalid replication mode
-  }
-
-  if ( rc==SQLITE_OK ) {
-    if ( mode==PAGER_REPLICATION_NONE || mode==PAGER_REPLICATION_LEADER ) {
-      if ( pPager->replicationMode==PAGER_REPLICATION_FOLLOWER ) {
-	// From follower mode, can't switch to none or leader.
-	rc = SQLITE_MISUSE;
-      }
-    }
-    if ( rc==SQLITE_OK ) {
-      pPager->replicationMode = mode;
-      pPager->replicationMethods = methods;
-      pPager->replicationCtx = pCtx;
-    }
-  }
-
-  return rc;
-}
-
-u8 sqlite3PagerGetReplicationMode(Pager *pPager) {
-  return pPager->replicationMode;
-}
-
-int sqlite3PagerReplicateWalFrames(
-  Pager *pPager,
-  int szPage,
-  int nList,
-  sqlite3_replication_page *pList,
-  Pgno nTruncate,
-  int isCommit,
-  u8 sync_flags
-) {
-  int rc;
-  int i;
-  sqlite3_replication_page *pNext;
-  PgHdr* pPgHdr;
-
-  assert( pPager->replicationMode!=PAGER_REPLICATION_NONE );
-  /* Create a buffer of nList page headers and link them together
-  ** using the PgHdr->pDirty pointer. */
-  pNext = pList;
-  pPgHdr = (PgHdr*)sqlite3_malloc(sizeof(PgHdr) * (nList));
-  for (i=0; i<nList; i++) {
-
-    /* Initialize only the PgHdr fields that matter for sqlite3WalFrames, namely
-    ** pData, pDirty, pgno and flags. */
-    pPgHdr->pData = pNext->pBuf;
-    pPgHdr->pDirty = i==nList-1 ? 0 : pPgHdr + 1;
-    pPgHdr->pgno = pNext->pgno;
-    pPgHdr->flags = pNext->flags;
-
-    pNext += 1;
-    pPgHdr += 1;
-  }
-  pPgHdr -= nList;
-
-  rc = sqlite3WalFrames(pPager->pWal, 
-      szPage, pPgHdr, nTruncate, isCommit, sync_flags
-  );
-  sqlite3_free(pPgHdr);
-  return rc;
-}
-
 #endif /* !SQLITE_OMIT_WAL */
 
 #ifdef SQLITE_ENABLE_ZIPVFS

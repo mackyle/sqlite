@@ -38,7 +38,6 @@
 # define sqlite3WalSavepoint(y,z)
 # define sqlite3WalSavepointUndo(y,z)            0
 # define sqlite3WalFrames(u,v,w,x,y,z)           0
-# define sqlite3WalReplicateFrames(t,u,v,w,x,y,z) 0
 # define sqlite3WalCheckpoint(q,r,s,t,u,v,w,x,y,z) 0
 # define sqlite3WalCallback(z)                   0
 # define sqlite3WalExclusiveMode(y,z)            0
@@ -96,9 +95,6 @@ int sqlite3WalSavepointUndo(Wal *pWal, u32 *aWalData);
 
 /* Write a frame or frames to the log. */
 int sqlite3WalFrames(Wal *pWal, int, PgHdr *, Pgno, int, int);
-
-int sqlite3WalReplicateFrames(Wal *pWal, int, int, sqlite3_replication_page *, Pgno, int, u8);
-
 
 /* Copy pages from the log to the database file */ 
 int sqlite3WalCheckpoint(

@@ -3316,9 +3316,6 @@ struct Sqlite3Config {
 #endif
   int bLocaltimeFault;              /* True to fail localtime() calls */
   int iOnceResetThreshold;          /* When to reset OP_Once counters */
-#if defined(SQLITE_ENABLE_REPLICATION) && !defined(SQLITE_OMIT_WAL)
-  sqlite3_replication_methods replication;  /* WAL replication interface */
-#endif
 };
 
 /*

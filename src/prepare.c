@@ -557,19 +557,6 @@ static int sqlite3Prepare(
     Btree *pBt = db->aDb[i].pBt;
     if( pBt ){
       assert( sqlite3BtreeHoldsMutex(pBt) );
-#if defined(SQLITE_ENABLE_REPLICATION) && !defined(SQLITE_OMIT_WAL)
-      Pager *pPager = sqlite3BtreePager(pBt);
-      if( sqlite3PagerReplicationModeGet(pPager)==SQLITE_REPLICATION_FOLLOWER) {
-	/* Can't perform any operation while in replication follower mode */
-	rc = SQLITE_ERROR;
-      }
-      if( rc ){
-        const char *zDb = db->aDb[i].zDbSName;
-        sqlite3ErrorWithMsg(
-	    db, rc, "database is in follower replication mode: %s", zDb);
-        goto end_prepare;
-      }
-#endif
       rc = sqlite3BtreeSchemaLocked(pBt);
       if( rc ){
         const char *zDb = db->aDb[i].zDbSName;

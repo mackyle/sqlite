@@ -680,15 +680,6 @@ if test "${enable_session}" = "yes" ; then
 fi
 
 #########
-# See whether we should enable REPLICATION support
-AC_ARG_ENABLE(replication, AC_HELP_STRING([--enable-replication],
-      [Enable REPLICATION support]),
-      [enable_replication=yes],[enable_replication=no])
-if test "${enable_replication}" = "yes" ; then
-  OPT_FEATURE_FLAGS="${OPT_FEATURE_FLAGS} -DSQLITE_ENABLE_REPLICATION"
-fi
-
-#########
 # attempt to duplicate any OMITS and ENABLES into the ${OPT_FEATURE_FLAGS} parameter
 for option in $CFLAGS $CPPFLAGS
 do

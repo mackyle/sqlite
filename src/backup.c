@@ -189,19 +189,6 @@ sqlite3_backup *sqlite3_backup_init(
     p->iNext = 1;
     p->isAttached = 0;
 
-#if defined(SQLITE_ENABLE_REPLICATION) && !defined(SQLITE_OMIT_WAL)
-    if( p->pSrc ){
-      Pager *pPager = sqlite3BtreePager(p->pSrc);
-      int replicationMode;
-      replicationMode = sqlite3PagerReplicationModeGet(pPager);
-      if( replicationMode==SQLITE_REPLICATION_FOLLOWER ){
-        /* Can't perform any operation while in replication follower mode */
-        sqlite3Error(pDestDb, SQLITE_ERROR);
-        p->pSrc = 0;
-      }
-    }
-#endif
-
     if( 0==p->pSrc || 0==p->pDest 
      || checkReadTransaction(pDestDb, p->pDest)!=SQLITE_OK 
      ){

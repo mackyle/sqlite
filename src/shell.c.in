@@ -5822,6 +5822,26 @@ static int arCreateOrUpdateCommand(
      "  FROM fsdir(%Q,%Q)\n"
      "  WHERE lsmode(mode) NOT LIKE '?%%';"
   };
+
+  // updates only newer files
+  const char * zInsertFmtNewer =  
+	"REPLACE INTO %s(name,mode,mtime,sz,data)\n"
+     "  SELECT\n"
+     "    %s,\n"
+     "    fs.mode,\n"
+     "    fs.mtime,\n"
+     "    CASE substr(lsmode(fs.mode),1,1)\n"
+     "      WHEN '-' THEN length(fs.data)\n"
+     "      WHEN 'd' THEN 0\n"
+     "      ELSE -1 END,\n"
+     "    sqlar_compress(fs.data)\n"
+     "  FROM fsdir(%Q,%Q) as fs\n"
+	 "	left join sqlar on sqlar.name = fs.name \n"
+     "  WHERE lsmode(fs.mode) NOT LIKE '?%%' \n"
+	 "	and (fs.mtime > sqlar.mtime or sqlar.name isnull) \n"
+	 "	;\n";
+  
+
   int i;                          /* For iterating through azFile[] */
   int rc;                         /* Return code */
   const char *zTab = 0;           /* SQL table into which to insert */
@@ -5858,9 +5878,19 @@ static int arCreateOrUpdateCommand(
     rc = arExecSql(pAr, zCreate);
   }
   for(i=0; i<pAr->nArg && rc==SQLITE_OK; i++){
-    char *zSql2 = sqlite3_mprintf(zInsertFmt[pAr->bZip], zTab,
-        pAr->bVerbose ? "shell_putsnl(name)" : "name",
-        pAr->azArg[i], pAr->zDir);
+
+	char *zSql2;
+	if( bUpdate!=0 && !pAr->bZip) {
+		// updates only newer files
+		zSql2 = sqlite3_mprintf(zInsertFmtNewer, zTab,
+			pAr->bVerbose ? "shell_putsnl(fs.name)" : "fs.name",
+			pAr->azArg[i], pAr->zDir);
+	} else { 			
+		zSql2 = sqlite3_mprintf(zInsertFmt[pAr->bZip], zTab,
+			pAr->bVerbose ? "shell_putsnl(name)" : "name",
+			pAr->azArg[i], pAr->zDir);
+	
+	}
     rc = arExecSql(pAr, zSql2);
     sqlite3_free(zSql2);
   }

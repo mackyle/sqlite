@@ -1256,6 +1256,7 @@ void sqlite3Pragma(
     pParse->nMem = 1;
     for(j=sqliteHashFirst(&db->aModule); j; j=sqliteHashNext(j)){
       Module *pMod = (Module*)sqliteHashData(j);
+      if( pMod->bDisabled ) continue;
       sqlite3VdbeMultiLoad(v, 1, "s", pMod->zName);
     }
   }

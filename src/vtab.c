@@ -637,7 +637,7 @@ int sqlite3VtabCallConnect(Parse *pParse, Table *pTab){
   zMod = pTab->azModuleArg[0];
   pMod = (Module*)sqlite3HashFind(&db->aModule, zMod);
 
-  if( !pMod ){
+  if( !pMod || pMod->bDisabled ){
     const char *zModule = pTab->azModuleArg[0];
     sqlite3ErrorMsg(pParse, "no such module: %s", zModule);
     rc = SQLITE_ERROR;

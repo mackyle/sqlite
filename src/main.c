@@ -829,6 +829,19 @@ int sqlite3_db_config(sqlite3 *db, int op, ...){
       rc = setupLookaside(db, pBuf, sz, cnt);
       break;
     }
+    case SQLITE_DBCONFIG_DISABLE_VTAB:
+    case SQLITE_DBCONFIG_ENABLE_VTAB: {
+      const char *zPattern = va_arg(ap, const char*);
+      int bDisable = op==SQLITE_DBCONFIG_DISABLE_VTAB;
+      HashElem *j;
+      for(j=sqliteHashFirst(&db->aModule); j; j=sqliteHashNext(j)){
+        Module *pMod = (Module*)sqliteHashData(j);
+        if( sqlite3_strlike(zPattern, pMod->zName, 0)==0 ){
+          pMod->bDisabled = bDisable;
+        }
+      }
+      rc = SQLITE_OK;
+    }
     default: {
       static const struct {
         int op;      /* The opcode */

@@ -6281,32 +6281,43 @@ static int do_meta_command(char *zLine, ShellState *p){
     static const struct DbConfigChoices {
       const char *zName;
       int op;
+      int eArgType;
     } aDbConfig[] = {
-        { "enable_fkey",      SQLITE_DBCONFIG_ENABLE_FKEY            },
-        { "enable_trigger",   SQLITE_DBCONFIG_ENABLE_TRIGGER         },
-        { "fts3_tokenizer",   SQLITE_DBCONFIG_ENABLE_FTS3_TOKENIZER  },
-        { "load_extension",   SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION  },
-        { "no_ckpt_on_close", SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE       },
-        { "enable_qpsg",      SQLITE_DBCONFIG_ENABLE_QPSG            },
-        { "trigger_eqp",      SQLITE_DBCONFIG_TRIGGER_EQP            },
-        { "reset_database",   SQLITE_DBCONFIG_RESET_DATABASE         },
-        { "defensive",        SQLITE_DBCONFIG_DEFENSIVE              },
+        { "enable_fkey",      SQLITE_DBCONFIG_ENABLE_FKEY,            0 },
+        { "enable_trigger",   SQLITE_DBCONFIG_ENABLE_TRIGGER,         0 },
+        { "fts3_tokenizer",   SQLITE_DBCONFIG_ENABLE_FTS3_TOKENIZER,  0 },
+        { "load_extension",   SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION,  0 },
+        { "no_ckpt_on_close", SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE,       0 },
+        { "enable_qpsg",      SQLITE_DBCONFIG_ENABLE_QPSG,            0 },
+        { "trigger_eqp",      SQLITE_DBCONFIG_TRIGGER_EQP,            0 },
+        { "reset_database",   SQLITE_DBCONFIG_RESET_DATABASE,         0 },
+        { "defensive",        SQLITE_DBCONFIG_DEFENSIVE,              0 },
+        { "enable_vtab",      SQLITE_DBCONFIG_ENABLE_VTAB,            1 },
+        { "disable_vtab",     SQLITE_DBCONFIG_DISABLE_VTAB,           1 },
     };
     int ii, v;
     open_db(p, 0);
     for(ii=0; ii<ArraySize(aDbConfig); ii++){
       if( nArg>1 && strcmp(azArg[1], aDbConfig[ii].zName)!=0 ) continue;
       if( nArg>=3 ){
-        sqlite3_db_config(p->db, aDbConfig[ii].op, booleanValue(azArg[2]), 0);
+        if( aDbConfig[ii].eArgType==0 ){
+          sqlite3_db_config(p->db, aDbConfig[ii].op, booleanValue(azArg[2]), 0);
+        }else{
+          sqlite3_db_config(p->db, aDbConfig[ii].op, azArg[2], 0);
+        }
       }
-      sqlite3_db_config(p->db, aDbConfig[ii].op, -1, &v);
-      utf8_printf(p->out, "%18s %s\n", aDbConfig[ii].zName, v ? "on" : "off");
+      if( aDbConfig[ii].eArgType==0 ){
+        sqlite3_db_config(p->db, aDbConfig[ii].op, -1, &v);
+        utf8_printf(p->out, "%18s %s\n", aDbConfig[ii].zName, v ? "on" : "off");
+      }else if( nArg<2 ){
+        utf8_printf(p->out, "%18s PATTERN\n", aDbConfig[ii].zName);
+      }
       if( nArg>1 ) break;
     }
     if( nArg>1 && ii==ArraySize(aDbConfig) ){
       utf8_printf(stderr, "Error: unknown dbconfig \"%s\"\n", azArg[1]);
       utf8_printf(stderr, "Enter \".dbconfig\" with no arguments for a list\n");
-    }   
+    }
   }else
 
   if( c=='d' && n>=3 && strncmp(azArg[0], "dbinfo", n)==0 ){

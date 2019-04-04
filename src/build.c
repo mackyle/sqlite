@@ -368,7 +368,10 @@ Table *sqlite3LocateTable(
       if( pMod==0 && sqlite3_strnicmp(zName, "pragma_", 7)==0 ){
         pMod = sqlite3PragmaVtabRegister(db, zName);
       }
-      if( pMod && sqlite3VtabEponymousTableInit(pParse, pMod) ){
+      if( pMod
+       && !pMod->bDisabled
+       && sqlite3VtabEponymousTableInit(pParse, pMod)
+      ){
         return pMod->pEpoTab;
       }
     }

@@ -2215,6 +2215,9 @@ struct sqlite3_mem_methods {
 ** </dd>
 ** </dl>
 */
+#define SQLITE_DBCONFIG_MIN                    998 /* Smallest DBCONFIG */
+#define SQLITE_DBCONFIG_ENABLE_VTAB            998 /* const char* */
+#define SQLITE_DBCONFIG_DISABLE_VTAB           999 /* const char* */
 #define SQLITE_DBCONFIG_MAINDBNAME            1000 /* const char* */
 #define SQLITE_DBCONFIG_LOOKASIDE             1001 /* void* int int */
 #define SQLITE_DBCONFIG_ENABLE_FKEY           1002 /* int int* */

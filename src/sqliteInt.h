@@ -1806,6 +1806,7 @@ struct Savepoint {
 struct Module {
   const sqlite3_module *pModule;       /* Callback pointers */
   const char *zName;                   /* Name passed to create_module() */
+  u8 bDisabled;                        /* True if disabled */
   void *pAux;                          /* pAux passed to create_module() */
   void (*xDestroy)(void *);            /* Module destructor function */
   Table *pEpoTab;                      /* Eponymous table for this module */

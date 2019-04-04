@@ -7583,16 +7583,20 @@ static int SQLITE_TCLAPI test_sqlite3_db_config(
   static const struct {
     const char *zName;
     int eVal;
+    int eArgType;
   } aSetting[] = {
-    { "FKEY",            SQLITE_DBCONFIG_ENABLE_FKEY },
-    { "TRIGGER",         SQLITE_DBCONFIG_ENABLE_TRIGGER },
-    { "FTS3_TOKENIZER",  SQLITE_DBCONFIG_ENABLE_FTS3_TOKENIZER },
-    { "LOAD_EXTENSION",  SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION },
-    { "NO_CKPT_ON_CLOSE",SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE },
-    { "QPSG",            SQLITE_DBCONFIG_ENABLE_QPSG },
-    { "TRIGGER_EQP",     SQLITE_DBCONFIG_TRIGGER_EQP },
-    { "RESET_DB",        SQLITE_DBCONFIG_RESET_DATABASE },
-    { "DEFENSIVE",       SQLITE_DBCONFIG_DEFENSIVE },
+    { "FKEY",            SQLITE_DBCONFIG_ENABLE_FKEY,            0 },
+    { "TRIGGER",         SQLITE_DBCONFIG_ENABLE_TRIGGER,         0 },
+    { "FTS3_TOKENIZER",  SQLITE_DBCONFIG_ENABLE_FTS3_TOKENIZER,  0 },
+    { "LOAD_EXTENSION",  SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION,  0 },
+    { "NO_CKPT_ON_CLOSE",SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE,       0 },
+    { "QPSG",            SQLITE_DBCONFIG_ENABLE_QPSG,            0 },
+    { "TRIGGER_EQP",     SQLITE_DBCONFIG_TRIGGER_EQP,            0 },
+    { "RESET_DB",        SQLITE_DBCONFIG_RESET_DATABASE,         0 },
+    { "DEFENSIVE",       SQLITE_DBCONFIG_DEFENSIVE,              0 },
+    { "WRITABLE_SCHEMA", SQLITE_DBCONFIG_WRITABLE_SCHEMA,        0 },
+    { "ENABLE_VTAB",     SQLITE_DBCONFIG_ENABLE_VTAB,            1 },
+    { "DISABLE_VTAB",    SQLITE_DBCONFIG_DISABLE_VTAB,           1 },
   };
   int i;
   int v;
@@ -7607,7 +7611,9 @@ static int SQLITE_TCLAPI test_sqlite3_db_config(
   zSetting = Tcl_GetString(objv[2]);
   if( sqlite3_strglob("SQLITE_*", zSetting)==0 ) zSetting += 7;
   if( sqlite3_strglob("DBCONFIG_*", zSetting)==0 ) zSetting += 9;
-  if( sqlite3_strglob("ENABLE_*", zSetting)==0 ) zSetting += 7;
+  if( sqlite3_strglob("ENABLE_*", zSetting)==0 && zSetting[7]!='V' ){
+    zSetting += 7;
+  }
   for(i=0; i<ArraySize(aSetting); i++){
     if( strcmp(zSetting, aSetting[i].zName)==0 ) break;
   }
@@ -7616,9 +7622,13 @@ static int SQLITE_TCLAPI test_sqlite3_db_config(
       Tcl_NewStringObj("unknown sqlite3_db_config setting", -1));
     return TCL_ERROR;
   }
-  if( Tcl_GetIntFromObj(interp, objv[3], &v) ) return TCL_ERROR;
-  sqlite3_db_config(db, aSetting[i].eVal, v, &v);
-  Tcl_SetObjResult(interp, Tcl_NewIntObj(v));
+  if( aSetting[i].eArgType==0 ){
+    if( Tcl_GetIntFromObj(interp, objv[3], &v) ) return TCL_ERROR;
+    sqlite3_db_config(db, aSetting[i].eVal, v, &v);
+    Tcl_SetObjResult(interp, Tcl_NewIntObj(v));
+  }else if( aSetting[i].eArgType==1 ){
+    sqlite3_db_config(db, aSetting[i].eVal, Tcl_GetString(objv[3]));
+  }
   return TCL_OK;
 }
 

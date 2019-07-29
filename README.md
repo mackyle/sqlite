@@ -1,5 +1,10 @@
 <h1 align="center">SQLite Source Repository</h1>
 
+**WARNING**: As of 2019-03-20, there is now an official Git
+             [mirror](https://github.com/sqlite/sqlite) of the SQLite sources
+             on GitHub. Projects are strongly encouraged to use that
+             repository instead of this one.
+
 This repository contains the complete source code for the 
 [SQLite database engine](https://sqlite.org/).  Some test scripts 
 are also included.  However, many other test scripts

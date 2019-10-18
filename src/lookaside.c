@@ -50,7 +50,7 @@ void sqlite3LookasideResetUsed(Lookaside *pLookaside){
 
 #ifndef SQLITE_OMIT_LOOKASIDE
 
-static void *lookasideSlotAlloc(Lookaside *pLookaside, u64 n){
+static void *lookasideSlotAlloc(Lookaside *pLookaside){
   LookasideSlot *pBuf;
   if( (pBuf = pLookaside->pFree)!=0 ){
     pLookaside->pFree = pBuf->pNext;
@@ -81,36 +81,35 @@ static void lookasideSlotFree(Lookaside *pLookaside, void *p){
 #   define SQLITE_MINI_LOOKASIDE_MIN_SLOT_SIZE 128
 #  endif
 
-static void *miniLookasideAlloc(Lookaside *pLookaside, u16 n){
-  void *p = 0;
+static void *miniLookasideAlloc(Lookaside *pLookaside){
+  LookasideSlot *pMiniSlot;
   LookasideSlot *pSlot;
   int iMiniSlot;
   
-  assert( n<=pLookaside->szMini );
-  
   if( !pLookaside->pMini ){
-    pSlot = lookasideSlotAlloc(pLookaside, pLookaside->szTrue);
+    pSlot = lookasideSlotAlloc(pLookaside);
     if( !pSlot ){
-      return p;
+      return 0;
     }
     bzero(pSlot, sizeof(LookasideSlot));
     pLookaside->pMini = pSlot;
   }else{
     pSlot = pLookaside->pMini;
-    assert( pSlot->bMembership );
+    assert( pSlot->nAlloc );
   }
   
-  assert( pSlot->bMembership < (1<<pLookaside->nMini)-1 );
+  assert( pSlot->nAlloc < pLookaside->nMini );
 
-  iMiniSlot = __builtin_ffs(~pSlot->bMembership) - 1;
-  assert(iMiniSlot < pLookaside->nMini);
-  assert( (pSlot->bMembership&(1<<iMiniSlot))==0 );
-  pSlot->bMembership |= 1<<iMiniSlot;
-
-  p = (char *)pSlot + sizeof(LookasideSlot) + (pLookaside->szMini * iMiniSlot);
+  if( (pMiniSlot = pSlot->pFree) ){
+    pSlot->pFree = pMiniSlot->pNext;
+  }else{
+    iMiniSlot = pSlot->nAlloc;
+    assert(iMiniSlot < pLookaside->nMini);
+    pMiniSlot = (LookasideSlot *)((char *)pSlot + sizeof(LookasideSlot) + (pLookaside->szMini * iMiniSlot));
+  }
 
   /* Remove slot from pMini if it is full of sub-allocations */
-  if( pSlot->bMembership == (1<<pLookaside->nMini)-1 ){
+  if( ++(pSlot->nAlloc) == pLookaside->nMini ){
     /* Slot is full, dequeue from list */
     if( pSlot->pNext ){
       assert( pSlot->pNext->pPrev == pSlot );
@@ -125,20 +124,20 @@ static void *miniLookasideAlloc(Lookaside *pLookaside, u16 n){
     }
     pSlot->pNext = pSlot->pPrev = 0;
   }
-  return p;
+  return pMiniSlot;
 }
 
 static void miniLookasideFree(Lookaside *pLookaside, void *p){
   int iSlotNum = ((u8*)p - (u8*)pLookaside->pStart) / pLookaside->szTrue;
   LookasideSlot *pSlot = (LookasideSlot *)(iSlotNum * pLookaside->szTrue + (u8*)pLookaside->pStart);
-  int iMiniSlot = ((u8*)p - ((u8*)pSlot + sizeof(LookasideSlot))) / pLookaside->szMini;
+  LookasideSlot *pMiniSlot = (LookasideSlot *)p;
   
-  assert( pSlot->bMembership );
-  assert( pSlot->bMembership < (1<<pLookaside->nMini) );
+  assert( pSlot->nAlloc );
+  assert( pSlot->nAlloc <= pLookaside->nMini );
   assert( iMiniSlot<pLookaside->nMini );
   
   /* Return slot to pMini list if it was full */
-  if( pSlot->bMembership == (1<<pLookaside->nMini)-1 ){
+  if( pSlot->nAlloc==pLookaside->nMini ){
     assert( pSlot->pNext == pSlot->pPrev && pSlot->pPrev == 0 );
     if( pLookaside->pMini ){
       assert( !pLookaside->pMini->pPrev );
@@ -148,13 +147,16 @@ static void miniLookasideFree(Lookaside *pLookaside, void *p){
     pLookaside->pMini = pSlot;
   }
   
-  pSlot->bMembership &= ~(1<<iMiniSlot);
+
 #ifdef SQLITE_DEBUG
   memset(p, 0xaa, pLookaside->szMini);
 #endif
-  
+  pSlot->nAlloc--;
+  pMiniSlot->pNext = pSlot->pFree;
+  pSlot->pFree = pMiniSlot;
+
   /* Return slot to the lookaside pool if it is empty */
-  if( pSlot->bMembership == 0 ){
+  if( pSlot->nAlloc == 0 ){
     if( pSlot->pNext ){
       assert( pSlot->pNext->pPrev == pSlot );
       pSlot->pNext->pPrev = pSlot->pPrev;
@@ -171,8 +173,8 @@ static void miniLookasideFree(Lookaside *pLookaside, void *p){
 }
 
 # else
-#  define miniLookasideAlloc(A, B) lookasideSlotAlloc(A, B)
-#  define miniLookasideFree(A, B) lookasideSlowFree(A, B)
+#  define miniLookasideAlloc(A) lookasideSlotAlloc(A)
+#  define miniLookasideFree(A, B) lookasideSlotFree(A, B)
 # endif /* !SQLITE_OMIT_MINI_LOOKASIDE */
 
 int sqlite3LookasideOpen(void *pBuf, int sz, int cnt, Lookaside *pLookaside){
@@ -266,9 +268,9 @@ void *sqlite3LookasideAlloc(Lookaside *pLookaside, u64 n){
     return 0;
   }
   if( n<=pLookaside->szMini && pLookaside->nMini > 1 ){
-    return miniLookasideAlloc(pLookaside, n);
+    return miniLookasideAlloc(pLookaside);
   }
-  return lookasideSlotAlloc(pLookaside, n);
+  return lookasideSlotAlloc(pLookaside);
 }
 
 /*

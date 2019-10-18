@@ -1300,7 +1300,8 @@ struct LookasideSlot {
 #ifndef SQLITE_OMIT_MINILOOKASIDE
   /* The members below are only valid for slots inside the mini-allocator */
   LookasideSlot *pPrev;    /* Previous partially-used buffer in the list */
-  int bMembership;         /* Bitfield tracking sub-allocations within slot */
+  u16 nAlloc;              /* Number of sub-allocations ever returned from this slot */
+  LookasideSlot *pFree;    /* List of freed sub-allocations */
 #endif /* SQLITE_OMIT_MINILOOKASIDE */
 };
 

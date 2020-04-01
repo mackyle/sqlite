@@ -1556,8 +1556,20 @@ cmd ::= REINDEX nm(X) dbnm(Y).  {sqlite3Reindex(pParse, &X, &Y);}
 
 /////////////////////////////////// ANALYZE ///////////////////////////////////
 %ifndef SQLITE_OMIT_ANALYZE
-cmd ::= ANALYZE.                {sqlite3Analyze(pParse, 0, 0);}
-cmd ::= ANALYZE nm(X) dbnm(Y).  {sqlite3Analyze(pParse, &X, &Y);}
+cmd ::= ANALYZE anlyzcfg.                {sqlite3Analyze(pParse, 0, 0);}
+cmd ::= ANALYZE nm(X) dbnm(Y) anlyzcfg.  {sqlite3Analyze(pParse, &X, &Y);}
+anlyzcfg ::= .
+anlyzcfg ::= WITH LIMIT EQ INTEGER(X). {
+  char *z = sqlite3NameFromToken(pParse->db, &X);
+  if( z ){
+    i64 x;
+    sqlite3DecOrHexToI64(z, &x);
+    pParse->eAux1 = 2;
+    pParse->aux1.nRowLimit = x>0x7ffffff0 ? 0 : (int)x;
+    sqlite3DbFree(pParse->db, z);
+  }
+}
+   
 %endif
 
 //////////////////////// ALTER TABLE table ... ////////////////////////////////

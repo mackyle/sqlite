@@ -185,6 +185,7 @@ static void openStatTable(
   int i;
   sqlite3 *db = pParse->db;
   Db *pDb;
+  int nRowLimit;
   Vdbe *v = sqlite3GetVdbe(pParse);
   int aRoot[ArraySize(aTable)];
   u8 aCreateTbl[ArraySize(aTable)];
@@ -198,6 +199,9 @@ static void openStatTable(
   assert( sqlite3BtreeHoldsAllMutexes(db) );
   assert( sqlite3VdbeDb(v)==db );
   pDb = &db->aDb[iDb];
+  assert( pParse->eAux1==2 );
+  nRowLimit = pParse->aux1.nRowLimit;
+  pParse->eAux1 = 0;
 
   /* Create new statistic tables if they do not exist, or clear them
   ** if they do already exist.
@@ -239,6 +243,8 @@ static void openStatTable(
       }
     }
   }
+  pParse->eAux1 = 2;
+  pParse->aux1.nRowLimit = nRowLimit;
 
   /* Open the sqlite_stat[134] tables for writing. */
   for(i=0; i<nToOpen; i++){
@@ -1123,7 +1129,8 @@ static void analyzeOneTable(
       sqlite3VdbeAddOp3(v, OP_Count, iIdxCur, regTemp, 1);
     }
     assert( regTemp2==regStat+4 );
-    sqlite3VdbeAddOp2(v, OP_Integer, db->nAnalysisLimit, regTemp2);
+    assert( pParse->eAux1==2 );
+    sqlite3VdbeAddOp2(v, OP_Integer, pParse->aux1.nRowLimit, regTemp2);
     sqlite3VdbeAddFunctionCall(pParse, 0, regStat+1, regStat, 4,
                                &statInitFuncdef, 0);
 
@@ -1225,7 +1232,8 @@ static void analyzeOneTable(
     {
       sqlite3VdbeAddFunctionCall(pParse, 1, regStat, regTemp, 2+IsStat4,
                                  &statPushFuncdef, 0);
-      if( db->nAnalysisLimit ){
+      assert( pParse->eAux1==2 );
+      if( pParse->aux1.nRowLimit ){
         int j1, j2, j3;
         j1 = sqlite3VdbeAddOp1(v, OP_IsNull, regTemp); VdbeCoverage(v);
         j2 = sqlite3VdbeAddOp1(v, OP_If, regTemp); VdbeCoverage(v);
@@ -1252,7 +1260,8 @@ static void analyzeOneTable(
 
     /* Add the entries to the stat4 table. */
 #ifdef SQLITE_ENABLE_STAT4
-    if( OptimizationEnabled(db, SQLITE_Stat4) && db->nAnalysisLimit==0 ){
+    assert( pParse->eAux1==2 );
+    if( OptimizationEnabled(db, SQLITE_Stat4) && pParse->aux1.nRowLimit==0 ){
       int regEq = regStat1;
       int regLt = regStat1+1;
       int regDLt = regStat1+2;
@@ -1399,6 +1408,11 @@ void sqlite3Analyze(Parse *pParse, Token *pName1, Token *pName2){
   assert( sqlite3BtreeHoldsAllMutexes(pParse->db) );
   if( SQLITE_OK!=sqlite3ReadSchema(pParse) ){
     return;
+  }
+  assert( pParse->eAux1==0 || pParse->eAux1==2 );
+  if( pParse->eAux1==0 ){
+    pParse->aux1.nRowLimit = db->nAnalysisLimit;
+    pParse->eAux1 = 2;
   }
 
   assert( pName2!=0 || pName1==0 );

@@ -1159,8 +1159,10 @@ void sqlite3StartTable(
     }else
 #endif
     {
-      pParse->addrCrTab =
+      assert( pParse->eAux1==0 || pParse->eAux1==1 );
+      pParse->aux1.addrCrTab =
          sqlite3VdbeAddOp3(v, OP_CreateBtree, iDb, reg2, BTREE_INTKEY);
+      pParse->eAux1 = 1;
     }
     sqlite3OpenMasterTable(pParse, iDb);
     sqlite3VdbeAddOp2(v, OP_NewRowid, 0, reg1);
@@ -2008,9 +2010,10 @@ static void convertToWithoutRowidTable(Parse *pParse, Table *pTab){
   /* Convert the P3 operand of the OP_CreateBtree opcode from BTREE_INTKEY
   ** into BTREE_BLOBKEY.
   */
-  if( pParse->addrCrTab ){
+  assert( pParse->eAux1==0 || pParse->eAux1==1 );
+  if( pParse->eAux1 ){
     assert( v );
-    sqlite3VdbeChangeP3(v, pParse->addrCrTab, BTREE_BLOBKEY);
+    sqlite3VdbeChangeP3(v, pParse->aux1.addrCrTab, BTREE_BLOBKEY);
   }
 
   /* Locate the PRIMARY KEY index.  Or, if this table was originally

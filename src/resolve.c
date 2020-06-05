@@ -1716,10 +1716,18 @@ static int resolveSelectStep(Walker *pWalker, Select *p){
         }
       }
     }else if( p->pWin && ALWAYS( (p->selFlags & SF_WinRewrite)==0 ) ){
+#if SELECTTRACE_ENABLED
+      if( (sqlite3SelectTrace & 0x108)!=0 ){
+        SELECTTRACE(0x104,pParse,p,
+              ("(%u/%p) before window rewrite:\n",p->selId,p));
+        sqlite3TreeViewSelect(0, p, 0);
+      }
+#endif
       sqlite3WindowRewrite(pParse, p);
 #if SELECTTRACE_ENABLED
       if( (sqlite3SelectTrace & 0x108)!=0 ){
-        SELECTTRACE(0x104,pParse,p, ("after window rewrite:\n"));
+        SELECTTRACE(0x104,pParse,p, 
+              ("(%u/%p) after window rewrite:\n",p->selId,p));
         sqlite3TreeViewSelect(0, p, 0);
       }
 #endif

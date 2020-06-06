@@ -936,6 +936,8 @@ static int sqlite3WindowExtraAggFuncDepth(Walker *pWalker, Expr *pExpr){
     }else if( pExpr->op2==pWalker->walkerDepth-1 ){
       pWalker->eCode = 1;
     }
+  }else if( ExprHasProperty(pExpr, EP_WinFunc) ){
+    return WRC_Prune;
   }
   return WRC_Continue;
 }

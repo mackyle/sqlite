@@ -1818,4 +1818,23 @@ do_catchsql_test 57.2  {
   );
 } {1 {1st ORDER BY term does not match any column in the result set}}
 
+# 2020-06-06 various dbsqlfuzz finds and
+# ticket 0899cf62f597d7e7
+#
+reset_db
+do_execsql_test 57.1 {
+  CREATE TABLE t1(a, b, c);
+  INSERT INTO t1 VALUES(NULL,NULL,NULL);
+  SELECT 
+    sum(a),
+    min(b) OVER (),
+    count(c) OVER (ORDER BY b)
+  FROM t1;
+} {{} {} 0}
+do_execsql_test 57.2 {
+  CREATE TABLE v0 ( v1 INTEGER PRIMARY KEY ) ; 
+  INSERT INTO v0 VALUES ( 10 ) ; 
+  SELECT DISTINCT v1, lead(v1) OVER() FROM v0 GROUP BY v1 ORDER BY 2;
+} {10 {}}
+
 finish_test

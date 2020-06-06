@@ -1024,7 +1024,6 @@ static int resolveExprStep(Walker *pWalker, Expr *pExpr){
             assert( SQLITE_FUNC_MINMAX==NC_MinMaxAgg );
             testcase( (pDef->funcFlags & SQLITE_FUNC_MINMAX)!=0 );
             pNC2->ncFlags |= NC_HasAgg | (pDef->funcFlags & SQLITE_FUNC_MINMAX);
-
           }
         }
         pNC->ncFlags |= savedAllowFlags;

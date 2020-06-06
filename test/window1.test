@@ -1848,4 +1848,14 @@ do_execsql_test 57.3 {
   FROM t3;
 } {5}
 
+# 2020-06-06 ticket 1f6f353b684fc708
+reset_db
+do_execsql_test 58.1 {
+  CREATE TABLE a(a, b, c);
+  INSERT INTO a VALUES(1, 2, 3);
+  INSERT INTO a VALUES(4, 5, 6);
+  SELECT sum(345+b)      OVER (ORDER BY b),
+         sum(avg(678)) OVER (ORDER BY c) FROM a;
+} {347 678.0}
+
 finish_test

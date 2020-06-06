@@ -1786,4 +1786,76 @@ do_execsql_test 55.1 {
     ORDER BY 1;
 } {99}
 
+#------------------------------------------------------------------------
+reset_db
+do_execsql_test 56.1 {
+  CREATE TABLE t1(a, b INTEGER); 
+  CREATE TABLE t2(c, d); 
+}
+do_catchsql_test 56.2 {
+  SELECT avg(b) FROM t1 
+    UNION ALL 
+  SELECT min(c) OVER () FROM t2 
+  ORDER BY nosuchcolumn;
+} {1 {1st ORDER BY term does not match any column in the result set}}
+
+reset_db
+do_execsql_test 57.1 {
+  CREATE TABLE t4(a, b, c, d, e);
+}
+
+do_catchsql_test 57.2  {
+  SELECT b FROM t4
+  UNION
+  SELECT a FROM t4
+  ORDER BY (
+    SELECT sum(x) OVER() FROM (
+      SELECT c AS x FROM t4
+      UNION
+      SELECT d FROM t4
+      ORDER BY (SELECT e FROM t4)
+    )
+  );
+} {1 {1st ORDER BY term does not match any column in the result set}}
+
+# 2020-06-06 various dbsqlfuzz finds and
+# ticket 0899cf62f597d7e7
+#
+reset_db
+do_execsql_test 57.1 {
+  CREATE TABLE t1(a, b, c);
+  INSERT INTO t1 VALUES(NULL,NULL,NULL);
+  SELECT 
+    sum(a),
+    min(b) OVER (),
+    count(c) OVER (ORDER BY b)
+  FROM t1;
+} {{} {} 0}
+do_execsql_test 57.2 {
+  CREATE TABLE v0 ( v1 INTEGER PRIMARY KEY ) ; 
+  INSERT INTO v0 VALUES ( 10 ) ; 
+  SELECT DISTINCT v1, lead(v1) OVER() FROM v0 GROUP BY v1 ORDER BY 2;
+} {10 {}}
+do_execsql_test 57.3 {
+  DROP TABLE t1;
+  CREATE TABLE t1(a);
+  INSERT INTO t1(a) VALUES(22);
+  CREATE TABLE t3(y);
+  INSERT INTO t3(y) VALUES(5),(11),(-9);
+  SELECT (
+    SELECT max(y) OVER( ORDER BY (SELECT x FROM (SELECT sum(y) AS x FROM t1)))
+  )
+  FROM t3;
+} {5}
+
+# 2020-06-06 ticket 1f6f353b684fc708
+reset_db
+do_execsql_test 58.1 {
+  CREATE TABLE a(a, b, c);
+  INSERT INTO a VALUES(1, 2, 3);
+  INSERT INTO a VALUES(4, 5, 6);
+  SELECT sum(345+b)      OVER (ORDER BY b),
+         sum(avg(678)) OVER (ORDER BY c) FROM a;
+} {347 678.0}
+
 finish_test

@@ -167,12 +167,40 @@ Select *sqlite3SelectNew(
   return pAllocated;
 }
 
-
 /*
 ** Delete the given Select structure and all of its substructures.
 */
 void sqlite3SelectDelete(sqlite3 *db, Select *p){
   if( OK_IF_ALWAYS_TRUE(p) ) clearSelect(db, p, 1);
+}
+
+/*
+** Make arrangements to delete a subquery when the Parse object is
+** destroyed.
+**
+** This works by adding the subquery to the Parse.pConstExpr list, but
+** with a register number of zero.  The pConstExpr list is destroyed
+** when the Parse object is destroyed.  And the zero register means
+** that the expression is not coded.
+*/
+void sqlite3SelectDeferredDelete(Parse *pParse, Select *p){
+  Expr *pNew = sqlite3PExpr(pParse, TK_SELECT, 0, 0);
+  if( pNew==0 ){
+    clearSelect(pParse->db, p, 1);
+  }else{
+    sqlite3PExprAddSelect(pParse, pNew, p);
+    pParse->pConstExpr =
+      sqlite3ExprListAppend(pParse, pParse->pConstExpr, pNew);
+    testcase( pParse->pConstExpr==0 ); /* Only true following OOM */
+#ifdef SQLITE_DEBUG
+    if( pParse->pConstExpr ){
+      ExprList *p = pParse->pConstExpr;
+      struct ExprList_item *pItem = &p->a[p->nExpr-1];
+      assert( pItem->reusable==0 );
+      assert( pItem->u.iConstExprReg==0 );
+    }
+#endif
+  }
 }
 
 /*
@@ -4151,7 +4179,7 @@ static int flattenSubquery(
   /* Finially, delete what is left of the subquery and return
   ** success.
   */
-  sqlite3SelectDelete(db, pSub1);
+  sqlite3SelectDeferredDelete(pParse, pSub1);
 
 #if SELECTTRACE_ENABLED
   if( sqlite3SelectTrace & 0x100 ){

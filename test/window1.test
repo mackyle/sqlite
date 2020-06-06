@@ -1836,5 +1836,16 @@ do_execsql_test 57.2 {
   INSERT INTO v0 VALUES ( 10 ) ; 
   SELECT DISTINCT v1, lead(v1) OVER() FROM v0 GROUP BY v1 ORDER BY 2;
 } {10 {}}
+do_execsql_test 57.3 {
+  DROP TABLE t1;
+  CREATE TABLE t1(a);
+  INSERT INTO t1(a) VALUES(22);
+  CREATE TABLE t3(y);
+  INSERT INTO t3(y) VALUES(5),(11),(-9);
+  SELECT (
+    SELECT max(y) OVER( ORDER BY (SELECT x FROM (SELECT sum(y) AS x FROM t1)))
+  )
+  FROM t3;
+} {5}
 
 finish_test

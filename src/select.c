@@ -5336,7 +5336,6 @@ void sqlite3SelectPrep(
 ){
   assert( p!=0 || pParse->db->mallocFailed );
   if( pParse->db->mallocFailed ) return;
-  assert( (p->selFlags & SF_HasTypeInfo)==0 );
   sqlite3SelectExpand(pParse, p);
   if( pParse->nErr || pParse->db->mallocFailed ) return;
   sqlite3ResolveSelectNames(pParse, p, pOuterNC);

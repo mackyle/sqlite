@@ -5336,7 +5336,7 @@ void sqlite3SelectPrep(
 ){
   assert( p!=0 || pParse->db->mallocFailed );
   if( pParse->db->mallocFailed ) return;
-  if( p->selFlags & SF_HasTypeInfo ) return;
+  assert( (p->selFlags & SF_HasTypeInfo)==0 );
   sqlite3SelectExpand(pParse, p);
   if( pParse->nErr || pParse->db->mallocFailed ) return;
   sqlite3ResolveSelectNames(pParse, p, pOuterNC);
@@ -5779,17 +5779,19 @@ int sqlite3Select(
     p->pOrderBy = 0;
     p->selFlags &= ~SF_Distinct;
   }
-  sqlite3SelectPrep(pParse, p, 0);
-  if( pParse->nErr || db->mallocFailed ){
-    goto select_end;
-  }
-  assert( p->pEList!=0 );
+  if( (p->selFlags & SF_HasTypeInfo)==0 ){
+    sqlite3SelectPrep(pParse, p, 0);
+    if( pParse->nErr || db->mallocFailed ){
+      goto select_end;
+    }
+    assert( p->pEList!=0 );
 #if SELECTTRACE_ENABLED
-  if( sqlite3SelectTrace & 0x104 ){
-    SELECTTRACE(0x104,pParse,p, ("after name resolution:\n"));
-    sqlite3TreeViewSelect(0, p, 0);
-  }
+    if( sqlite3SelectTrace & 0x104 ){
+      SELECTTRACE(0x104,pParse,p, ("after name resolution:\n"));
+      sqlite3TreeViewSelect(0, p, 0);
+    }
 #endif
+  }
 
   if( pDest->eDest==SRT_Output ){
     generateColumnNames(pParse, p);

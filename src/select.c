@@ -168,12 +168,40 @@ Select *sqlite3SelectNew(
   return pNew;
 }
 
-
 /*
 ** Delete the given Select structure and all of its substructures.
 */
 void sqlite3SelectDelete(sqlite3 *db, Select *p){
   if( OK_IF_ALWAYS_TRUE(p) ) clearSelect(db, p, 1);
+}
+
+/*
+** Make arrangements to delete a subquery when the Parse object is
+** destroyed.
+**
+** This works by adding the subquery to the Parse.pConstExpr list, but
+** with a register number of zero.  The pConstExpr list is destroyed
+** when the Parse object is destroyed.  And the zero register means
+** that the expression is not coded.
+*/
+void sqlite3SelectDeferredDelete(Parse *pParse, Select *p){
+  Expr *pNew = sqlite3PExpr(pParse, TK_SELECT, 0, 0);
+  if( pNew==0 ){
+    clearSelect(pParse->db, p, 1);
+  }else{
+    sqlite3PExprAddSelect(pParse, pNew, p);
+    pParse->pConstExpr =
+      sqlite3ExprListAppend(pParse, pParse->pConstExpr, pNew);
+    testcase( pParse->pConstExpr==0 ); /* Only true following OOM */
+#ifdef SQLITE_DEBUG
+    if( pParse->pConstExpr ){
+      ExprList *p = pParse->pConstExpr;
+      struct ExprList_item *pItem = &p->a[p->nExpr-1];
+      assert( pItem->reusable==0 );
+      assert( pItem->u.iConstExprReg==0 );
+    }
+#endif
+  }
 }
 
 /*
@@ -4152,7 +4180,7 @@ static int flattenSubquery(
   /* Finially, delete what is left of the subquery and return
   ** success.
   */
-  sqlite3SelectDelete(db, pSub1);
+  sqlite3SelectDeferredDelete(pParse, pSub1);
 
 #if SELECTTRACE_ENABLED
   if( sqlite3SelectTrace & 0x100 ){
@@ -5780,17 +5808,19 @@ int sqlite3Select(
     p->pOrderBy = 0;
     p->selFlags &= ~SF_Distinct;
   }
-  sqlite3SelectPrep(pParse, p, 0);
-  if( pParse->nErr || db->mallocFailed ){
-    goto select_end;
-  }
-  assert( p->pEList!=0 );
+  if( (p->selFlags & SF_HasTypeInfo)==0 ){
+    sqlite3SelectPrep(pParse, p, 0);
+    if( pParse->nErr || db->mallocFailed ){
+      goto select_end;
+    }
+    assert( p->pEList!=0 );
 #if SELECTTRACE_ENABLED
-  if( sqlite3SelectTrace & 0x104 ){
-    SELECTTRACE(0x104,pParse,p, ("after name resolution:\n"));
-    sqlite3TreeViewSelect(0, p, 0);
-  }
+    if( sqlite3SelectTrace & 0x104 ){
+      SELECTTRACE(0x104,pParse,p, ("after name resolution:\n"));
+      sqlite3TreeViewSelect(0, p, 0);
+    }
 #endif
+  }
 
   if( pDest->eDest==SRT_Output ){
     generateColumnNames(pParse, p);
@@ -6210,7 +6240,7 @@ int sqlite3Select(
 
 
     /* Begin the database scan. */
-    SELECTTRACE(1,pParse,p,("WhereBegin\n"));
+    SELECTTRACE(1,pParse,p,("WhereBegin-A\n"));
     pWInfo = sqlite3WhereBegin(pParse, pTabList, pWhere, sSort.pOrderBy,
                                p->pEList, wctrlFlags, p->nSelectRow);
     if( pWInfo==0 ) goto select_end;
@@ -6441,7 +6471,7 @@ int sqlite3Select(
       ** in the right order to begin with.
       */
       sqlite3VdbeAddOp2(v, OP_Gosub, regReset, addrReset);
-      SELECTTRACE(1,pParse,p,("WhereBegin\n"));
+      SELECTTRACE(1,pParse,p,("WhereBegin-B\n"));
       pWInfo = sqlite3WhereBegin(pParse, pTabList, pWhere, pGroupBy, 0,
           WHERE_GROUPBY | (orderByGrp ? WHERE_SORTBYGROUP : 0), 0
       );
@@ -6716,7 +6746,7 @@ int sqlite3Select(
         assert( minMaxFlag==WHERE_ORDERBY_NORMAL || pMinMaxOrderBy!=0 );
         assert( pMinMaxOrderBy==0 || pMinMaxOrderBy->nExpr==1 );
 
-        SELECTTRACE(1,pParse,p,("WhereBegin\n"));
+        SELECTTRACE(1,pParse,p,("WhereBegin-C\n"));
         pWInfo = sqlite3WhereBegin(pParse, pTabList, pWhere, pMinMaxOrderBy,
                                    0, minMaxFlag, 0);
         if( pWInfo==0 ){
@@ -6771,10 +6801,12 @@ select_end:
   sqlite3ExprListDelete(db, pMinMaxOrderBy);
   sqlite3DbFree(db, sAggInfo.aCol);
 #ifdef SQLITE_DEBUG
-  for(i=0; i<sAggInfo.nFunc; i++){
-    assert( sAggInfo.aFunc[i].pExpr!=0 );
-    assert( sAggInfo.aFunc[i].pExpr->pAggInfo==&sAggInfo );
-    sAggInfo.aFunc[i].pExpr->pAggInfo = 0;
+  if( db->mallocFailed==0 ){
+    for(i=0; i<sAggInfo.nFunc; i++){
+      assert( sAggInfo.aFunc[i].pExpr!=0 );
+      assert( sAggInfo.aFunc[i].pExpr->pAggInfo==&sAggInfo );
+      sAggInfo.aFunc[i].pExpr->pAggInfo = 0;
+    }
   }
   sAggInfo.iAggMagic = 0;
 #endif

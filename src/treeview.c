@@ -596,6 +596,9 @@ void sqlite3TreeViewExpr(TreeView *pView, const Expr *pExpr, u8 moreToFollow){
         if( pExpr->op2==NC_GenCol ) zOp2 = "NC_GenCol";
         sqlite3TreeViewLine(pView, "FUNCTION %Q%s op2=%s",
                             pExpr->u.zToken, zFlgs, zOp2);
+      }else if( ExprHasProperty(pExpr, EP_WinFunc) ){
+        sqlite3TreeViewLine(pView, "WINDOW-FUNCTION %Q%s",
+                            pExpr->u.zToken, zFlgs);
       }else{
         sqlite3TreeViewLine(pView, "FUNCTION %Q%s", pExpr->u.zToken, zFlgs);
       }

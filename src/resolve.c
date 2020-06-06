@@ -1183,7 +1183,6 @@ static int resolveOrderByTermToExprList(
   NameContext nc;    /* Name context for resolving pE */
   sqlite3 *db;       /* Database connection */
   int rc;            /* Return code from subprocedures */
-  u8 savedSuppErr;   /* Saved value of db->suppressErr */
 
   assert( sqlite3ExprIsInteger(pE, &i)==0 );
   pEList = pSelect->pEList;
@@ -1197,10 +1196,18 @@ static int resolveOrderByTermToExprList(
   nc.ncFlags = NC_AllowAgg|NC_UEList;
   nc.nErr = 0;
   db = pParse->db;
-  savedSuppErr = db->suppressErr;
-  if( IN_RENAME_OBJECT==0 ) db->suppressErr = 1;
+  assert( pParse->nErr==0 );
   rc = sqlite3ResolveExprNames(&nc, pE);
-  db->suppressErr = savedSuppErr;
+
+  /* Discard any error. The only error that can occur in the above call
+  ** that we care about is SQLITE_NOMEM, the occurence of which is recorded in
+  ** db->mallocFailed.  */
+  assert( rc!=SQLITE_NOMEM || db->mallocFailed );
+  if( IN_RENAME_OBJECT==0 ){
+    sqlite3DbFree(db, pParse->zErrMsg);
+    pParse->zErrMsg = 0;
+    pParse->nErr = 0;
+  }
   if( rc ) return 0;
 
   /* Try to match the ORDER BY expression against an expression
@@ -1307,7 +1314,7 @@ static int resolveCompoundOrderBy(
           }else{
             pDup = sqlite3ExprDup(db, pE, 0);
           }
-          if( !db->mallocFailed ){
+          if( !db->mallocFailed && !pParse->nErr ){
             assert(pDup);
             iCol = resolveOrderByTermToExprList(pParse, pSelect, pDup);
           }

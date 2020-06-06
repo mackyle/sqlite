@@ -1786,4 +1786,36 @@ do_execsql_test 55.1 {
     ORDER BY 1;
 } {99}
 
+#------------------------------------------------------------------------
+reset_db
+do_execsql_test 56.1 {
+  CREATE TABLE t1(a, b INTEGER); 
+  CREATE TABLE t2(c, d); 
+}
+do_catchsql_test 56.2 {
+  SELECT avg(b) FROM t1 
+    UNION ALL 
+  SELECT min(c) OVER () FROM t2 
+  ORDER BY nosuchcolumn;
+} {1 {1st ORDER BY term does not match any column in the result set}}
+
+reset_db
+do_execsql_test 57.1 {
+  CREATE TABLE t4(a, b, c, d, e);
+}
+
+do_catchsql_test 57.2  {
+  SELECT b FROM t4
+  UNION
+  SELECT a FROM t4
+  ORDER BY (
+    SELECT sum(x) OVER() FROM (
+      SELECT c AS x FROM t4
+      UNION
+      SELECT d FROM t4
+      ORDER BY (SELECT e FROM t4)
+    )
+  );
+} {1 {1st ORDER BY term does not match any column in the result set}}
+
 finish_test

@@ -6799,10 +6799,12 @@ select_end:
   sqlite3ExprListDelete(db, pMinMaxOrderBy);
   sqlite3DbFree(db, sAggInfo.aCol);
 #ifdef SQLITE_DEBUG
-  for(i=0; i<sAggInfo.nFunc; i++){
-    assert( sAggInfo.aFunc[i].pExpr!=0 );
-    assert( sAggInfo.aFunc[i].pExpr->pAggInfo==&sAggInfo );
-    sAggInfo.aFunc[i].pExpr->pAggInfo = 0;
+  if( db->mallocFailed==0 ){
+    for(i=0; i<sAggInfo.nFunc; i++){
+      assert( sAggInfo.aFunc[i].pExpr!=0 );
+      assert( sAggInfo.aFunc[i].pExpr->pAggInfo==&sAggInfo );
+      sAggInfo.aFunc[i].pExpr->pAggInfo = 0;
+    }
   }
   sAggInfo.iAggMagic = 0;
 #endif

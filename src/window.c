@@ -923,12 +923,19 @@ static ExprList *exprListAppendList(
 ** due to the extra subquery layer that was added.
 **
 ** See also the incrAggDepth() routine in resolve.c
+**
+** In addition to increasing pExpr->op2, set pWalker->eCode to 1 if
+** any top-level aggregate functions are encountered.  This is needed
+** to accurately set the SF_Aggregate flag on the new window-function
+** subquery.
 */
 static int sqlite3WindowExtraAggFuncDepth(Walker *pWalker, Expr *pExpr){
-  if( pExpr->op==TK_AGG_FUNCTION
-   && pExpr->op2>=pWalker->walkerDepth
-  ){
-    pExpr->op2++;
+  if( pExpr->op==TK_AGG_FUNCTION ){
+    if( pExpr->op2>=pWalker->walkerDepth ){
+      pExpr->op2++;
+    }else if( pExpr->op2==pWalker->walkerDepth-1 ){
+      pWalker->eCode = 1;
+    }
   }
   return WRC_Continue;
 }
@@ -956,7 +963,6 @@ int sqlite3WindowRewrite(Parse *pParse, Select *p){
     Window *pMWin = p->pWin;      /* Master window object */
     Window *pWin;                 /* Window object iterator */
     Table *pTab;
-    u32 selFlags = p->selFlags;
 
     pTab = sqlite3DbMallocZero(db, sizeof(Table));
     if( pTab==0 ){
@@ -1047,7 +1053,6 @@ int sqlite3WindowRewrite(Parse *pParse, Select *p){
       sqlite3SrcListAssignCursors(pParse, p->pSrc);
       pSub->selFlags |= SF_Expanded;
       pTab2 = sqlite3ResultSetOfSelect(pParse, pSub, SQLITE_AFF_NONE);
-      pSub->selFlags |= (selFlags & SF_Aggregate);
       if( pTab2==0 ){
         /* Might actually be some other kind of error, but in that case
         ** pParse->nErr will be set, so if SQLITE_NOMEM is set, we will get
@@ -1065,6 +1070,7 @@ int sqlite3WindowRewrite(Parse *pParse, Select *p){
         w.xSelectCallback = sqlite3WalkerDepthIncrease;
         w.xSelectCallback2 = sqlite3WalkerDepthDecrease;
         sqlite3WalkSelect(&w, pSub);
+        if( w.eCode ) pSub->selFlags |= SF_Aggregate;
       }
     }else{
       sqlite3SelectDelete(db, pSub);

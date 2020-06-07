@@ -385,8 +385,9 @@ void sqlite3TreeViewWindow(TreeView *pView, const Window *pWin, u8 more){
 */
 void sqlite3TreeViewWinFunc(TreeView *pView, const Window *pWin, u8 more){
   pView = sqlite3TreeViewPush(pView, more);
-  sqlite3TreeViewLine(pView, "WINFUNC %s(%d)",
-                       pWin->pFunc->zName, pWin->pFunc->nArg);
+  sqlite3TreeViewLine(pView, "WINFUNC %s(%d) cur=%d",
+                      pWin->pFunc->zName, pWin->pFunc->nArg,
+                      pWin->iEphCsr);
   sqlite3TreeViewWindow(pView, pWin, 0);
   sqlite3TreeViewPop(pView);
 }
@@ -597,8 +598,8 @@ void sqlite3TreeViewExpr(TreeView *pView, const Expr *pExpr, u8 moreToFollow){
         sqlite3TreeViewLine(pView, "FUNCTION %Q%s op2=%s",
                             pExpr->u.zToken, zFlgs, zOp2);
       }else if( ExprHasProperty(pExpr, EP_WinFunc) ){
-        sqlite3TreeViewLine(pView, "WINDOW-FUNCTION %Q%s",
-                            pExpr->u.zToken, zFlgs);
+        sqlite3TreeViewLine(pView, "WINDOW-FUNCTION %Q%s cur=%d",
+                            pExpr->u.zToken, zFlgs, pExpr->y.pWin->iEphCsr);
       }else{
         sqlite3TreeViewLine(pView, "FUNCTION %Q%s", pExpr->u.zToken, zFlgs);
       }

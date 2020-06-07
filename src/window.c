@@ -1064,7 +1064,7 @@ int sqlite3WindowRewrite(Parse *pParse, Select *p){
         memcpy(pTab, pTab2, sizeof(Table));
         pTab->tabFlags |= TF_Ephemeral;
         assert( pTab->zName==0 );
-        pTab->zName = sqlite3MPrintf(db, "$wintab_%p", pTab);
+        pTab->zName = sqlite3MPrintf(db, "<wintab-%d>", pMWin->iEphCsr);
         p->pSrc->a[0].pTab = pTab;
         pTab = pTab2;
         memset(&w, 0, sizeof(w));

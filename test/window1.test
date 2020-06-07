@@ -1858,4 +1858,16 @@ do_execsql_test 58.1 {
          sum(avg(678)) OVER (ORDER BY c) FROM a;
 } {347 678.0}
 
+# 2020-06-06 ticket e5504e987e419fb0
+do_catchsql_test 59.1 {
+  DROP TABLE IF EXISTS t1;
+  CREATE TABLE t1(x INTEGER PRIMARY KEY);
+  INSERT INTO t1 VALUES (123);
+  SELECT
+     ntile( (SELECT sum(x)) ) OVER(ORDER BY x),
+     min(x) OVER(ORDER BY x)
+    FROM t1; 
+} {1 {misuse of aggregate: sum()}}
+
+
 finish_test

@@ -1072,7 +1072,7 @@ int sqlite3WindowRewrite(Parse *pParse, Select *p){
         w.xSelectCallback = sqlite3WalkerDepthIncrease;
         w.xSelectCallback2 = sqlite3WalkerDepthDecrease;
         sqlite3WalkSelect(&w, pSub);
-        if( w.eCode ) pSub->selFlags |= SF_Aggregate;
+        if( w.eCode && pSub->pWin==0 ) pSub->selFlags |= SF_Aggregate;
       }
     }else{
       sqlite3SelectDelete(db, pSub);

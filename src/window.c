@@ -1030,6 +1030,7 @@ int sqlite3WindowRewrite(Parse *pParse, Select *p){
       pWin->regAccum = ++pParse->nMem;
       pWin->regResult = ++pParse->nMem;
       sqlite3VdbeAddOp2(v, OP_Null, 0, pWin->regAccum);
+      VdbeComment((v, "acc of %s()", pWin->pFunc->zName));
     }
 
     /* If there is no ORDER BY or PARTITION BY clause, and the window
@@ -1047,6 +1048,9 @@ int sqlite3WindowRewrite(Parse *pParse, Select *p){
     pSub = sqlite3SelectNew(
         pParse, pSublist, pSrc, pWhere, pGroupBy, pHaving, pSort, 0, 0
     );
+    SELECTTRACE(0x1,pParse,p,
+                ("allocate cursors %d..%d and subquery (%d/%p) to WINDOW %p\n",
+                pMWin->iEphCsr, pParse->nTab-1, pSub->selId, pSub, pMWin));
     p->pSrc = sqlite3SrcListAppend(pParse, 0, 0, 0);
     if( p->pSrc ){
       Table *pTab2;

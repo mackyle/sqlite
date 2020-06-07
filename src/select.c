@@ -6226,6 +6226,15 @@ int sqlite3Select(
     sDistinct.eTnctType = WHERE_DISTINCT_NOOP;
   }
 
+#ifndef SQLITE_OMIT_WINDOWFUNC
+  /* By the time the Select object reaches this point, it will have been
+  ** transformed (mostly by sqlite3WindowRewrite()) so it cannot be both
+  ** a single-row aggregate and contain a window function.  In other words,
+  ** if the Select has a window function then it may not have either an
+  ** aggregate function or a GROUP BY clause. */
+  assert( (!isAgg && pGroupBy==0) || p->pWin==0 );
+#endif
+
   if( !isAgg && pGroupBy==0 ){
     /* No aggregate functions and no GROUP BY clause */
     u16 wctrlFlags = (sDistinct.isTnct ? WHERE_WANT_DISTINCT : 0)

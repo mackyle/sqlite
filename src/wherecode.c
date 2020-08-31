@@ -1738,6 +1738,9 @@ Bitmask sqlite3WhereCodeOneLoopStart(
 
     /* Check if the index cursor is past the end of the range. */
     if( nConstraint ){
+      if( pLoop->wsFlags & WHERE_IN_EARLYOUT ){
+        sqlite3VdbeAddOp2(v, OP_SeekHit, iIdxCur, 1);
+      }
       op = aEndOp[bRev*2 + endEq];
       sqlite3VdbeAddOp4Int(v, op, iIdxCur, addrNxt, regBase, nConstraint);
       testcase( op==OP_IdxGT );  VdbeCoverageIf(v, op==OP_IdxGT );
@@ -1747,7 +1750,7 @@ Bitmask sqlite3WhereCodeOneLoopStart(
     }
 
     if( pLoop->wsFlags & WHERE_IN_EARLYOUT ){
-      sqlite3VdbeAddOp2(v, OP_SeekHit, iIdxCur, 1);
+      sqlite3VdbeAddOp2(v, OP_SeekHit, iIdxCur, 2);
     }
 
     /* Seek the table cursor, if required */

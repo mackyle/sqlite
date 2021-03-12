@@ -1,0 +1,58 @@
+# 2021 March 12
+#
+# The author disclaims copyright to this source code.  In place of
+# a legal notice, here is a blessing:
+#
+#    May you do good and not evil.
+#    May you find forgiveness for yourself and forgive others.
+#    May you share freely, never taking more than you give.
+#
+#***********************************************************************
+#
+# Test cases that verify that files derived from other sources
+# (yet under source control) are derived from the current version.
+#
+set testdir [file dirname $argv0]
+source $testdir/tester.tcl
+set ::testprefix dervup
+
+set ::baseDir [file dir [file normalize $testdir]]
+
+do_test 1.0 {
+  set res {}
+  set mkmsvcmin [file join $::baseDir tool mkmsvcmin.tcl]
+  set srcMakefile [file join $::baseDir Makefile.msc]
+  set dervMakefile [file join $::baseDir autoconf Makefile.msc]
+  set tmpMakefile trial_Makefile.msc
+  # Check assumptions first (to ease fixing this when they become false.)
+  set haveInputs [expr [file exists $mkmsvcmin] && [file exists $srcMakefile]]
+  lappend res $haveInputs
+  # See if autoconf/Makefile.msc is outdated by what Makefile.msc produces.
+  if {$haveInputs} {
+    forcedelete $tmpMakefile
+    set exitCode 0
+    set xcmd "tclsh"
+    set targs [list  $mkmsvcmin $srcMakefile $tmpMakefile]
+    if {[catch {exec $xcmd {*}$targs} errMsg]} {
+      lappend res $errMsg
+    } else {
+      lappend res 0
+      # Compare generated to what should be there now.
+      set wfd [open $tmpMakefile r]
+      set wmf [read $wfd]
+      close $wfd
+      set hfd [open $dervMakefile r]
+      set hmf [read $hfd]
+      close $hfd
+      if {$wmf ne $hmf} {
+        lappend res "$dervMakefile outdated."
+      } else {
+        lappend res "current"
+      }
+    }
+  }
+  forcedelete $tmpMakefile
+  set ::result [join $res " | "]
+} {1 | 0 | current}
+
+

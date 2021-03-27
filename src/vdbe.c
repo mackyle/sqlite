@@ -2113,13 +2113,13 @@ compare_op:
   assert( OP_Lt==OP_Ne+4 ); assert( OP_Ge==OP_Ne+5 );
   if( res<0 ){                        /* ne, eq, gt, le, lt, ge */
     static const unsigned char aLTb[] = { 1,  0,  0,  1,  1,  0 };
-    res2 = aLTb[pOp->opcode - OP_Ne];
+    res2 = *(aLTb + pOp->opcode - OP_Ne);
   }else if( res==0 ){
     static const unsigned char aEQb[] = { 0,  1,  0,  1,  0,  1 };
-    res2 = aEQb[pOp->opcode - OP_Ne];
+    res2 = *(aEQb + pOp->opcode - OP_Ne);
   }else{
     static const unsigned char aGTb[] = { 1,  0,  1,  0,  0,  1 };
-    res2 = aGTb[pOp->opcode - OP_Ne];
+    res2 = *(aGTb + pOp->opcode - OP_Ne);
   }
 
   /* Undo any changes made by applyAffinity() to the input registers. */

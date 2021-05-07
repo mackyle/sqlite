@@ -454,7 +454,7 @@ Table *sqlite3LocateTable(
     /* If zName is the not the name of a table in the schema created using
     ** CREATE, then check to see if it is the name of an virtual table that
     ** can be an eponymous virtual table. */
-    if( pParse->disableVtab==0 ){
+    if( pParse->disableVtab==0 && db->init.busy==0 ){
       Module *pMod = (Module*)sqlite3HashFind(&db->aModule, zName);
       if( pMod==0 && sqlite3_strnicmp(zName, "pragma_", 7)==0 ){
         pMod = sqlite3PragmaVtabRegister(db, zName);
@@ -487,6 +487,8 @@ Table *sqlite3LocateTable(
     }else{
       sqlite3ErrorMsg(pParse, "%s: %s", zMsg, zName);
     }
+  }else{
+    assert( p==0 || HasRowid(p) || p->iPKey<0 );
   }
 
   return p;
@@ -1199,17 +1201,6 @@ void sqlite3StartTable(
   assert( pParse->pNewTable==0 );
   pParse->pNewTable = pTable;
 
-  /* If this is the magic sqlite_sequence table used by autoincrement,
-  ** then record a pointer to this table in the main database structure
-  ** so that INSERT can find the table easily.
-  */
-#ifndef SQLITE_OMIT_AUTOINCREMENT
-  if( !pParse->nested && strcmp(zName, "sqlite_sequence")==0 ){
-    assert( sqlite3SchemaMutexHeld(db, iDb, 0) );
-    pTable->pSchema->pSeqTab = pTable;
-  }
-#endif
-
   /* Begin generating the code that will insert the table record into
   ** the schema table.  Note in particular that we must go ahead
   ** and allocate the record number for the table entry now.  Before any
@@ -1358,6 +1349,7 @@ void sqlite3AddReturning(Parse *pParse, ExprList *pList){
   pRet->retTrig.tr_tm = TRIGGER_AFTER;
   pRet->retTrig.bReturning = 1;
   pRet->retTrig.pSchema = db->aDb[1].pSchema;
+  pRet->retTrig.pTabSchema = db->aDb[1].pSchema;
   pRet->retTrig.step_list = &pRet->retTStep;
   pRet->retTStep.op = TK_RETURNING;
   pRet->retTStep.pTrig = &pRet->retTrig;
@@ -2216,7 +2208,10 @@ static void convertToWithoutRowidTable(Parse *pParse, Table *pTab){
     sqlite3TokenInit(&ipkToken, pTab->aCol[pTab->iPKey].zName);
     pList = sqlite3ExprListAppend(pParse, 0, 
                   sqlite3ExprAlloc(db, TK_ID, &ipkToken, 0));
-    if( pList==0 ) return;
+    if( pList==0 ){
+      pTab->tabFlags &= ~TF_WithoutRowid;
+      return;
+    }
     if( IN_RENAME_OBJECT ){
       sqlite3RenameTokenRemap(pParse, pList->a[0].pExpr, &pTab->iPKey);
     }
@@ -2225,7 +2220,10 @@ static void convertToWithoutRowidTable(Parse *pParse, Table *pTab){
     pTab->iPKey = -1;
     sqlite3CreateIndex(pParse, 0, 0, 0, pList, pTab->keyConf, 0, 0, 0, 0,
                        SQLITE_IDXTYPE_PRIMARYKEY);
-    if( db->mallocFailed || pParse->nErr ) return;
+    if( db->mallocFailed || pParse->nErr ){
+      pTab->tabFlags &= ~TF_WithoutRowid;
+      return;
+    }
     pPk = sqlite3PrimaryKeyIndex(pTab);
     assert( pPk->nKeyCol==1 );
   }else{
@@ -2429,7 +2427,6 @@ void sqlite3EndTable(
   if( pEnd==0 && pSelect==0 ){
     return;
   }
-  assert( !db->mallocFailed );
   p = pParse->pNewTable;
   if( p==0 ) return;
 
@@ -2654,7 +2651,7 @@ void sqlite3EndTable(
     /* Check to see if we need to create an sqlite_sequence table for
     ** keeping track of autoincrement keys.
     */
-    if( (p->tabFlags & TF_Autoincrement)!=0 ){
+    if( (p->tabFlags & TF_Autoincrement)!=0 && !IN_SPECIAL_PARSE ){
       Db *pDb = &db->aDb[iDb];
       assert( sqlite3SchemaMutexHeld(db, iDb, 0) );
       if( pDb->pSchema->pSeqTab==0 ){
@@ -2677,6 +2674,7 @@ void sqlite3EndTable(
     Table *pOld;
     Schema *pSchema = p->pSchema;
     assert( sqlite3SchemaMutexHeld(db, iDb, 0) );
+    assert( HasRowid(p) || p->iPKey<0 );
     pOld = sqlite3HashInsert(&pSchema->tblHash, p->zName, p);
     if( pOld ){
       assert( p==pOld );  /* Malloc must have failed inside HashInsert() */
@@ -2685,6 +2683,17 @@ void sqlite3EndTable(
     }
     pParse->pNewTable = 0;
     db->mDbFlags |= DBFLAG_SchemaChange;
+
+    /* If this is the magic sqlite_sequence table used by autoincrement,
+    ** then record a pointer to this table in the main database structure
+    ** so that INSERT can find the table easily.  */
+    assert( !pParse->nested );
+#ifndef SQLITE_OMIT_AUTOINCREMENT
+    if( strcmp(p->zName, "sqlite_sequence")==0 ){
+      assert( sqlite3SchemaMutexHeld(db, iDb, 0) );
+      p->pSchema->pSeqTab = p;
+    }
+#endif
   }
 
 #ifndef SQLITE_OMIT_ALTERTABLE
@@ -2728,6 +2737,16 @@ void sqlite3CreateView(
   sqlite3StartTable(pParse, pName1, pName2, isTemp, 1, 0, noErr);
   p = pParse->pNewTable;
   if( p==0 || pParse->nErr ) goto create_view_fail;
+
+  /* Legacy versions of SQLite allowed the use of the magic "rowid" column
+  ** on a view, even though views do not have rowids.  The following flag
+  ** setting fixes this problem.  But the fix can be disabled by compiling
+  ** with -DSQLITE_ALLOW_ROWID_IN_VIEW in case there are legacy apps that
+  ** depend upon the old buggy behavior. */
+#ifndef SQLITE_ALLOW_ROWID_IN_VIEW
+  p->tabFlags |= TF_NoVisibleRowid;
+#endif
+
   sqlite3TwoPartName(pParse, pName1, pName2, &pName);
   iDb = sqlite3SchemaToIndex(db, p->pSchema);
   sqlite3FixInit(&sFix, pParse, iDb, "view", pName);
@@ -4255,7 +4274,7 @@ void sqlite3DefaultRowEst(Index *pIdx){
   if( x<99 ){
     pIdx->pTable->nRowLogEst = x = 99;
   }
-  if( pIdx->pPartIdxWhere!=0 ) x -= 10;  assert( 10==sqlite3LogEst(2) );
+  if( pIdx->pPartIdxWhere!=0 ){ x -= 10;  assert( 10==sqlite3LogEst(2) ); }
   a[0] = x;
 
   /* Estimate that a[1] is 10, a[2] is 9, a[3] is 8, a[4] is 7, a[5] is
@@ -4290,7 +4309,7 @@ void sqlite3DropIndex(Parse *pParse, SrcList *pName, int ifExists){
   pIndex = sqlite3FindIndex(db, pName->a[0].zName, pName->a[0].zDatabase);
   if( pIndex==0 ){
     if( !ifExists ){
-      sqlite3ErrorMsg(pParse, "no such index: %S", pName, 0);
+      sqlite3ErrorMsg(pParse, "no such index: %S", pName->a);
     }else{
       sqlite3CodeVerifyNamedSchema(pParse, pName->a[0].zDatabase);
     }
@@ -4605,8 +4624,8 @@ SrcList *sqlite3SrcListAppend(
 void sqlite3SrcListAssignCursors(Parse *pParse, SrcList *pList){
   int i;
   SrcItem *pItem;
-  assert(pList || pParse->db->mallocFailed );
-  if( pList ){
+  assert( pList || pParse->db->mallocFailed );
+  if( ALWAYS(pList) ){
     for(i=0, pItem=pList->a; i<pList->nSrc; i++, pItem++){
       if( pItem->iCursor>=0 ) continue;
       pItem->iCursor = pParse->nTab++;

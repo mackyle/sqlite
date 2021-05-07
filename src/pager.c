@@ -3936,7 +3936,8 @@ static void assertTruncateConstraint(Pager *pPager){
 ** then continue writing to the database.
 */
 void sqlite3PagerTruncateImage(Pager *pPager, Pgno nPage){
-  assert( pPager->dbSize>=nPage );
+  assert( pPager->dbSize>=nPage || CORRUPT_DB );
+  testcase( pPager->dbSize<nPage );
   assert( pPager->eState>=PAGER_WRITER_CACHEMOD );
   pPager->dbSize = nPage;
 
@@ -5836,7 +5837,7 @@ int sqlite3PagerBegin(Pager *pPager, int exFlag, int subjInMemory){
   assert( pPager->eState>=PAGER_READER && pPager->eState<PAGER_ERROR );
   pPager->subjInMemory = (u8)subjInMemory;
 
-  if( ALWAYS(pPager->eState==PAGER_READER) ){
+  if( pPager->eState==PAGER_READER ){
     assert( pPager->pInJournal==0 );
 
     if( pagerUseWal(pPager) ){

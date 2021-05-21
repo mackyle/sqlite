@@ -709,6 +709,11 @@ int sqlite3_config(int op, ...){
       break;
     }
 
+    case SQLITE_CONFIG_PRINTF_PRECISION: {
+      sqlite3GlobalConfig.mxPrecision = va_arg(ap, int);
+      break;
+    }
+
 #ifdef SQLITE_ENABLE_SORTER_REFERENCES
     case SQLITE_CONFIG_SORTERREF_SIZE: {
       int iVal = va_arg(ap, int);

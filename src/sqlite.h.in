@@ -2037,7 +2037,7 @@ struct sqlite3_mem_methods {
 **
 ** [[SQLITE_CONFIG_MEMDB_MAXSIZE]]
 ** <dt>SQLITE_CONFIG_MEMDB_MAXSIZE
-** <dd>The SQLITE_CONFIG_MEMDB_MAXSIZE option accepts a single parameter
+** <dd>The SQLITE_CONFIG_MEMDB_MAXSIZE option accepts a single
 ** [sqlite3_int64] parameter which is the default maximum size for an in-memory
 ** database created using [sqlite3_deserialize()].  This default maximum
 ** size can be adjusted up or down for individual databases using the
@@ -2045,6 +2045,18 @@ struct sqlite3_mem_methods {
 ** configuration setting is never used, then the default maximum is determined
 ** by the [SQLITE_MEMDB_DEFAULT_MAXSIZE] compile-time option.  If that
 ** compile-time option is not set, then the default maximum is 1073741824.
+**
+** [[SQLITE_CONFIG_PRINTF_PRECISION]]
+** <dt>SQLITE_CONFIG_PRINTF_PRECISION
+** <dd>The SQLITE_CONFIG_PRINTF_PRECISION option accepts a single integer
+** parameter which is the maximum size for the width and precision for a
+** substitution in the [built-in printf()] facilities of SQLite.  The default
+** value is 100,000.  The default can be changed at compile-time using
+** the [-DSQLITE_PRINTF_PRECISION_LIMIT] option.  A large width or precision
+** on a printf() substitution can use excess memory.  Applications that
+** accept SQL input from untrusted sources may want to lower the precision
+** limit to help prevent hostile inputs from using excess memory.
+** The maximum value for the precision limit is 0x7fffffff.
 ** </dl>
 */
 #define SQLITE_CONFIG_SINGLETHREAD  1  /* nil */
@@ -2076,6 +2088,7 @@ struct sqlite3_mem_methods {
 #define SQLITE_CONFIG_SMALL_MALLOC        27  /* boolean */
 #define SQLITE_CONFIG_SORTERREF_SIZE      28  /* int nByte */
 #define SQLITE_CONFIG_MEMDB_MAXSIZE       29  /* sqlite3_int64 */
+#define SQLITE_CONFIG_PRINTF_PRECISION    30  /* int */
 
 /*
 ** CAPI3REF: Database Connection Configuration Options

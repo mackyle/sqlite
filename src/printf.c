@@ -203,9 +203,7 @@ static char *printfTempBuf(sqlite3_str *pAccum, sqlite3_int64 n){
 /*
 ** Hard limit on the precision of floating-point conversions.
 */
-#ifndef SQLITE_PRINTF_PRECISION_LIMIT
-# define SQLITE_FP_PRECISION_LIMIT 100000000
-#endif
+#define SQLITE_FP_PRECISION_LIMIT 100000000
 
 /*
 ** Render a string given by "fmt" into the StrAccum object.
@@ -310,11 +308,9 @@ void sqlite3_str_vappendf(
           }
           testcase( wx>0x7fffffff );
           width = wx & 0x7fffffff;
-#ifdef SQLITE_PRINTF_PRECISION_LIMIT
-          if( width>SQLITE_PRINTF_PRECISION_LIMIT ){
-            width = SQLITE_PRINTF_PRECISION_LIMIT;
+          if( width>sqlite3GlobalConfig.mxPrecision ){
+            width = sqlite3GlobalConfig.mxPrecision;
           }
-#endif
           if( c!='.' && c!='l' ){
             done = 1;
           }else{
@@ -332,11 +328,9 @@ void sqlite3_str_vappendf(
             flag_leftjustify = 1;
             width = width >= -2147483647 ? -width : 0;
           }
-#ifdef SQLITE_PRINTF_PRECISION_LIMIT
-          if( width>SQLITE_PRINTF_PRECISION_LIMIT ){
-            width = SQLITE_PRINTF_PRECISION_LIMIT;
+          if( width>sqlite3GlobalConfig.mxPrecision ){
+            width =sqlite3GlobalConfig.mxPrecision;
           }
-#endif
           if( (c = fmt[1])!='.' && c!='l' ){
             c = *++fmt;
             done = 1;
@@ -364,11 +358,9 @@ void sqlite3_str_vappendf(
             testcase( px>0x7fffffff );
             precision = px & 0x7fffffff;
           }
-#ifdef SQLITE_PRINTF_PRECISION_LIMIT
-          if( precision>SQLITE_PRINTF_PRECISION_LIMIT ){
-            precision = SQLITE_PRINTF_PRECISION_LIMIT;
+          if( precision>sqlite3GlobalConfig.mxPrecision ){
+            precision = sqlite3GlobalConfig.mxPrecision;
           }
-#endif
           if( c=='l' ){
             --fmt;
           }else{

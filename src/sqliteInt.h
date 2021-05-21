@@ -3804,6 +3804,7 @@ struct Sqlite3Config {
   int iOnceResetThreshold;          /* When to reset OP_Once counters */
   u32 szSorterRef;                  /* Min size in bytes to use sorter-refs */
   unsigned int iPrngSeed;           /* Alternative fixed seed for the PRNG */
+  int mxPrecision;                  /* Printf() precision limit */
 };
 
 /*

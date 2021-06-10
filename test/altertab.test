@@ -795,18 +795,78 @@ do_execsql_test 27.2 {
 
 #-------------------------------------------------------------------------
 reset_db
+do_execsql_test 29.1 {
+  CREATE TABLE t1(a, b, c);
+  INSERT INTO t1 VALUES('a', 'b', 'c');
+
+  CREATE VIEW v0 AS
+    WITH p AS ( SELECT 1 FROM t1 ),
+         g AS ( SELECT 1 FROM p, t1 )
+    SELECT 1 FROM g;
+}
+
+do_execsql_test 29.2 {
+  SELECT * FROM v0
+} 1
+
+do_execsql_test 29.2 {
+  ALTER TABLE t1 RENAME TO t2
+} 
+
+do_execsql_test 29.3 {
+  SELECT sql FROM sqlite_schema WHERE name='v0'
+} {{CREATE VIEW v0 AS
+    WITH p AS ( SELECT 1 FROM "t2" ),
+         g AS ( SELECT 1 FROM p, "t2" )
+    SELECT 1 FROM g}}
+
+do_execsql_test 29.4 {
+  CREATE VIEW v2 AS
+    WITH p AS ( SELECT 1 FROM t2 ),
+         g AS ( SELECT 1 FROM (
+           WITH i AS (SELECT 1 FROM p, t2)
+           SELECT * FROM i
+         )
+    )
+    SELECT 1 FROM g;
+}
+
+do_execsql_test 29.4 {
+    SELECT * FROM v2;
+} 1
+
+do_execsql_test 29.5 {
+  ALTER TABLE t2 RENAME TO t3;
+} 
+
+do_execsql_test 29.5 {
+  SELECT sql FROM sqlite_schema WHERE name='v2'
+} {{CREATE VIEW v2 AS
+    WITH p AS ( SELECT 1 FROM "t3" ),
+         g AS ( SELECT 1 FROM (
+           WITH i AS (SELECT 1 FROM p, "t3")
+           SELECT * FROM i
+         )
+    )
+    SELECT 1 FROM g}}
+
+
+#-------------------------------------------------------------------------
+reset_db
 do_execsql_test 28.1 {
   CREATE TABLE t1(a);
   CREATE TABLE t2(b,c);
+  CREATE TABLE t4(b,c);
   INSERT INTO t2 VALUES(1,2),(1,3),(2,5);
+  INSERT INTO t4 VALUES(1,2),(1,3),(2,5);
+
   CREATE VIEW v3 AS 
     WITH RECURSIVE t3(x,y,z) AS (
-        SELECT b,c,NULL FROM t2
+        SELECT b,c,NULL FROM t4
         UNION
-        SELECT x,y,NULL FROM t3, t2 WHERE b=x
-        ORDER BY y
+        SELECT x,y,NULL FROM t3, t2
     )
-  SELECT * FROM t3;
+  SELECT * FROM t3 AS xyz;
 }
 
 do_execsql_test 28.2 {
@@ -818,5 +878,20 @@ do_execsql_test 28.2 {
 do_execsql_test 28.3 {
   ALTER TABLE t1 RENAME a TO a2; -- fails in v3
 } 
+
+do_execsql_test 28.4 {
+  ALTER TABLE t2 RENAME TO t5;
+} 
+
+do_execsql_test 28.5 {
+  SELECT sql FROM sqlite_schema WHERE name='v3'
+} {{CREATE VIEW v3 AS 
+    WITH RECURSIVE t3(x,y,z) AS (
+        SELECT b,c,NULL FROM t4
+        UNION
+        SELECT x,y,NULL FROM t3, "t5"
+    )
+  SELECT * FROM t3 AS xyz}}
+
 
 finish_test

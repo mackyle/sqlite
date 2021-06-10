@@ -5220,7 +5220,7 @@ static int resolveFromTermToCte(
          && pItem->zName!=0 
          && 0==sqlite3StrICmp(pItem->zName, pCte->zName)
         ){
-          assert( pItem->pTab==0 || (IN_RENAME_OBJECT && pItem->pTab==pTab) );
+          assert( pItem->pTab==0 || IN_RENAME_OBJECT );
           if( pItem->pTab==0 ){
             pItem->pTab = pTab;
             pTab->nTabRef++;

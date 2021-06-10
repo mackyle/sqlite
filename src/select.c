@@ -5097,7 +5097,7 @@ static struct Cte *searchWith(
 void sqlite3WithPush(Parse *pParse, With *pWith, u8 bFree){
   if( pWith ){
     if( pParse->nErr==0 ){
-      assert( pParse->pWith!=pWith );
+      assert( IN_RENAME_OBJECT || pParse->pWith!=pWith );
       pWith->pOuter = pParse->pWith;
       pParse->pWith = pWith;
     }
@@ -5178,7 +5178,6 @@ static int resolveFromTermToCte(
     }
     if( cannotBeFunction(pParse, pFrom) ) return 2;
 
-    assert( pFrom->pTab==0 );
     pTab = sqlite3DbMallocZero(db, sizeof(Table));
     if( pTab==0 ) return 2;
     pCteUse = pCte->pUse;
@@ -5221,8 +5220,11 @@ static int resolveFromTermToCte(
          && pItem->zName!=0 
          && 0==sqlite3StrICmp(pItem->zName, pCte->zName)
         ){
-          pItem->pTab = pTab;
-          pTab->nTabRef++;
+          assert( pItem->pTab==0 || (IN_RENAME_OBJECT && pItem->pTab==pTab) );
+          if( pItem->pTab==0 ){
+            pItem->pTab = pTab;
+            pTab->nTabRef++;
+          }
           pItem->fg.isRecursive = 1;
           if( pRecTerm->selFlags & SF_Recursive ){
             sqlite3ErrorMsg(pParse,
@@ -5236,6 +5238,8 @@ static int resolveFromTermToCte(
         }
       }
       if( (pRecTerm->selFlags & SF_Recursive)==0 ) break;
+      assert( (pRecTerm->selFlags & SF_Expanded)==0 || IN_RENAME_OBJECT );
+      pRecTerm->selFlags &= ~SF_Expanded;
       pRecTerm = pRecTerm->pPrior;
     }
 

@@ -801,6 +801,8 @@ static void renameWalkWith(Walker *pWalker, Select *pSelect){
   With *pWith = pSelect->pWith;
   if( pWith ){
     int i;
+    assert( pSelect->pPrior==0 );
+    sqlite3WithPush(pWalker->pParse, pWith, 0);
     for(i=0; i<pWith->nCte; i++){
       Select *p = pWith->a[i].pSelect;
       NameContext sNC;
@@ -810,6 +812,7 @@ static void renameWalkWith(Walker *pWalker, Select *pSelect){
       sqlite3WalkSelect(pWalker, p);
       sqlite3RenameExprlistUnmap(pWalker->pParse, pWith->a[i].pCols);
     }
+    sqlite3SelectPopWith(pWalker, pSelect);
   }
 }
 

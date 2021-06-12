@@ -813,16 +813,17 @@ static void renameWalkWith(Walker *pWalker, Select *pSelect){
       pCopy = sqlite3WithDup(pParse->db, pWith);
       sqlite3WithPush(pParse, pCopy, 1);
     }
-    for(i=0; i<pWith->nCte; i++){
-      Select *p = pWith->a[i].pSelect;
-      NameContext sNC;
-      memset(&sNC, 0, sizeof(sNC));
-      sNC.pParse = pParse;
-      if( pCopy ) sqlite3SelectPrep(sNC.pParse, p, &sNC);
-      sqlite3WalkSelect(pWalker, p);
-      sqlite3RenameExprlistUnmap(pParse, pWith->a[i].pCols);
-    }
-    if( pCopy && pParse->pWith==pCopy ){
+    if( pParse->db->mallocFailed==0 ){
+      assert( pCopy );
+      for(i=0; i<pWith->nCte; i++){
+        Select *p = pWith->a[i].pSelect;
+        NameContext sNC;
+        memset(&sNC, 0, sizeof(sNC));
+        sNC.pParse = pParse;
+        sqlite3SelectPrep(sNC.pParse, p, &sNC);
+        sqlite3WalkSelect(pWalker, p);
+        sqlite3RenameExprlistUnmap(pParse, pWith->a[i].pCols);
+      }
       pParse->pWith = pCopy->pOuter;
     }
   }

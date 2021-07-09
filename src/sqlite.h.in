@@ -54,18 +54,6 @@ extern "C" {
 #ifndef SQLITE_CDECL
 # define SQLITE_CDECL
 #endif
-#ifndef SQLITE_APICALL
-# define SQLITE_APICALL
-#endif
-#ifndef SQLITE_STDCALL
-# define SQLITE_STDCALL SQLITE_APICALL
-#endif
-#ifndef SQLITE_CALLBACK
-# define SQLITE_CALLBACK
-#endif
-#ifndef SQLITE_SYSAPI
-# define SQLITE_SYSAPI
-#endif
 
 /*
 ** These no-op macros are used in front of interfaces to mark those

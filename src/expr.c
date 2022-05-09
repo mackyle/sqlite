@@ -769,9 +769,8 @@ static void heightOfSelect(const Select *pSelect, int *pnHeight){
 ** if appropriate.
 */
 static void exprSetHeight(Expr *p){
-  int nHeight = 0;
-  heightOfExpr(p->pLeft, &nHeight);
-  heightOfExpr(p->pRight, &nHeight);
+  int nHeight = p->pLeft ? p->pLeft->nHeight : 0;
+  if( p->pRight && p->pRight->nHeight>nHeight ) nHeight = p->pRight->nHeight;
   if( ExprUseXSelect(p) ){
     heightOfSelect(p->x.pSelect, &nHeight);
   }else if( p->x.pList ){
@@ -1070,6 +1069,7 @@ Expr *sqlite3ExprFunction(
     sqlite3ExprListDelete(db, pList); /* Avoid memory leak when malloc fails */
     return 0;
   }
+  pNew->w.iOfst = (int)(pToken->z - pParse->zTail);
   if( pList 
    && pList->nExpr > pParse->db->aLimit[SQLITE_LIMIT_FUNCTION_ARG]
    && !pParse->nested
@@ -1113,7 +1113,7 @@ void sqlite3ExprFunctionUsable(
       **         SQLITE_DBCONFIG_TRUSTED_SCHEMA is off (meaning
       **         that the schema is possibly tainted).
       */
-      sqlite3ErrorMsg(pParse, "unsafe use of %s()", pDef->zName);
+      sqlite3ErrorMsg(pParse, "unsafe use of %#T()", pExpr);
     }
   }
 }
@@ -1169,6 +1169,7 @@ void sqlite3ExprAssignVarNumber(Parse *pParse, Expr *pExpr, u32 n){
       if( bOk==0 || i<1 || i>db->aLimit[SQLITE_LIMIT_VARIABLE_NUMBER] ){
         sqlite3ErrorMsg(pParse, "variable number must be between ?1 and ?%d",
             db->aLimit[SQLITE_LIMIT_VARIABLE_NUMBER]);
+        sqlite3RecordErrorOffsetOfExpr(pParse->db, pExpr);
         return;
       }
       x = (ynVar)i;
@@ -1196,6 +1197,7 @@ void sqlite3ExprAssignVarNumber(Parse *pParse, Expr *pExpr, u32 n){
   pExpr->iColumn = x;
   if( x>db->aLimit[SQLITE_LIMIT_VARIABLE_NUMBER] ){
     sqlite3ErrorMsg(pParse, "too many SQL variables");
+    sqlite3RecordErrorOffsetOfExpr(pParse->db, pExpr);
   }
 }
 
@@ -2457,7 +2459,7 @@ int sqlite3ExprCanBeNull(const Expr *p){
       return ExprHasProperty(p, EP_CanBeNull) ||
              p->y.pTab==0 ||  /* Reference to column of index on expression */
              (p->iColumn>=0
-              && ALWAYS(p->y.pTab->aCol!=0) /* Defense against OOM problems */
+              && p->y.pTab->aCol!=0 /* Possible due to prior error */
               && p->y.pTab->aCol[p->iColumn].notNull==0);
     default:
       return 1;
@@ -2803,8 +2805,7 @@ int sqlite3FindInIndex(
             CollSeq *pReq = sqlite3BinaryCompareCollSeq(pParse, pLhs, pRhs);
             int j;
   
-            assert( pReq!=0 || pRhs->iColumn==XN_ROWID 
-                   || pParse->nErr || db->mallocFailed );
+            assert( pReq!=0 || pRhs->iColumn==XN_ROWID || pParse->nErr );
             for(j=0; j<nExpr; j++){
               if( pIdx->aiColumn[j]!=pRhs->iColumn ) continue;
               assert( pIdx->azColl[j] );
@@ -3039,8 +3040,7 @@ void sqlite3CodeRhsOfIN(
     assert( !ExprHasProperty(pExpr, EP_TokenOnly|EP_Reduced) );
     pExpr->y.sub.regReturn = ++pParse->nMem;
     pExpr->y.sub.iAddr =
-      sqlite3VdbeAddOp2(v, OP_Integer, 0, pExpr->y.sub.regReturn) + 1;
-    VdbeComment((v, "return address"));
+      sqlite3VdbeAddOp2(v, OP_BeginSubrtn, 0, pExpr->y.sub.regReturn) + 1;
 
     addrOnce = sqlite3VdbeAddOp0(v, OP_Once); VdbeCoverage(v);
   }
@@ -3142,6 +3142,7 @@ void sqlite3CodeRhsOfIN(
       ** expression we need to rerun this code each time.
       */
       if( addrOnce && !sqlite3ExprIsConstant(pE2) ){
+        sqlite3VdbeChangeToNoop(v, addrOnce-1);
         sqlite3VdbeChangeToNoop(v, addrOnce);
         ExprClearProperty(pExpr, EP_Subrtn);
         addrOnce = 0;
@@ -3162,7 +3163,10 @@ void sqlite3CodeRhsOfIN(
     sqlite3VdbeJumpHere(v, addrOnce);
     /* Subroutine return */
     assert( ExprUseYSub(pExpr) );
-    sqlite3VdbeAddOp1(v, OP_Return, pExpr->y.sub.regReturn);
+    assert( sqlite3VdbeGetOp(v,pExpr->y.sub.iAddr-1)->opcode==OP_BeginSubrtn
+            || pParse->nErr );
+    sqlite3VdbeAddOp3(v, OP_Return, pExpr->y.sub.regReturn, 0, 
+                      pExpr->y.sub.iAddr-1);
     sqlite3VdbeChangeP1(v, pExpr->y.sub.iAddr-1, sqlite3VdbeCurrentAddr(v)-1);
     sqlite3ClearTempRegCache(pParse);
   }
@@ -3217,9 +3221,7 @@ int sqlite3CodeSubselect(Parse *pParse, Expr *pExpr){
   ExprSetProperty(pExpr, EP_Subrtn);
   pExpr->y.sub.regReturn = ++pParse->nMem;
   pExpr->y.sub.iAddr =
-    sqlite3VdbeAddOp2(v, OP_Integer, 0, pExpr->y.sub.regReturn) + 1;
-  VdbeComment((v, "return address"));
-
+    sqlite3VdbeAddOp2(v, OP_BeginSubrtn, 0, pExpr->y.sub.regReturn) + 1;
 
   /* The evaluation of the EXISTS/SELECT must be repeated every time it
   ** is encountered if any of the following is true:
@@ -3280,10 +3282,8 @@ int sqlite3CodeSubselect(Parse *pParse, Expr *pExpr){
   }
   pSel->iLimit = 0;
   if( sqlite3Select(pParse, pSel, &dest) ){
-    if( pParse->nErr ){
-      pExpr->op2 = pExpr->op;
-      pExpr->op = TK_ERROR;
-    }
+    pExpr->op2 = pExpr->op;
+    pExpr->op = TK_ERROR;
     return 0;
   }
   pExpr->iTable = rReg = dest.iSDParm;
@@ -3294,7 +3294,10 @@ int sqlite3CodeSubselect(Parse *pParse, Expr *pExpr){
 
   /* Subroutine return */
   assert( ExprUseYSub(pExpr) );
-  sqlite3VdbeAddOp1(v, OP_Return, pExpr->y.sub.regReturn);
+  assert( sqlite3VdbeGetOp(v,pExpr->y.sub.iAddr-1)->opcode==OP_BeginSubrtn
+          || pParse->nErr );
+  sqlite3VdbeAddOp3(v, OP_Return, pExpr->y.sub.regReturn, 0,
+                    pExpr->y.sub.iAddr-1);
   sqlite3VdbeChangeP1(v, pExpr->y.sub.iAddr-1, sqlite3VdbeCurrentAddr(v)-1);
   sqlite3ClearTempRegCache(pParse);
   return rReg;
@@ -3500,10 +3503,9 @@ static void sqlite3ExprCodeIN(
   }else{
     destStep2 = destStep6 = sqlite3VdbeMakeLabel(pParse);
   }
-  if( pParse->nErr ) goto sqlite3ExprCodeIN_finished;
   for(i=0; i<nVector; i++){
     Expr *p = sqlite3VectorFieldSubexpr(pExpr->pLeft, i);
-    if( pParse->db->mallocFailed ) goto sqlite3ExprCodeIN_oom_error;
+    if( pParse->nErr ) goto sqlite3ExprCodeIN_oom_error;
     if( sqlite3ExprCanBeNull(p) ){
       sqlite3VdbeAddOp2(v, OP_IsNull, rLhs+i, destStep2);
       VdbeCoverage(v);
@@ -3641,11 +3643,12 @@ static void codeInteger(Parse *pParse, Expr *pExpr, int negFlag, int iMem){
     c = sqlite3DecOrHexToI64(z, &value);
     if( (c==3 && !negFlag) || (c==2) || (negFlag && value==SMALLEST_INT64)){
 #ifdef SQLITE_OMIT_FLOATING_POINT
-      sqlite3ErrorMsg(pParse, "oversized integer: %s%s", negFlag ? "-" : "", z);
+      sqlite3ErrorMsg(pParse, "oversized integer: %s%#T", negFlag?"-":"",pExpr);
 #else
 #ifndef SQLITE_OMIT_HEX_INTEGER
       if( sqlite3_strnicmp(z,"0x",2)==0 ){
-        sqlite3ErrorMsg(pParse, "hex literal too big: %s%s", negFlag?"-":"",z);
+        sqlite3ErrorMsg(pParse, "hex literal too big: %s%#T",
+                        negFlag?"-":"",pExpr);
       }else
 #endif
       {
@@ -4321,7 +4324,7 @@ expr_code_doover:
        || NEVER(pExpr->iAgg>=pInfo->nFunc)
       ){
         assert( !ExprHasProperty(pExpr, EP_IntValue) );
-        sqlite3ErrorMsg(pParse, "misuse of aggregate: %s()", pExpr->u.zToken);
+        sqlite3ErrorMsg(pParse, "misuse of aggregate: %#T()", pExpr);
       }else{
         return pInfo->aFunc[pExpr->iAgg].iMem;
       }
@@ -4362,7 +4365,7 @@ expr_code_doover:
       }
 #endif
       if( pDef==0 || pDef->xFinalize!=0 ){
-        sqlite3ErrorMsg(pParse, "unknown function: %s()", zId);
+        sqlite3ErrorMsg(pParse, "unknown function: %#T()", pExpr);
         break;
       }
       if( pDef->funcFlags & SQLITE_FUNC_INLINE ){

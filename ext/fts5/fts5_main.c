@@ -804,7 +804,7 @@ static int fts5SorterNext(Fts5Cursor *pCsr){
   rc = sqlite3_step(pSorter->pStmt);
   if( rc==SQLITE_DONE ){
     rc = SQLITE_OK;
-    CsrFlagSet(pCsr, FTS5CSR_EOF);
+    CsrFlagSet(pCsr, FTS5CSR_EOF|FTS5CSR_REQUIRE_CONTENT);
   }else if( rc==SQLITE_ROW ){
     const u8 *a;
     const u8 *aBlob;
@@ -1732,6 +1732,7 @@ static int fts5UpdateMethod(
     }
   }
 
+  sqlite3Fts5IndexCloseReader(pTab->p.pIndex);
   pTab->p.pConfig->pzErrmsg = 0;
   return rc;
 }

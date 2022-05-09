@@ -651,7 +651,7 @@ static void fkScanChildren(
   ** clause. For each row found, increment either the deferred or immediate
   ** foreign key constraint counter. */
   if( pParse->nErr==0 ){
-    pWInfo = sqlite3WhereBegin(pParse, pSrc, pWhere, 0, 0, 0, 0);
+    pWInfo = sqlite3WhereBegin(pParse, pSrc, pWhere, 0, 0, 0, 0, 0);
     sqlite3VdbeAddOp2(v, OP_FkCounter, pFKey->isDeferred, nIncr);
     if( pWInfo ){
       sqlite3WhereEnd(pWInfo);
@@ -699,6 +699,25 @@ static void fkTriggerDelete(sqlite3 *dbMem, Trigger *p){
     sqlite3SelectDelete(dbMem, pStep->pSelect);
     sqlite3ExprDelete(dbMem, p->pWhen);
     sqlite3DbFree(dbMem, p);
+  }
+}
+
+/*
+** Clear the apTrigger[] cache of CASCADE triggers for all foreign keys
+** in a particular database.  This needs to happen when the schema
+** changes.
+*/
+void sqlite3FkClearTriggerCache(sqlite3 *db, int iDb){
+  HashElem *k;
+  Hash *pHash = &db->aDb[iDb].pSchema->tblHash;
+  for(k=sqliteHashFirst(pHash); k; k=sqliteHashNext(k)){
+    Table *pTab = sqliteHashData(k);
+    FKey *pFKey;
+    if( !IsOrdinaryTable(pTab) ) continue;
+    for(pFKey=pTab->u.tab.pFKey; pFKey; pFKey=pFKey->pNextFrom){
+      fkTriggerDelete(db, pFKey->apTrigger[0]); pFKey->apTrigger[0] = 0;
+      fkTriggerDelete(db, pFKey->apTrigger[1]); pFKey->apTrigger[1] = 0;
+    }
   }
 }
 

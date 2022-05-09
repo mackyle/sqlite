@@ -308,15 +308,16 @@ static void pragmaFunclistLine(
   int isBuiltin,         /* True if this is a built-in function */
   int showInternFuncs    /* True if showing internal functions */
 ){
+  u32 mask = 
+      SQLITE_DETERMINISTIC |
+      SQLITE_DIRECTONLY |
+      SQLITE_SUBTYPE |
+      SQLITE_INNOCUOUS |
+      SQLITE_FUNC_INTERNAL
+  ;
+  if( showInternFuncs ) mask = 0xffffffff;
   for(; p; p=p->pNext){
     const char *zType;
-    static const u32 mask = 
-        SQLITE_DETERMINISTIC |
-        SQLITE_DIRECTONLY |
-        SQLITE_SUBTYPE |
-        SQLITE_INNOCUOUS |
-        SQLITE_FUNC_INTERNAL
-    ;
     static const char *azEnc[] = { 0, "utf8", "utf16le", "utf16be" };
 
     assert( SQLITE_FUNC_ENCMASK==0x3 );
@@ -1250,6 +1251,10 @@ void sqlite3Pragma(
               (void)sqlite3_prepare(db, zSql, -1, &pDummy, 0);
               (void)sqlite3_finalize(pDummy);
               sqlite3DbFree(db, zSql);
+            }
+            if( db->mallocFailed ){
+              sqlite3ErrorMsg(db->pParse, "out of memory");
+              db->pParse->rc = SQLITE_NOMEM_BKPT;
             }
             pHash = &db->aDb[ii].pSchema->tblHash;
             break;

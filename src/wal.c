@@ -3237,7 +3237,9 @@ static int walBeginShmUnreliable(Wal *pWal, int *pChanged){
   }
 
   /* Allocate a buffer to read frames into */
-  szFrame = pWal->hdr.szPage + WAL_FRAME_HDRSIZE;
+  assert( (pWal->szPage & (pWal->szPage-1))==0 );
+  assert( pWal->szPage>=512 && pWal->szPage<=65536 );
+  szFrame = pWal->szPage + WAL_FRAME_HDRSIZE;
   aFrame = (u8 *)sqlite3_malloc64(szFrame);
   if( aFrame==0 ){
     rc = SQLITE_NOMEM_BKPT;
@@ -3251,7 +3253,7 @@ static int walBeginShmUnreliable(Wal *pWal, int *pChanged){
   ** the caller.  */
   aSaveCksum[0] = pWal->hdr.aFrameCksum[0];
   aSaveCksum[1] = pWal->hdr.aFrameCksum[1];
-  for(iOffset=walFrameOffset(pWal->hdr.mxFrame+1, pWal->hdr.szPage); 
+  for(iOffset=walFrameOffset(pWal->hdr.mxFrame+1, pWal->szPage); 
       iOffset+szFrame<=szWal; 
       iOffset+=szFrame
   ){
@@ -4497,7 +4499,12 @@ static int walRestartLog(Wal *pWal){
       nWalSize = MAX(nWalSize, 1);
     }
 
-    if( walidxGetMxFrame(&pWal->hdr, iApp)>=nWalSize ){
+    assert( 1==WAL_LOCK_PART1 );
+    assert( 4==WAL_LOCK_PART2 );
+    assert( 1+(iApp*3)==WAL_LOCK_PART1 || 1+(iApp*3)==WAL_LOCK_PART2 );
+    if( pWal->readLock==1+(iApp*3)
+     && walidxGetMxFrame(&pWal->hdr, iApp)>=nWalSize 
+    ){
       volatile WalCkptInfo *pInfo = walCkptInfo(pWal);
       u32 mxFrame = walidxGetMxFrame(&pWal->hdr, !iApp);
       if( mxFrame==0 || pInfo->nBackfill ){

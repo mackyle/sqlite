@@ -33,7 +33,7 @@ static TreeView *sqlite3TreeViewPush(TreeView *p, u8 moreToFollow){
     p->iLevel++;
   }
   assert( moreToFollow==0 || moreToFollow==1 );
-  if( p->iLevel<sizeof(p->bLine) ) p->bLine[p->iLevel] = moreToFollow;
+  if( p->iLevel<(int)sizeof(p->bLine) ) p->bLine[p->iLevel] = moreToFollow;
   return p;
 }
 
@@ -57,7 +57,7 @@ static void sqlite3TreeViewLine(TreeView *p, const char *zFormat, ...){
   char zBuf[500];
   sqlite3StrAccumInit(&acc, 0, zBuf, sizeof(zBuf), 0);
   if( p ){
-    for(i=0; i<p->iLevel && i<sizeof(p->bLine)-1; i++){
+    for(i=0; i<p->iLevel && i<(int)sizeof(p->bLine)-1; i++){
       sqlite3_str_append(&acc, p->bLine[i] ? "|   " : "    ", 4);
     }
     sqlite3_str_append(&acc, p->bLine[i] ? "|-- " : "'-- ", 4);
@@ -387,7 +387,7 @@ void sqlite3TreeViewWindow(TreeView *pView, const Window *pWin, u8 more){
 void sqlite3TreeViewWinFunc(TreeView *pView, const Window *pWin, u8 more){
   pView = sqlite3TreeViewPush(pView, more);
   sqlite3TreeViewLine(pView, "WINFUNC %s(%d)",
-                       pWin->pFunc->zName, pWin->pFunc->nArg);
+                       pWin->pWFunc->zName, pWin->pWFunc->nArg);
   sqlite3TreeViewWindow(pView, pWin, 0);
   sqlite3TreeViewPop(pView);
 }
@@ -412,7 +412,7 @@ void sqlite3TreeViewExpr(TreeView *pView, const Expr *pExpr, u8 moreToFollow){
     sqlite3_str_appendf(&x, " fg.af=%x.%c",
       pExpr->flags, pExpr->affExpr ? pExpr->affExpr : 'n');
     if( ExprHasProperty(pExpr, EP_FromJoin) ){
-      sqlite3_str_appendf(&x, " iRJT=%d", pExpr->iRightJoinTable);
+      sqlite3_str_appendf(&x, " iRJT=%d", pExpr->w.iRightJoinTable);
     }
     if( ExprHasProperty(pExpr, EP_FromDDL) ){
       sqlite3_str_appendf(&x, " DDL");

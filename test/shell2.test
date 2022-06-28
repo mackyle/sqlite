@@ -136,16 +136,13 @@ SELECT * FROM foo1; SELECT * FROM foo2;
 INSERT INTO foo1(a) VALUES(1);
 CREATE TABLE foo2(b);
 INSERT INTO foo2(b) VALUES(1);
-SELECT * FROM foo1;
+SELECT * FROM foo1; SELECT * FROM foo2;
 1
-SELECT * FROM foo2;
 1
-INSERT INTO foo1(a) VALUES(2);
-INSERT INTO foo2(b) VALUES(2);
-SELECT * FROM foo1;
+INSERT INTO foo1(a) VALUES(2); INSERT INTO foo2(b) VALUES(2);
+SELECT * FROM foo1; SELECT * FROM foo2;
 1
 2
-SELECT * FROM foo2;
 1
 2
 }}
@@ -170,22 +167,28 @@ CREATE TABLE foo1(a);
 INSERT INTO foo1(a) VALUES(1);
 CREATE TABLE foo2(b);
 INSERT INTO foo2(b) VALUES(1);
-SELECT * FROM foo1;
+SELECT * FROM foo1; SELECT * FROM foo2;
 a
 1
-SELECT * FROM foo2;
 b
 1
-INSERT INTO foo1(a) VALUES(2);
-INSERT INTO foo2(b) VALUES(2);
-SELECT * FROM foo1;
+INSERT INTO foo1(a) VALUES(2); INSERT INTO foo2(b) VALUES(2);
+SELECT * FROM foo1; SELECT * FROM foo2;
 a
 1
 2
-SELECT * FROM foo2;
 b
 1
 2
 }}
+
+# Test for rejection of incomplete input at EOF.
+# Reported at https://sqlite.org/forum/forumpost/718f489a43be3197
+do_test shell2-1.4.7 {
+  catchcmd ":memory:" {
+ SELECT 'unclosed;}
+} {1 {Parse error near line 2: unrecognized token: "'unclosed;"
+  SELECT 'unclosed;
+         ^--- error here}}
 
 finish_test

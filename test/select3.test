@@ -330,4 +330,39 @@ do_execsql_test select3.10.100 {
   FROM t1;
 } {{} {}}
 
+#-------------------------------------------------------------------------
+# dbsqlfuzz crash-8e17857db2c5a9294c975123ac807156a6559f13.txt
+#
+reset_db
+do_execsql_test select3-10.1 {
+  CREATE TABLE t1(a);
+  CREATE TABLE t2(x);
+  CREATE INDEX t2x ON t2(x);
+  INSERT INTO t1 VALUES('abc');
+}
+do_execsql_test select3.10.2 {
+  SELECT max(a), val FROM t1 LEFT JOIN (
+      SELECT 'constant' AS val FROM t2 WHERE x=1234
+  )
+} {abc {}}
+do_execsql_test select3.10.3 {
+  INSERT INTO t2 VALUES(123);
+  SELECT max(a), val FROM t1 LEFT JOIN (
+      SELECT 'constant' AS val FROM t2 WHERE x=1234
+  )
+} {abc {}}
+do_execsql_test select3.10.4 {
+  INSERT INTO t2 VALUES(1234);
+  SELECT max(a), val FROM t1 LEFT JOIN (
+      SELECT 'constant' AS val FROM t2 WHERE x=1234
+  )
+} {abc constant}
+do_execsql_test select3.10.5 {
+  DELETE FROM t2;
+  INSERT INTO t2 VALUES(1234);
+  SELECT max(a), val FROM t1 LEFT JOIN (
+      SELECT 'constant' AS val FROM t2 WHERE x=1234
+  )
+} {abc constant}
+
 finish_test

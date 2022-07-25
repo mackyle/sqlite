@@ -4567,6 +4567,10 @@ static int flattenSubquery(
     }
     pSrc->a[iFrom].fg.jointype &= JT_LTORJ;
     pSrc->a[iFrom].fg.jointype |= jointype | ltorj;
+
+    if( isAgg && (jointype & JT_LEFT) ){
+      pSrc->a[iFrom].fg.noIndexOnly = 1;
+    }
   
     /* Now begin substituting subquery result set expressions for 
     ** references to the iParent in the outer query.

@@ -3104,6 +3104,7 @@ struct SrcItem {
     unsigned isOn :1;          /* u3.pOn was once valid and non-NULL */
     unsigned isSynthUsing :1;  /* u3.pUsing is synthensized from NATURAL */
     unsigned isNestedFrom :1;  /* pSelect is a SF_NestedFrom subquery */
+    unsigned noIndexOnly :1;   /* Do not use an index-only scan for this loop */
   } fg;
   int iCursor;      /* The VDBE cursor number used to access this table */
   union {

@@ -3468,7 +3468,9 @@ static int whereLoopAddBtree(
       if( rc ) break;
     }else{
       Bitmask m;
-      if( pProbe->isCovering ){
+      if( pSrc->fg.noIndexOnly ){
+        pNew->wsFlags = WHERE_INDEXED;
+      }else if( pProbe->isCovering ){
         pNew->wsFlags = WHERE_IDX_ONLY | WHERE_INDEXED;
         m = 0;
       }else{

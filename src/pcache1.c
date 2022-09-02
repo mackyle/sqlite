@@ -1123,23 +1123,39 @@ static void pcache1Rekey(
   PCache1 *pCache = (PCache1 *)p;
   PgHdr1 *pPage = (PgHdr1 *)pPg;
   PgHdr1 **pp;
-  unsigned int h; 
+  unsigned int hOld, hNew; 
   assert( pPage->iKey==iOld );
   assert( pPage->pCache==pCache );
 
   pcache1EnterMutex(pCache->pGroup);
 
-  h = iOld%pCache->nHash;
-  pp = &pCache->apHash[h];
+  hOld = iOld%pCache->nHash;
+  pp = &pCache->apHash[hOld];
   while( (*pp)!=pPage ){
     pp = &(*pp)->pNext;
   }
   *pp = pPage->pNext;
 
-  h = iNew%pCache->nHash;
+  hNew = iNew%pCache->nHash;
+  pp = &pCache->apHash[hNew];
+  while( *pp ){
+    if( (*pp)->iKey==iNew ){
+      /* If there is already another pcache entry at iNew, change it to iOld,
+      ** thus swapping the positions of iNew and iOld */
+      PgHdr1 *pOld = *pp;
+      *pp = pOld->pNext;
+      pOld->pNext = pCache->apHash[hOld];
+      pCache->apHash[hOld] = pOld;
+      pOld->iKey = iOld;
+      break;
+    }else{
+      pp = &(*pp)->pNext;
+    }
+  }
+
   pPage->iKey = iNew;
-  pPage->pNext = pCache->apHash[h];
-  pCache->apHash[h] = pPage;
+  pPage->pNext = pCache->apHash[hNew];
+  pCache->apHash[hNew] = pPage;
   if( iNew>pCache->iMaxKey ){
     pCache->iMaxKey = iNew;
   }

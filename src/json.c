@@ -149,7 +149,8 @@ struct JsonParse {
   u8 nErr;           /* Number of errors seen */
   u8 oom;            /* Set to true if out of memory */
   u8 hasNonstd;      /* True if input uses non-standard features like JSON5 */
-  u8 nJPRef;         /* Number of references to this object */
+  u8 isMod;          /* Contains modifications */
+  u32 nJPRef;        /* Number of references to this object */
   int nJson;         /* Length of the zJson string in bytes */
   u32 iErr;          /* Error location in zJson[] */
   u32 iSubst;        /* Last known JSON_SUBST node */
@@ -567,6 +568,7 @@ static void jsonParseReset(JsonParse *pParse){
 ** Free a JsonParse object that was obtained from sqlite3_malloc().
 */
 static void jsonParseFree(JsonParse *pParse){
+  if( pParse==0 ) return;
   if( pParse->nJPRef>1 ){
     pParse->nJPRef--;
     return;
@@ -1765,6 +1767,8 @@ static int jsonParseFindParents(JsonParse *pParse){
 ** and also register the new parse so that it will be available for
 ** future sqlite3_get_auxdata() calls.
 **
+** If bWrite is true then the JsonParse object will be modified.
+**
 ** If an error occurs and pErrCtx!=0 then report the error on pErrCtx
 ** and return NULL.
 **
@@ -1777,7 +1781,8 @@ static int jsonParseFindParents(JsonParse *pParse){
 static JsonParse *jsonParseCached(
   sqlite3_context *pCtx,
   sqlite3_value **argv,
-  sqlite3_context *pErrCtx
+  sqlite3_context *pErrCtx,
+  int bWrite
 ){
   const char *zJson = (const char*)sqlite3_value_text(argv[0]);
   int nJson = sqlite3_value_bytes(argv[0]);
@@ -1796,6 +1801,7 @@ static JsonParse *jsonParseCached(
     }
     if( pMatch==0
      && p->nJson==nJson
+     && (bWrite==0 || p->isMod==0)
      && memcmp(p->zJson,zJson,nJson)==0
     ){
       p->nErr = 0;
@@ -1808,7 +1814,7 @@ static JsonParse *jsonParseCached(
       iMaxHold = p->iHold;
     }
   }
-  if( pMatch ){
+  if( pMatch && bWrite==0 ){
     pMatch->nErr = 0;
     pMatch->iHold = iMaxHold+1;
     return pMatch;
@@ -1821,7 +1827,22 @@ static JsonParse *jsonParseCached(
   memset(p, 0, sizeof(*p));
   p->zJson = (char*)&p[1];
   memcpy((char*)p->zJson, zJson, nJson+1);
-  if( jsonParse(p, pErrCtx, p->zJson) ){
+  if( pMatch ){
+    p->nNode = pMatch->nNode;
+    p->nAlloc = p->nNode+50;
+    p->isMod = 1;
+    p->aNode = sqlite3_malloc64( sizeof(JsonNode)*p->nAlloc );
+    if( p->aNode==0 ){
+      jsonParseFree(p);
+      return 0;
+    }
+    memcpy(p->aNode, pMatch->aNode, pMatch->nNode*sizeof(JsonNode));
+    /* The aNode[] array will (most likely) contain pointers to
+    ** pMatch->zJson, so we need to preserve a copy of pMatch until
+    ** p is destroyed. */
+    pMatch->nJPRef++;
+    jsonParseAddCleanup(p, (void(*)(void*))jsonParseFree, pMatch);
+  }else if( jsonParse(p, pErrCtx, p->zJson) ){
     if( pErrCtx==0 ){
       p->nErr = 1;
       return p;
@@ -1832,9 +1853,42 @@ static JsonParse *jsonParseCached(
   p->nJPRef = 1;
   p->nJson = nJson;
   p->iHold = iMaxHold+1;
+  if( bWrite==0 ){
+    sqlite3_set_auxdata(pCtx, JSON_CACHE_ID+iMinKey, p,
+                        (void(*)(void*))jsonParseFree);
+    p = (JsonParse*)sqlite3_get_auxdata(pCtx, JSON_CACHE_ID+iMinKey);
+  }
+  return p;
+}
+
+/*
+** Take a JsonParse object previously obtained form JsonParseCached()
+** with bWrite==1 and insert that object into the cache.
+*/
+static void jsonParseInsertIntoCache(
+  sqlite3_context *pCtx,
+  JsonParse *p
+){
+  int iKey;
+  int iMinKey = 0;
+  u32 iMinHold = 0xffffffff;
+  if( p->nErr || p->oom ){
+    jsonParseFree(p);
+    return;
+  }
+  for(iKey=0; iKey<JSON_CACHE_SZ; iKey++){
+    p = (JsonParse*)sqlite3_get_auxdata(pCtx, JSON_CACHE_ID+iKey);
+    if( p==0 ){
+      iMinKey = iKey;
+      break;
+    }
+    if( p->iHold<iMinHold ){
+      iMinHold = p->iHold;
+      iMinKey = iKey;
+    }
+  }
   sqlite3_set_auxdata(pCtx, JSON_CACHE_ID+iMinKey, p,
                       (void(*)(void*))jsonParseFree);
-  return (JsonParse*)sqlite3_get_auxdata(pCtx, JSON_CACHE_ID+iMinKey);
 }
 
 /*
@@ -2321,7 +2375,7 @@ static void jsonArrayLengthFunc(
   u32 i;
   JsonNode *pNode;
 
-  p = jsonParseCached(ctx, argv, ctx);
+  p = jsonParseCached(ctx, argv, ctx, 0);
   if( p==0 ) return;
   assert( p->nNode );
   if( argc==2 ){
@@ -2333,11 +2387,14 @@ static void jsonArrayLengthFunc(
   if( pNode==0 ){
     return;
   }
-  if( pNode->eType==JSON_ARRAY ){
-    assert( (pNode->jnFlags & JNODE_APPEND)==0 );
+  while( pNode->eType==JSON_ARRAY ){
     for(i=1; i<=pNode->n; n++){
       i += jsonNodeSize(&pNode[i]);
     }
+    if( (pNode->jnFlags & JNODE_APPEND)==0 ) break;
+    assert( pNode->eU==2 );
+    pNode = &p->aNode[pNode->u.iAppend];
+    assert( pNode->eType==JSON_ARRAY );
   }
   sqlite3_result_int64(ctx, n);
 }
@@ -2383,7 +2440,7 @@ static void jsonExtractFunc(
   JsonString jx;
 
   if( argc<2 ) return;
-  p = jsonParseCached(ctx, argv, ctx);
+  p = jsonParseCached(ctx, argv, ctx, 0);
   if( p==0 ) return;
   if( argc==2 ){
     /* With a single PATH argument */
@@ -2692,7 +2749,7 @@ static void jsonReplaceNode(
           sqlite3_result_error_nomem(pCtx);
         }
       }else{
-        JsonParse *pPatch = jsonParseCached(pCtx, &pValue, pCtx);
+        JsonParse *pPatch = jsonParseCached(pCtx, &pValue, pCtx, 0);
         if( pPatch==0 ){
           p->oom = 1;
           break;
@@ -2726,7 +2783,7 @@ static void jsonReplaceFunc(
   int argc,
   sqlite3_value **argv
 ){
-  JsonParse x;          /* The parse */
+  JsonParse *p;          /* The parse */
   JsonNode *pNode;
   const char *zPath;
   u32 i;
@@ -2736,20 +2793,20 @@ static void jsonReplaceFunc(
     jsonWrongNumArgs(ctx, "replace");
     return;
   }
-  if( jsonParse(&x, ctx, (const char*)sqlite3_value_text(argv[0])) ) return;
-  assert( x.nNode );
+  p = jsonParseCached(ctx, argv, ctx, 1);
+  if( p==0 ) return;
   for(i=1; i<(u32)argc; i+=2){
     zPath = (const char*)sqlite3_value_text(argv[i]);
-    pNode = jsonLookup(&x, zPath, 0, ctx);
-    if( x.nErr ) goto replace_err;
+    pNode = jsonLookup(p, zPath, 0, ctx);
+    if( p->nErr ) goto replace_err;
     if( pNode ){
-      jsonReplaceNode(ctx, &x, (u32)(pNode - x.aNode), argv[i+1]);
+      jsonReplaceNode(ctx, p, (u32)(pNode - p->aNode), argv[i+1]);
     }
   }
-  jsonReturnJson(&x, x.aNode, ctx);
+  jsonReturnJson(p, p->aNode, ctx);
 replace_err:
-  jsonDebugPrintParse(&x);
-  jsonParseReset(&x);
+  jsonDebugPrintParse(p);
+  jsonParseInsertIntoCache(ctx, p);
 }
 
 
@@ -2770,7 +2827,7 @@ static void jsonSetFunc(
   int argc,
   sqlite3_value **argv
 ){
-  JsonParse x;          /* The parse */
+  JsonParse *p;          /* The parse */
   JsonNode *pNode;
   const char *zPath;
   u32 i;
@@ -2782,26 +2839,26 @@ static void jsonSetFunc(
     jsonWrongNumArgs(ctx, bIsSet ? "set" : "insert");
     return;
   }
-  if( jsonParse(&x, ctx, (const char*)sqlite3_value_text(argv[0])) ) return;
-  assert( x.nNode );
+  p = jsonParseCached(ctx, argv, ctx, 1);
+  if( p==0 ) return;
   for(i=1; i<(u32)argc; i+=2){
     zPath = (const char*)sqlite3_value_text(argv[i]);
     bApnd = 0;
-    pNode = jsonLookup(&x, zPath, &bApnd, ctx);
-    if( x.oom ){
+    pNode = jsonLookup(p, zPath, &bApnd, ctx);
+    if( p->oom ){
       sqlite3_result_error_nomem(ctx);
       goto jsonSetDone;
-    }else if( x.nErr ){
+    }else if( p->nErr ){
       goto jsonSetDone;
     }else if( pNode && (bApnd || bIsSet) ){
-      jsonReplaceNode(ctx, &x, (u32)(pNode - x.aNode), argv[i+1]);
+      jsonReplaceNode(ctx, p, (u32)(pNode - p->aNode), argv[i+1]);
     }
   }
-  jsonDebugPrintParse(&x);
-  jsonReturnJson(&x, x.aNode, ctx);
+  jsonDebugPrintParse(p);
+  jsonReturnJson(p, p->aNode, ctx);
 
 jsonSetDone:
-  jsonParseReset(&x);
+  jsonParseInsertIntoCache(ctx, p);
 }
 
 /*
@@ -2820,7 +2877,7 @@ static void jsonTypeFunc(
   const char *zPath;
   JsonNode *pNode;
 
-  p = jsonParseCached(ctx, argv, ctx);
+  p = jsonParseCached(ctx, argv, ctx, 0);
   if( p==0 ) return;
   if( argc==2 ){
     zPath = (const char*)sqlite3_value_text(argv[1]);
@@ -2847,7 +2904,7 @@ static void jsonValidFunc(
   JsonParse *p;          /* The parse */
   UNUSED_PARAMETER(argc);
   if( sqlite3_value_type(argv[0])==SQLITE_NULL ) return;
-  p = jsonParseCached(ctx, argv, 0);
+  p = jsonParseCached(ctx, argv, 0, 0);
   if( p==0 || p->oom ){
     sqlite3_result_error_nomem(ctx);
     sqlite3_free(p);
@@ -2893,7 +2950,7 @@ static void jsonErrorFunc(
   JsonParse *p;          /* The parse */
   UNUSED_PARAMETER(argc);
   if( sqlite3_value_type(argv[0])==SQLITE_NULL ) return;
-  p = jsonParseCached(ctx, argv, 0);
+  p = jsonParseCached(ctx, argv, 0, 0);
   if( p==0 || p->oom ){
     sqlite3_result_error_nomem(ctx);
     sqlite3_free(p);

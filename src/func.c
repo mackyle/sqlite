@@ -461,6 +461,10 @@ static void roundFunc(sqlite3_context *context, int argc, sqlite3_value **argv){
   }else if( n==0 ){ 
     r = (double)((sqlite_int64)(r+(r<0?-0.5:+0.5)));
   }else{
+    double round = r>0 ? 0.0001 : 0.0001;
+    int i;
+    for(i=1; i<n; i++) round /= 10;
+    r += round;
     zBuf = sqlite3_mprintf("%!.*f",n,r);
     if( zBuf==0 ){
       sqlite3_result_error_nomem(context);
@@ -2547,6 +2551,7 @@ static void fpdecodeFunc(
   x = sqlite3_value_double(argv[0]);
   y = sqlite3_value_int(argv[1]);
   z = sqlite3_value_int(argv[2]);
+  if( z<=0 ) z = 1;
   sqlite3FpDecode(&s, x, y, z);
   if( s.isSpecial==2 ){
     sqlite3_snprintf(sizeof(zBuf), zBuf, "NaN");

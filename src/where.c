@@ -7397,6 +7397,7 @@ void sqlite3WhereEnd(WhereInfo *pWInfo){
             ** reference.  Verify that this is harmless - that the
             ** table being referenced really is open.
             */
+            OpcodeRewriteTrace(db, k, pOp);
 #ifdef SQLITE_ENABLE_OFFSET_SQL_FUNC
             assert( (pLoop->wsFlags & WHERE_IDX_ONLY)==0
                  || cursorIsOpen(v,pOp->p1,k)

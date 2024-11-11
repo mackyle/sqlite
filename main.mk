@@ -1909,6 +1909,16 @@ sqlite3$(T.exe):	shell.c sqlite3.c
 		$(CFLAGS.readline) $(SHELL_OPT) \
 		$(LDFLAGS.libsqlite3) $(LDFLAGS.readline)
 
+# The following only works if CC=clang.  Suggested command line:
+#
+#    make clean sqlite3_fuzzer CC=clang
+#
+sqlite3_fuzzer$(T.exe):	shell.c sqlite3.c
+	$(T.link) -DSQLITE_SHELL_FUZZER -fsanitize=fuzzer -o $@ \
+		shell.c sqlite3.c \
+		$(CFLAGS.readline) $(SHELL_OPT) \
+		$(LDFLAGS.libsqlite3) $(LDFLAGS.readline)
+
 #
 # Build sqlite3$(T.exe) by default except in wasi-sdk builds.  Yes, the
 # semantics of 0 and 1 are confusingly swapped here.

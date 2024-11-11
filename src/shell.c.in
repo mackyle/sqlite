@@ -247,6 +247,17 @@ INCLUDE ../ext/misc/sqlite3_stdio.c
 # define SQLITE_CIO_NO_FLUSH
 #endif
 
+#ifdef SQLITE_SHELL_FUZZER
+/* When running with -fsanitize=fuzzer, an "exit()" is really a longjmp
+** back to the end of the LLVMFuzzerTestOneInput() routine. */
+# include <setjmp.h>
+static jmp_buf shellSetJmpEnv;
+static void shell_exit(int rc){ longjmp(shellSetJmpEnv, rc); }
+#else
+/* For normal builds, exit() is an exit() */
+static void shell_exit(int rc){ exit(rc); }
+#endif
+
 #define eputz(z) sqlite3_fputs(z,stderr)
 #define sputz(fp,z) sqlite3_fputs(z,fp)
 
@@ -488,6 +499,7 @@ static char *shell_strncpy(char *dest, const char *src, size_t n){
   return dest;
 }
 
+#ifndef SQLITE_SHELL_FUZZER
 /*
 ** strcpy() workalike to squelch an unwarranted link-time warning
 ** from OpenBSD.
@@ -495,6 +507,7 @@ static char *shell_strncpy(char *dest, const char *src, size_t n){
 static void shell_strcpy(char *dest, const char *src){
   while( (*(dest++) = *(src++))!=0 ){}
 }
+#endif
 
 /*
 ** Optionally disable dynamic continuation prompt.
@@ -551,6 +564,7 @@ static void setLexemeOpen(struct DynaPrompt *p, char *s, char c){
   }
 }
 
+#ifndef SQLITE_SHELL_FUZZER
 /* Upon demand, derive the continuation prompt to display. */
 static char *dynamicContinuePrompt(void){
   if( continuePrompt[0]==0
@@ -580,12 +594,13 @@ static char *dynamicContinuePrompt(void){
   }
   return dynPrompt.dynamicPrompt;
 }
+#endif /* !defined(SQLITE_SHELL_FUZZER) */
 #endif /* !defined(SQLITE_OMIT_DYNAPROMPT) */
 
 /* Indicate out-of-memory and exit. */
 static void shell_out_of_memory(void){
   eputz("Error: out of memory\n");
-  exit(1);
+  shell_exit(1);
 }
 
 /* Check a pointer to see if it is NULL.  If it is NULL, exit with an
@@ -909,6 +924,7 @@ static FILE * openChrSource(const char *zFile){
 #undef STAT_CHR_SRC
 }
 
+#ifndef SQLITE_SHELL_FUZZER
 /*
 ** This routine reads a line of text from FILE in, stores
 ** the text in memory obtained from malloc() and returns a pointer
@@ -946,6 +962,7 @@ static char *local_getline(char *zLine, FILE *in){
   }
   return zLine;
 }
+#endif /* !defined(SQLITE_SHELL_FUZZER) */
 
 /*
 ** Retrieve a single line of input text.
@@ -961,7 +978,7 @@ static char *local_getline(char *zLine, FILE *in){
 ** be freed by the caller or else passed back into this routine via the
 ** zPrior argument for reuse.
 */
-#ifndef SQLITE_SHELL_FIDDLE
+#if !defined(SQLITE_SHELL_FIDDLE) && !defined(SQLITE_SHELL_FUZZER)
 static char *one_input_line(FILE *in, char *zPrior, int isContinuation){
   char *zPrompt;
   char *zResult;
@@ -1679,7 +1696,7 @@ static void failIfSafeMode(
     zMsg = sqlite3_vmprintf(zErrMsg, ap);
     va_end(ap);
     sqlite3_fprintf(stderr, "line %d: %s\n", p->lineno, zMsg);
-    exit(1);
+    shell_exit(1);
   }
 }
 
@@ -2243,14 +2260,16 @@ static void output_csv(ShellState *p, const char *z, int bSep){
   }
 }
 
+#ifndef SQLITE_SHELL_FUZZER
 /*
 ** This routine runs when the user presses Ctrl-C
 */
 static void interrupt_handler(int NotUsed){
   UNUSED_PARAMETER(NotUsed);
-  if( ++seenInterrupt>1 ) exit(1);
+  if( ++seenInterrupt>1 ) shell_exit(1);
   if( globalDb ) sqlite3_interrupt(globalDb);
 }
+#endif /* !defined(SQLITE_SHELL_FUZZER) */
 
 #if (defined(_WIN32) || defined(WIN32)) && !defined(_WIN32_WCE)
 /*
@@ -5605,14 +5624,14 @@ static void open_db(ShellState *p, int openFlags){
       sqlite3_fprintf(stderr,"Error: unable to open database \"%s\": %s\n",
             zDbFilename, sqlite3_errmsg(p->db));
       if( (openFlags & OPEN_DB_KEEPALIVE)==0 ){
-        exit(1);
+        shell_exit(1);
       }
       sqlite3_close(p->db);
       sqlite3_open(":memory:", &p->db);
       if( p->db==0 || SQLITE_OK!=sqlite3_errcode(p->db) ){
         sqlite3_fputs("Also: unable to open substitute in-memory database.\n",
                       stderr);
-        exit(1);
+        shell_exit(1);
       }else{
         sqlite3_fprintf(stderr,
               "Notice: using substitute in-memory database instead of \"%s\"\n",
@@ -8832,7 +8851,7 @@ static int do_meta_command(char *zLine, ShellState *p){
 
 #ifndef SQLITE_SHELL_FIDDLE
   if( c=='e' && cli_strncmp(azArg[0], "exit", n)==0 ){
-    if( nArg>1 && (rc = (int)integerValue(azArg[1]))!=0 ) exit(rc);
+    if( nArg>1 && (rc = (int)integerValue(azArg[1]))!=0 ) shell_exit(rc);
     rc = 2;
   }else
 #endif
@@ -9797,7 +9816,7 @@ static int do_meta_command(char *zLine, ShellState *p){
     }else if( p->zNonce==0 || cli_strcmp(azArg[1],p->zNonce)!=0 ){
       sqlite3_fprintf(stderr,"line %d: incorrect nonce: \"%s\"\n",
             p->lineno, azArg[1]);
-      exit(1);
+      shell_exit(1);
     }else{
       p->bSafeMode = 0;
       return 0;  /* Return immediately to bypass the safe mode reset
@@ -12173,6 +12192,51 @@ static char *one_input_line(FILE *in, char *zPrior, int isContinuation){
 }
 #endif /* SQLITE_SHELL_FIDDLE */
 
+#ifdef SQLITE_SHELL_FUZZER
+/*
+** Global state variables used to store the fuzzer's input
+*/
+static const char *aFuzzData;  /* Fuzzer input */
+static size_t nFuzz;           /* Bytes of content in aFuzzData */
+static size_t nFuzzUsed;       /* Bytes read so far */
+
+/*
+** Alternate one_input_line() impl for when the CLI is being fuzzed.
+** The input comes from the fuzzer.
+*/
+static char *one_input_line(FILE *in, char *zPrior, int isContinuation){
+  char *zLine = 0;
+  size_t n;
+  size_t nPrior;
+  size_t nLine;
+
+  UNUSED_PARAMETER(in);
+  UNUSED_PARAMETER(isContinuation);
+  if( nFuzz<=nFuzzUsed ) return 0;
+  for(n=nFuzzUsed; n<nFuzz && aFuzzData[n]!='\n'; n++){}
+  if( n<nFuzz ) n++;
+  nPrior = zPrior ? strlen(zPrior) : 0;
+  nLine = nPrior + n + 1;
+  if( zPrior ){
+    zLine = realloc(zPrior, nLine);
+  }else{
+    zLine = malloc(nLine);
+  }
+  if( zLine==0 ){
+    free(zPrior);
+    return 0;
+  }
+  if( zPrior ) memcpy(zLine, zPrior, nPrior);
+  memcpy(zLine+nPrior, aFuzzData+nFuzz, n);
+  nLine--;
+  if( nLine>0 && zLine[nLine]=='\n' ) nLine--;
+  if( nLine>0 && zLine[nLine]=='\r' ) nLine--;
+  zLine[nLine] = 0;
+  nFuzzUsed += n;
+  return zLine;
+}
+#endif /* SQLITE_SHELL_FUZZER */
+
 /*
 ** Read input from *in and process it.  If *in==0 then input
 ** is interactive - the user is typing it it.  Otherwise, input
@@ -12432,11 +12496,11 @@ static void process_sqliterc(
     if( stdin_is_interactive ){
       sqlite3_fprintf(stderr,"-- Loading resources from %s\n", sqliterc);
     }
-    if( process_input(p) && bail_on_error ) exit(1);
+    if( process_input(p) && bail_on_error ) shell_exit(1);
     fclose(p->in);
   }else if( sqliterc_override!=0 ){
     sqlite3_fprintf(stderr,"cannot open: \"%s\"\n", sqliterc);
-    if( bail_on_error ) exit(1);
+    if( bail_on_error ) shell_exit(1);
   }
   p->in = inSaved;
   p->lineno = savedLineno;
@@ -12518,7 +12582,7 @@ static void usage(int showDetail){
   }else{
     eputz("Use the -help option for additional information\n");
   }
-  exit(0);
+  shell_exit(0);
 }
 
 /*
@@ -12589,7 +12653,7 @@ static char *cmdline_option_value(int argc, char **argv, int i){
   if( i==argc ){
     sqlite3_fprintf(stderr,
             "%s: Error: missing argument to %s\n", argv[0], argv[argc-1]);
-    exit(1);
+    shell_exit(1);
   }
   return argv[i];
 }
@@ -12609,6 +12673,9 @@ static void sayAbnormalExit(void){
 
 #ifdef SQLITE_SHELL_FIDDLE
 #  define main fiddle_main
+#endif
+#ifdef SQLITE_SHELL_FUZZER
+#  define main fuzzer_main
 #endif
 
 #if SQLITE_SHELL_IS_UTF8
@@ -12642,10 +12709,13 @@ int SQLITE_CDECL wmain(int argc, wchar_t **wargv){
 #endif
   setvbuf(stderr, 0, _IONBF, 0); /* Make sure stderr is unbuffered */
 
-#ifdef SQLITE_SHELL_FIDDLE
+#if defined(SQLITE_SHELL_FIDDLE)
   stdin_is_interactive = 0;
   stdout_is_console = 1;
   data.wasm.zDefaultDbName = "/fiddle.sqlite3";
+#elif defined(SQLITE_SHELL_FUZZER)
+  stdin_is_interactive = 0;
+  stdout_is_console = 0;
 #else
   stdin_is_interactive = isatty(0);
   stdout_is_console = isatty(1);
@@ -12664,7 +12734,7 @@ int SQLITE_CDECL wmain(int argc, wchar_t **wargv){
       if( sqlite3_fgets(zLine, sizeof(zLine), stdin)!=0
        && cli_strcmp(zLine,"stop")==0
       ){
-        exit(1);
+        shell_exit(1);
       }
     }else{
 #if defined(_WIN32) || defined(WIN32)
@@ -12680,7 +12750,7 @@ int SQLITE_CDECL wmain(int argc, wchar_t **wargv){
   }
 #endif
   /* Register a valid signal handler early, before much else is done. */
-#ifdef SIGINT
+#if defined(SIGINT) && !defined(SQLITE_SHELL_FUZZER)
   signal(SIGINT, interrupt_handler);
 #elif (defined(_WIN32) || defined(WIN32)) && !defined(_WIN32_WCE)
   if( !SetConsoleCtrlHandler(ConsoleCtrlHandler, TRUE) ){
@@ -12693,7 +12763,7 @@ int SQLITE_CDECL wmain(int argc, wchar_t **wargv){
     sqlite3_fprintf(stderr,
           "SQLite header and source version mismatch\n%s\n%s\n",
           sqlite3_sourceid(), SQLITE_SOURCE_ID);
-    exit(1);
+    shell_exit(1);
   }
 #endif
   main_init(&data);
@@ -12917,7 +12987,7 @@ int SQLITE_CDECL wmain(int argc, wchar_t **wargv){
       sqlite3_vfs_register(pVfs, 1);
     }else{
       sqlite3_fprintf(stderr,"no such VFS: \"%s\"\n", zVfs);
-      exit(1);
+      shell_exit(1);
     }
   }
 
@@ -13269,6 +13339,34 @@ int SQLITE_CDECL wmain(int argc, wchar_t **wargv){
 #endif
   return rc;
 }
+
+#ifdef SQLITE_SHELL_FUZZER
+/* The fuzzer invokes this routine for each test case.  aData[] contains
+** text that is presumed input to the shell.
+*/
+int LLVMFuzzerTestOneInput(const uint8_t *aData, size_t nByte){
+  char *argv[4];
+  enableTimer = 0;
+  bail_on_error = 0;
+  stdin_is_interactive = 0;
+  stdout_is_console = 0;
+  globalDb = 0;
+  seenInterrupt = 0;
+  Argv0 = 0;
+  argv[0] = "fuzzing-sqlite3";
+  argv[1] = ":memory:";
+  argv[2] = "--safe";
+  argv[3] = 0;
+  aFuzzData = (const char*)aData;
+  nFuzz = nByte;
+  nFuzzUsed = 0;
+  if( setjmp(shellSetJmpEnv)==0 ){
+    (void)fuzzer_main(3, argv);
+  }
+  sqlite3_shutdown();
+  return 0;
+}
+#endif /* SQLITE_SHELL_FUZZER */
 
 
 #ifdef SQLITE_SHELL_FIDDLE

@@ -205,6 +205,17 @@ ENABLE_STATIC ?= 1
 #
 USE_AMALGAMATION ?= 1
 #
+# $(LINK_TOOLS_DYNAMICALLY)
+#
+# If true, certain binaries which typically statically link against
+# libsqlite3 or its component object files will instead link against
+# the DLL. The caveat is that running such builds from the source tree
+# may require that the user specifically prepend "." to their
+# $LD_LIBRARY_PATH so that the dynamic linker does not pick up a
+# libsqlite3.so from outside the source tree.
+#
+LINK_TOOLS_DYNAMICALLY ?= 0
+#
 # $(AMALGAMATION_GEN_FLAGS) =
 #
 # Optional flags for the amalgamation generator.
@@ -893,6 +904,9 @@ TESTOPTS = --verbose=file --output=test-out.txt
 #
 # Extra compiler options for various shell tools
 #
+# Note that some of these will only apply when embedding sqlite3.c
+# into the shell, as these flags are not otherwise passed on to the
+# library.
 SHELL_OPT += -DSQLITE_DQS=0
 SHELL_OPT += -DSQLITE_ENABLE_FTS4
 #SHELL_OPT += -DSQLITE_ENABLE_FTS5
@@ -1730,13 +1744,34 @@ smoketest:	$(TESTPROGS) fuzzcheck$(T.exe)
 shelltest:
 	$(TCLSH_CMD) $(TOP)/test/testrunner.tcl release shell
 
+#
+# sqlite3_analyzer.c build depends on $(LINK_TOOLS_DYNAMICALLY).
+#
+sqlite3_analyzer.c.flags.0 = -DINCLUDE_SQLITE3_C=1
+sqlite3_analyzer.c.flags.1 =
 sqlite3_analyzer.c: sqlite3.c $(TOP)/src/tclsqlite.c $(TOP)/tool/spaceanal.tcl \
-                    $(TOP)/tool/mkccode.tcl $(TOP)/tool/sqlite3_analyzer.c.in has_tclsh85
-	$(B.tclsh) $(TOP)/tool/mkccode.tcl $(TOP)/tool/sqlite3_analyzer.c.in >sqlite3_analyzer.c
+                    $(TOP)/tool/mkccode.tcl $(TOP)/tool/sqlite3_analyzer.c.in
+	$(B.tclsh) $(TOP)/tool/mkccode.tcl $(TOP)/tool/sqlite3_analyzer.c.in \
+		$(sqlite3_analyzer.c.flags.$(LINK_TOOLS_DYNAMICALLY)) \
+		$(OPT_FEATURE_FLAGS) \
+		> $@
 
-sqlite3_analyzer$(T.exe): $(T.tcl.env.sh) sqlite3_analyzer.c
-	$(T.link.tcl) sqlite3_analyzer.c -o $@ $$TCL_LIB_SPEC $$TCL_INCLUDE_SPEC \
-		$(LDFLAGS.libsqlite3)
+#
+# sqlite3_analyzer's build mode depends on $(LINK_TOOLS_DYNAMICALLY).
+#
+sqlite3_analyzer.flags.1 = -L. -lsqlite3 $(LDFLAGS.math)
+sqlite3_analyzer.flags.0 = $(LDFLAGS.libsqlite3)
+sqlite3_analyzer.deps.1 = $(libsqlite3.SO)
+sqlite3_analyzer.deps.0 =
+sqlite3_analyzer$(T.exe): $(T.tcl.env.sh) sqlite3_analyzer.c \
+                          $(sqlite3_analyzer.deps.$(LINK_TOOLS_DYNAMICALLY))
+	$(T.link.tcl) sqlite3_analyzer.c -o $@ \
+		$(sqlite3_analyzer.flags.$(LINK_TOOLS_DYNAMICALLY)) \
+		$$TCL_LIB_SPEC $$TCL_INCLUDE_SPEC
+# ^^^^ the order of those flags is relevant for
+# $(sqlite3_analyzer.flags.1): if the $$TCL_... flags come first they
+# can cause the $@ to link to an out-of-tree libsqlite3.so, which may
+# or may not fail or otherwise cause confusion.
 
 sqltclsh.c: sqlite3.c $(TOP)/src/tclsqlite.c $(TOP)/tool/sqltclsh.tcl \
             $(TOP)/ext/misc/appendvfs.c $(TOP)/tool/mkccode.tcl \
@@ -1918,15 +1953,27 @@ threadtest5: sqlite3.c $(TOP)/test/threadtest5.c
 	$(T.link) $(TOP)/test/threadtest5.c sqlite3.c -o $@ $(LDFLAGS.libsqlite3)
 xbin: threadtest5
 
-# The standard CLI is built using the amalgamation since it uses
-# special compile-time options that are interpreted by individual
-# source files within the amalgamation.
+#
+# When building sqlite3$(T.exe) we specifically embed a copy of
+# sqlite3.c, and not link to libsqlite3.so or libsqlite3.a, because
+# the shell needs to be able to enable arbitrary library features,
+# some of which have significant performance impacts. For example,,
+# SQLITE_ENABLE_EXPLAIN_COMMENTS has been measured as having a 5.2%
+# runtime performance hit, which is fine for use in the shell but is
+# not appropriate for the canonical library build.
 #
 sqlite3$(T.exe):	shell.c sqlite3.c
 	$(T.link) -o $@ \
 		shell.c sqlite3.c \
 		$(CFLAGS.readline) $(SHELL_OPT) $(CFLAGS.icu) \
 		$(LDFLAGS.libsqlite3) $(LDFLAGS.readline)
+#
+# Build sqlite3$(T.exe) by default except in wasi-sdk builds.  Yes, the
+# semantics of 0 and 1 are confusingly swapped here.
+#
+sqlite3$(T.exe)-1:
+sqlite3$(T.exe)-0: sqlite3$(T.exe)
+all: sqlite3$(T.exe)-$(HAVE_WASI_SDK)
 
 # The "sqlite3d" CLI is build using separate source files.  This
 # is useful during development and debugging.
@@ -1937,21 +1984,19 @@ sqlite3d$(T.exe):	shell.c $(LIBOBJS0)
 		$(CFLAGS.readline) $(SHELL_OPT) \
 		$(LDFLAGS.libsqlite3) $(LDFLAGS.readline)
 
-#
-# Build sqlite3$(T.exe) by default except in wasi-sdk builds.  Yes, the
-# semantics of 0 and 1 are confusingly swapped here.
-#
-sqlite3$(T.exe)-1:
-sqlite3$(T.exe)-0 sqlite3$(T.exe)-: sqlite3$(T.exe)
-all: sqlite3$(T.exe)-$(HAVE_WASI_SDK)
-
 install-shell-0: sqlite3$(T.exe) $(install-dir.bin)
 	$(INSTALL) -s sqlite3$(T.exe) "$(install-dir.bin)"
-install-shell-1 install-shell-:
+install-shell-1:
 install: install-shell-$(HAVE_WASI_SDK)
 
-sqldiff$(T.exe):	$(TOP)/tool/sqldiff.c $(TOP)/ext/misc/sqlite3_stdio.h sqlite3.o sqlite3.h
-	$(T.link) -o $@ $(TOP)/tool/sqldiff.c sqlite3.o $(LDFLAGS.libsqlite3)
+# How to build sqldiff$(T.exe) depends on $(LINK_TOOLS_DYNAMICALLY)
+#
+sqldiff.0.deps = $(TOP)/tool/sqldiff.c $(TOP)/ext/misc/sqlite3_stdio.h sqlite3.o sqlite3.h
+sqldiff.0.rules = $(T.link) -o $@ $(TOP)/tool/sqldiff.c sqlite3.o $(LDFLAGS.libsqlite3)
+sqldiff.1.deps = $(TOP)/tool/sqldiff.c $(TOP)/ext/misc/sqlite3_stdio.h $(libsqlite3.SO)
+sqldiff.1.rules = $(T.link) -o $@ $(TOP)/tool/sqldiff.c -L. -lsqlite3 $(LDFLAGS.configure)
+sqldiff$(T.exe): $(sqldiff.$(LINK_TOOLS_DYNAMICALLY).deps)
+	$(sqldiff.$(LINK_TOOLS_DYNAMICALLY).rules)
 
 install-diff: sqldiff$(T.exe) $(install-dir.bin)
 	$(INSTALL) -s sqldiff$(T.exe) "$(install-dir.bin)"

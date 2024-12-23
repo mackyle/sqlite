@@ -3037,6 +3037,27 @@ static int winHandleTruncate(HANDLE h, sqlite3_int64 nByte){
   return rc;
 }
 
+static int winHandleExtend(HANDLE h, sqlite3_int64 nByte){ 
+  int rc = SQLITE_OK;
+  OVERLAPPED over;
+
+  memset(&over, 0, sizeof(OVERLAPPED));
+  over.Offset = nByte-1;
+
+  if( !osWriteFile(h, (LPCVOID)"", 1, 0, &over) ){
+    if( osGetLastError()==ERROR_IO_PENDING ){
+      DWORD t = 0;
+      if( 0==GetOverlappedResult(h, &over, &t, 1) ){
+        rc = SQLITE_IOERR_WRITE;
+      }
+    }else
+    {
+      rc = SQLITE_IOERR_WRITE;
+    }
+  }
+  return rc;
+}
+
 /*
 ** Determine the size in bytes of the file opened by the handle passed as 
 ** the first argument.
@@ -3054,13 +3075,12 @@ static int winHandleSize(HANDLE h, sqlite3_int64 *pnByte){
     rc = SQLITE_IOERR_FSTAT;
   }
 #else
-  DWORD upperBits = 0;
   DWORD lowerBits = 0;
-  DWORD lastErrno = 0;
+  DWORD upperBits = 0;
 
+  assert( pnByte!=0 );
   lowerBits = osGetFileSize(h, &upperBits);
   *pnByte = (((sqlite3_int64)upperBits)<<32) + lowerBits;
-
   if( lowerBits==INVALID_FILE_SIZE && osGetLastError()!=NO_ERROR ){
     rc = SQLITE_IOERR_FSTAT;
   }
@@ -3888,6 +3908,15 @@ static int winShmMutexHeld(void) {
 #endif
 
 /*
+** Close the handle passed as the only argument.
+*/
+static void winHandleClose(HANDLE h){
+  if( h!=INVALID_HANDLE_VALUE ){
+    osCloseHandle(h);
+  }
+}
+
+/*
 ** Object used to represent a single file opened and mmapped to provide
 ** shared memory.  When multiple threads all reference the same
 ** log-summary, each thread has its own winFile object, but they all
@@ -3918,6 +3947,7 @@ struct winShmNode {
   sqlite3_mutex *mutex;      /* Mutex to access this object */
   char *zFilename;           /* Name of the file */
   HANDLE hSharedShm;         /* File handle open on zFilename */
+  HANDLE hSharedLock;        /* Locking file handle open on zFilename */
 
   int isUnlocked;            /* DMS lock has not yet been obtained */
   int isReadonly;            /* True if read-only */
@@ -3999,9 +4029,8 @@ static void winShmPurge(sqlite3_vfs *pVfs, int deleteFlag){
                  osGetCurrentProcessId(), i, bRc ? "ok" : "failed"));
         UNUSED_VARIABLE_VALUE(bRc);
       }
-      if( p->hSharedShm!=NULL && p->hSharedShm!=INVALID_HANDLE_VALUE ){
-        osCloseHandle(p->hSharedShm);
-      }
+      winHandleClose(p->hSharedShm);
+      winHandleClose(p->hSharedLock);
       if( deleteFlag ){
         SimulateIOErrorBenign(1);
         sqlite3BeginBenignMalloc();
@@ -4024,7 +4053,7 @@ static void winShmPurge(sqlite3_vfs *pVfs, int deleteFlag){
 ** Return SQLITE_OK if successful, or an SQLite error code otherwise.
 */
 static int winLockSharedMemory(winShmNode *pShmNode, int nMs){
-  HANDLE h = pShmNode->hSharedShm;
+  HANDLE h = pShmNode->hSharedLock;
   int rc = SQLITE_OK;
 
   assert( sqlite3_mutex_held(pShmNode->mutex) );
@@ -4036,7 +4065,7 @@ static int winLockSharedMemory(winShmNode *pShmNode, int nMs){
     if( pShmNode->isReadonly ){
       rc = SQLITE_READONLY_CANTINIT;
     }else{
-      rc = winHandleTruncate(h, 0);
+      rc = winHandleTruncate(pShmNode->hSharedShm, 0);
     }
 
     /* Release the EXCLUSIVE lock acquired above. */
@@ -4082,6 +4111,7 @@ static void *winConvertFromUtf8Filename(const char *zFilename){
 */
 static int winHandleOpen(
   const char *zUtf8,              /* File to open */
+  int bOverlapped,
   int *pbReadonly,                /* IN/OUT: True for readonly handle */
   HANDLE *ph                      /* OUT: New HANDLE for file */
 ){
@@ -4089,6 +4119,7 @@ static int winHandleOpen(
   void *zConverted = 0;
   int bReadonly = *pbReadonly;
   HANDLE h = INVALID_HANDLE_VALUE;
+  DWORD over = bOverlapped ? FILE_FLAG_OVERLAPPED : 0;
 
   /* Convert the filename to the system encoding. */
   zConverted = winConvertFromUtf8Filename(zUtf8);
@@ -4114,7 +4145,7 @@ static int winHandleOpen(
     memset(&extendedParameters, 0, sizeof(extendedParameters));
     extendedParameters.dwSize = sizeof(extendedParameters);
     extendedParameters.dwFileAttributes = FILE_ATTRIBUTE_NORMAL;
-    extendedParameters.dwFileFlags = FILE_FLAG_OVERLAPPED;
+    extendedParameters.dwFileFlags = over;
     extendedParameters.dwSecurityQosFlags = SECURITY_ANONYMOUS;
     h = osCreateFile2((LPCWSTR)zConverted,
         (GENERIC_READ | (bReadonly ? 0 : GENERIC_WRITE)),/* dwDesiredAccess */
@@ -4128,7 +4159,7 @@ static int winHandleOpen(
         FILE_SHARE_READ | FILE_SHARE_WRITE,        /* dwShareMode */
         NULL,                                      /* lpSecurityAttributes */
         OPEN_ALWAYS,                               /* dwCreationDisposition */
-        FILE_ATTRIBUTE_NORMAL|FILE_FLAG_OVERLAPPED,
+        FILE_ATTRIBUTE_NORMAL|over,
         NULL
     );
 #endif
@@ -4141,7 +4172,7 @@ static int winHandleOpen(
         FILE_SHARE_READ | FILE_SHARE_WRITE,        /* dwShareMode */
         NULL,                                      /* lpSecurityAttributes */
         OPEN_ALWAYS,                               /* dwCreationDisposition */
-        FILE_ATTRIBUTE_NORMAL|FILE_FLAG_OVERLAPPED,
+        FILE_ATTRIBUTE_NORMAL|over,
         NULL
     );
 #endif
@@ -4150,7 +4181,7 @@ static int winHandleOpen(
   if( h==INVALID_HANDLE_VALUE ){
     if( bReadonly==0 ){
       bReadonly = 1;
-      rc = winHandleOpen(zUtf8, &bReadonly, &h);
+      rc = winHandleOpen(zUtf8, bOverlapped, &bReadonly, &h);
     }else{
       rc = SQLITE_CANTOPEN_BKPT;
     }
@@ -4162,7 +4193,7 @@ static int winHandleOpen(
   *ph = h;
   return rc;
 }
- 
+
 
 /*
 ** Open the shared-memory area associated with database file pDbFd.
@@ -4188,6 +4219,7 @@ static int winOpenSharedMemory(winFile *pDbFd){
   }
   pNew->zFilename = (char*)&pNew[1];
   pNew->hSharedShm = INVALID_HANDLE_VALUE;
+  pNew->hSharedLock = INVALID_HANDLE_VALUE;
   pNew->isUnlocked = 1;
   sqlite3_snprintf(nName+15, pNew->zFilename, "%s-shm", pDbFd->zPath);
   sqlite3FileSuffix3(pDbFd->zPath, pNew->zFilename);
@@ -4196,7 +4228,7 @@ static int winOpenSharedMemory(winFile *pDbFd){
   ** is only used for locking. The mapping of the *-shm file is created using
   ** the shared file handle in winShmNode.hSharedShm.  */
   p->bReadonly = sqlite3_uri_boolean(pDbFd->zPath, "readonly_shm", 0);
-  rc = winHandleOpen(pNew->zFilename, &p->bReadonly, &p->hShm);
+  rc = winHandleOpen(pNew->zFilename, 1, &p->bReadonly, &p->hShm);
 
   /* Look to see if there is an existing winShmNode that can be used.
   ** If no matching winShmNode currently exists, then create a new one.  */
@@ -4207,33 +4239,37 @@ static int winOpenSharedMemory(winFile *pDbFd){
     if( sqlite3StrICmp(pShmNode->zFilename, pNew->zFilename)==0 ) break;
   }
   if( pShmNode==0 ){
-    pShmNode = pNew;
 
     /* Allocate a mutex for this winShmNode object, if one is required. */
     if( sqlite3GlobalConfig.bCoreMutex ){
-      pShmNode->mutex = sqlite3_mutex_alloc(SQLITE_MUTEX_FAST);
-      if( pShmNode->mutex==0 ) rc = SQLITE_IOERR_NOMEM_BKPT;
+      pNew->mutex = sqlite3_mutex_alloc(SQLITE_MUTEX_FAST);
+      if( pNew->mutex==0 ) rc = SQLITE_IOERR_NOMEM_BKPT;
     }
 
     /* Open a file-handle to use for mappings, and for the DMS lock. */
+    pNew->isReadonly = p->bReadonly;
     if( rc==SQLITE_OK ){
-      HANDLE h = INVALID_HANDLE_VALUE;
-      pShmNode->isReadonly = p->bReadonly;
-      rc = winHandleOpen(pNew->zFilename, &pShmNode->isReadonly, &h);
-      pShmNode->hSharedShm = h;
+      rc = winHandleOpen(
+          pNew->zFilename, 0, &pNew->isReadonly, &pNew->hSharedShm
+      );
+    }
+    if( rc==SQLITE_OK ){
+      rc = winHandleOpen(
+          pNew->zFilename, 1, &pNew->isReadonly, &pNew->hSharedLock
+      );
     }
 
     /* If successful, link the new winShmNode into the global list. If an 
     ** error occurred, free the object. */
     if( rc==SQLITE_OK ){
-      pShmNode->pNext = winShmNodeList;
-      winShmNodeList = pShmNode;
+      pNew->pNext = winShmNodeList;
+      winShmNodeList = pNew;
+      pShmNode = pNew;
       pNew = 0;
     }else{
-      sqlite3_mutex_free(pShmNode->mutex);
-      if( pShmNode->hSharedShm!=INVALID_HANDLE_VALUE ){
-        osCloseHandle(pShmNode->hSharedShm);
-      }
+      sqlite3_mutex_free(pNew->mutex);
+      winHandleClose(pNew->hSharedShm);
+      winHandleClose(pNew->hSharedLock);
     }
   }
 
@@ -4475,9 +4511,9 @@ static int winShmMap(
   assert( szRegion==pShmNode->szRegion || pShmNode->nRegion==0 );
   if( pShmNode->nRegion<=iRegion ){
     HANDLE hShared = pShmNode->hSharedShm;
-    struct ShmRegion *apNew;           /* New aRegion[] array */
+    struct ShmRegion *apNew = 0;       /* New aRegion[] array */
     int nByte = (iRegion+1)*szRegion;  /* Minimum required file size */
-    sqlite3_int64 sz;                  /* Current size of wal-index file */
+    sqlite3_int64 sz = 0;              /* Current size of wal-index file */
 
     pShmNode->szRegion = szRegion;
 

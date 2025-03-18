@@ -2203,97 +2203,97 @@ xbin: fuzzcheck-ubsan$(T.exe)
 # What follows is a decomposition of these rules in a way that allows make
 # to run things in parallel when using the -jN option.
 #
-FUZZDB-check:
+FUZZDB-check: fuzzcheck$(T.exe) fuzzcheck-asan$(T.exe) fuzzcheck-ubsan$(T.exe)
 	@if test "$(FUZZDB)" = ""; then echo 'ERROR: No FUZZDB specified. Rerun with FUZZDB=filename'; exit 1; fi
 run-fuzzcheck: run-fuzzcheck-n0
-run-fuzzcheck-n0: FUZZDB-check fuzzcheck$(T.exe)
+run-fuzzcheck-n0: FUZZDB-check
 	./fuzzcheck$(T.exe) --slice 0 10 $(FUZZDB)
 run-fuzzcheck: run-fuzzcheck-n1
-run-fuzzcheck-n1: FUZZDB-check fuzzcheck$(T.exe)
+run-fuzzcheck-n1: FUZZDB-check
 	./fuzzcheck$(T.exe) --slice 1 10 $(FUZZDB)
 run-fuzzcheck: run-fuzzcheck-n2
-run-fuzzcheck-n2: FUZZDB-check fuzzcheck$(T.exe)
+run-fuzzcheck-n2: FUZZDB-check
 	./fuzzcheck$(T.exe) --slice 2 10 $(FUZZDB)
 run-fuzzcheck: run-fuzzcheck-n3
-run-fuzzcheck-n3: FUZZDB-check fuzzcheck$(T.exe)
+run-fuzzcheck-n3: FUZZDB-check
 	./fuzzcheck$(T.exe) --slice 3 10 $(FUZZDB)
 run-fuzzcheck: run-fuzzcheck-n4
-run-fuzzcheck-n4: FUZZDB-check fuzzcheck$(T.exe)
+run-fuzzcheck-n4: FUZZDB-check
 	./fuzzcheck$(T.exe) --slice 4 10 $(FUZZDB)
 run-fuzzcheck: run-fuzzcheck-n5
-run-fuzzcheck-n5: FUZZDB-check fuzzcheck$(T.exe)
+run-fuzzcheck-n5: FUZZDB-check
 	./fuzzcheck$(T.exe) --slice 5 10 $(FUZZDB)
 run-fuzzcheck: run-fuzzcheck-n6
-run-fuzzcheck-n6: FUZZDB-check fuzzcheck$(T.exe)
+run-fuzzcheck-n6: FUZZDB-check
 	./fuzzcheck$(T.exe) --slice 6 10 $(FUZZDB)
 run-fuzzcheck: run-fuzzcheck-n7
-run-fuzzcheck-n7: FUZZDB-check fuzzcheck$(T.exe)
+run-fuzzcheck-n7: FUZZDB-check
 	./fuzzcheck$(T.exe) --slice 7 10 $(FUZZDB)
 run-fuzzcheck: run-fuzzcheck-n8
-run-fuzzcheck-n8: FUZZDB-check fuzzcheck$(T.exe)
+run-fuzzcheck-n8: FUZZDB-check
 	./fuzzcheck$(T.exe) --slice 8 10 $(FUZZDB)
 run-fuzzcheck: run-fuzzcheck-n9
-run-fuzzcheck-n9: FUZZDB-check fuzzcheck$(T.exe)
+run-fuzzcheck-n9: FUZZDB-check
 	./fuzzcheck$(T.exe) --slice 9 10 $(FUZZDB)
 run-fuzzcheck: run-fuzzcheck-a0
-run-fuzzcheck-a0: FUZZDB-check fuzzcheck-asan$(T.exe)
+run-fuzzcheck-a0: FUZZDB-check
 	./fuzzcheck-asan$(T.exe) --slice 0 10 $(FUZZDB)
 run-fuzzcheck: run-fuzzcheck-a1
-run-fuzzcheck-a1: FUZZDB-check fuzzcheck-asan$(T.exe)
+run-fuzzcheck-a1: FUZZDB-check
 	./fuzzcheck-asan$(T.exe) --slice 1 10 $(FUZZDB)
 run-fuzzcheck: run-fuzzcheck-a2
-run-fuzzcheck-a2: FUZZDB-check fuzzcheck-asan$(T.exe)
+run-fuzzcheck-a2: FUZZDB-check
 	./fuzzcheck-asan$(T.exe) --slice 2 10 $(FUZZDB)
 run-fuzzcheck: run-fuzzcheck-a3
-run-fuzzcheck-a3: FUZZDB-check fuzzcheck-asan$(T.exe)
+run-fuzzcheck-a3: FUZZDB-check
 	./fuzzcheck-asan$(T.exe) --slice 3 10 $(FUZZDB)
 run-fuzzcheck: run-fuzzcheck-a4
-run-fuzzcheck-a4: FUZZDB-check fuzzcheck-asan$(T.exe)
+run-fuzzcheck-a4: FUZZDB-check
 	./fuzzcheck-asan$(T.exe) --slice 4 10 $(FUZZDB)
 run-fuzzcheck: run-fuzzcheck-a5
-run-fuzzcheck-a5: FUZZDB-check fuzzcheck-asan$(T.exe)
+run-fuzzcheck-a5: FUZZDB-check
 	./fuzzcheck-asan$(T.exe) --slice 5 10 $(FUZZDB)
 run-fuzzcheck: run-fuzzcheck-a6
-run-fuzzcheck-a6: FUZZDB-check fuzzcheck-asan$(T.exe)
+run-fuzzcheck-a6: FUZZDB-check
 	./fuzzcheck-asan$(T.exe) --slice 6 10 $(FUZZDB)
 run-fuzzcheck: run-fuzzcheck-a7
-run-fuzzcheck-a7: FUZZDB-check fuzzcheck-asan$(T.exe)
+run-fuzzcheck-a7: FUZZDB-check
 	./fuzzcheck-asan$(T.exe) --slice 7 10 $(FUZZDB)
 run-fuzzcheck: run-fuzzcheck-a8
-run-fuzzcheck-a8: FUZZDB-check fuzzcheck-asan$(T.exe)
+run-fuzzcheck-a8: FUZZDB-check
 	./fuzzcheck-asan$(T.exe) --slice 8 10 $(FUZZDB)
 run-fuzzcheck: run-fuzzcheck-a9
-run-fuzzcheck-a9: FUZZDB-check fuzzcheck-asan$(T.exe)
+run-fuzzcheck-a9: FUZZDB-check
 	./fuzzcheck-asan$(T.exe) --slice 9 10 $(FUZZDB)
 run-fuzzcheck: run-fuzzcheck-u0
-run-fuzzcheck-u0: FUZZDB-check fuzzcheck-ubsan$(T.exe)
+run-fuzzcheck-u0: FUZZDB-check
 	./fuzzcheck-ubsan$(T.exe) --slice 0 10 $(FUZZDB)
 run-fuzzcheck: run-fuzzcheck-u1
-run-fuzzcheck-u1: FUZZDB-check fuzzcheck-ubsan$(T.exe)
+run-fuzzcheck-u1: FUZZDB-check
 	./fuzzcheck-ubsan$(T.exe) --slice 1 10 $(FUZZDB)
 run-fuzzcheck: run-fuzzcheck-u2
-run-fuzzcheck-u2: FUZZDB-check fuzzcheck-ubsan$(T.exe)
+run-fuzzcheck-u2: FUZZDB-check
 	./fuzzcheck-ubsan$(T.exe) --slice 2 10 $(FUZZDB)
 run-fuzzcheck: run-fuzzcheck-u3
-run-fuzzcheck-u3: FUZZDB-check fuzzcheck-ubsan$(T.exe)
+run-fuzzcheck-u3: FUZZDB-check
 	./fuzzcheck-ubsan$(T.exe) --slice 3 10 $(FUZZDB)
 run-fuzzcheck: run-fuzzcheck-u4
-run-fuzzcheck-u4: FUZZDB-check fuzzcheck-ubsan$(T.exe)
+run-fuzzcheck-u4: FUZZDB-check
 	./fuzzcheck-ubsan$(T.exe) --slice 4 10 $(FUZZDB)
 run-fuzzcheck: run-fuzzcheck-u5
-run-fuzzcheck-u5: FUZZDB-check fuzzcheck-ubsan$(T.exe)
+run-fuzzcheck-u5: FUZZDB-check
 	./fuzzcheck-ubsan$(T.exe) --slice 5 10 $(FUZZDB)
 run-fuzzcheck: run-fuzzcheck-u6
-run-fuzzcheck-u6: FUZZDB-check fuzzcheck-ubsan$(T.exe)
+run-fuzzcheck-u6: FUZZDB-check
 	./fuzzcheck-ubsan$(T.exe) --slice 6 10 $(FUZZDB)
 run-fuzzcheck: run-fuzzcheck-u7
-run-fuzzcheck-u7: FUZZDB-check fuzzcheck-ubsan$(T.exe)
+run-fuzzcheck-u7: FUZZDB-check
 	./fuzzcheck-ubsan$(T.exe) --slice 7 10 $(FUZZDB)
 run-fuzzcheck: run-fuzzcheck-u8
-run-fuzzcheck-u8: FUZZDB-check fuzzcheck-ubsan$(T.exe)
+run-fuzzcheck-u8: FUZZDB-check
 	./fuzzcheck-ubsan$(T.exe) --slice 8 10 $(FUZZDB)
 run-fuzzcheck: run-fuzzcheck-u9
-run-fuzzcheck-u9: FUZZDB-check fuzzcheck-ubsan$(T.exe)
+run-fuzzcheck-u9: FUZZDB-check
 	./fuzzcheck-ubsan$(T.exe) --slice 9 10 $(FUZZDB)
 
 

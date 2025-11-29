@@ -1702,6 +1702,29 @@ static void qrfRestrictScreenWidth(qrfColData *pData, Qrf *p){
 }
 
 /*
+** Finish the string pStr.  Report errors into p.  This routine
+** never returns a NULL pointer without also setting p->iErr.
+*/
+static char *qrfFinishStr(Qrf *p, sqlite3_str *pStr){
+  char *z;
+  if( sqlite3_str_errcode(pStr) ){
+    sqlite3_free(sqlite3_str_finish(pStr));
+    qrfOom(p);
+    return 0;
+  }
+  z = sqlite3_str_finish(pStr);
+  if( z==0 ){
+    z = sqlite3_malloc( 2 );
+    if( z ){
+      z[0] = 0;
+    }else{
+      qrfOom(p);
+    }
+  }
+  return z;
+}
+
+/*
 ** Columnar modes require that the entire query be evaluated first, with
 ** results written into memory, so that we can compute appropriate column
 ** widths.
@@ -1749,7 +1772,8 @@ static void qrfColumnar(Qrf *p){
       pStr = sqlite3_str_new(p->db);
       qrfEncodeText(p, pStr, z ? z : "");
       n = sqlite3_str_length(pStr);
-      z = data.az[data.n] = sqlite3_str_finish(pStr);
+      z = data.az[data.n] = qrfFinishStr(p, pStr);
+      if( z==0 ) break;
       data.aiWth[data.n] = w = qrfDisplayWidth(z, n, &nNL);
       data.n++;
       if( w>data.a[i].mxW ) data.a[i].mxW = w;
@@ -1770,7 +1794,8 @@ static void qrfColumnar(Qrf *p){
       pStr = sqlite3_str_new(p->db);
       qrfRenderValue(p, pStr, i);
       n = sqlite3_str_length(pStr);
-      z = data.az[data.n] = sqlite3_str_finish(pStr);
+      z = data.az[data.n] = qrfFinishStr(p, pStr);
+      if( z==0 ) break;
       data.abNum[data.n] = eType==SQLITE_INTEGER || eType==SQLITE_FLOAT;
       data.aiWth[data.n] = w = qrfDisplayWidth(z, n, &nNL);
       data.n++;
@@ -2663,7 +2688,7 @@ static void qrfFinalize(Qrf *p){
       }
       sqlite3_free(sqlite3_str_finish(p->pOut));
     }else{
-      p->spec.pzOutput[0] = sqlite3_str_finish(p->pOut);
+      p->spec.pzOutput[0] = qrfFinishStr(p, p->pOut);
     }
   }else if( p->pOut ){
     sqlite3_free(sqlite3_str_finish(p->pOut));

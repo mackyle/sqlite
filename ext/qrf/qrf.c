@@ -704,13 +704,44 @@ static void qrfEscape(
 }
 
 /*
+** Return zero (false) if and only if all of the following are true:
+**
+**   (1)  bLoose is enabled
+**   (2)  The string zTxt does not begin or end with a quote, double-quote,
+**        or whitespace or control characters.
+**   (3)  zTxt is not an empty string
+**   (4)  zTxt does not look like a NULL
+**   (5)  zTxt does not look like a numeric constant
+**
+** Return 1 or 2 if any condition is false.  Return 2 to mean "definitely
+** uses quoting even if you normally wouldn't".  2 is used by CSV to force
+** quotes on the representation of NULL, if there is one.
+*/
+static int qrfUseQuote(Qrf *p, const char *zTxt){
+  char c;
+  size_t n;
+  if( p->spec.bLoose!=QRF_Yes ) return 2;
+  if( zTxt==0 || (c = zTxt[0])==0 ) return 2;
+  if( c=='\'' || c=='"' || c<=' ' ) return 1;
+  n = strlen(zTxt);
+  c = zTxt[n-1];
+  if( c=='\'' || c=='"' || c<=' ' ) return 1;
+  if( p->spec.zNull && p->spec.zNull[0] && strcmp(p->spec.zNull,zTxt)==0 ){
+    return 2;
+  }
+  if( zTxt[0]=='-' ) zTxt++;
+  if( zTxt[0]>='0' && zTxt[0]<='9' && c>='0' && c<='9' ) return 1;
+  return 0;
+}
+
+/*
 ** If a field contains any character identified by a 1 in the following
 ** array, then the string must be quoted for CSV.
 */
 static const char qrfCsvQuote[] = {
   1, 1, 1, 1, 1, 1, 1, 1,   1, 1, 1, 1, 1, 1, 1, 1,
   1, 1, 1, 1, 1, 1, 1, 1,   1, 1, 1, 1, 1, 1, 1, 1,
-  1, 0, 1, 0, 0, 0, 0, 1,   0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 1, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
   0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
   0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
   0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,
@@ -733,7 +764,9 @@ static void qrfEncodeText(Qrf *p, sqlite3_str *pOut, const char *zTxt){
   int iStart = sqlite3_str_length(pOut);
   switch( p->spec.eText ){
     case QRF_TEXT_Sql: {
-      if( p->spec.eEsc==QRF_ESC_Off ){
+      if( qrfUseQuote(p, zTxt)==0 ){
+        sqlite3_str_appendall(pOut, zTxt);
+      }else if( p->spec.eEsc==QRF_ESC_Off ){
         sqlite3_str_appendf(pOut, "%Q", zTxt);
       }else{
         sqlite3_str_appendf(pOut, "%#Q", zTxt);
@@ -742,13 +775,24 @@ static void qrfEncodeText(Qrf *p, sqlite3_str *pOut, const char *zTxt){
     }
     case QRF_TEXT_Csv: {
       unsigned int i;
-      for(i=0; zTxt[i]; i++){
-        if( qrfCsvQuote[((const unsigned char*)zTxt)[i]] ){
-          i = 0;
-          break;
+      int eUseQuote = qrfUseQuote(p, zTxt);
+      if( eUseQuote==0 ){
+        sqlite3_str_appendall(pOut, zTxt);
+        break;
+      }
+      if( eUseQuote==2 ){
+        i = 0;
+      }else{
+        for(i=0; zTxt[i]; i++){
+          if( qrfCsvQuote[((const unsigned char*)zTxt)[i]] ){
+            i = 0;
+            break;
+          }
         }
       }
-      if( i==0 || strstr(zTxt, p->spec.zColumnSep)!=0 ){
+      if( i==0
+       || (p->spec.zColumnSep[0] && strstr(zTxt, p->spec.zColumnSep)!=0)
+      ){
         sqlite3_str_appendf(pOut, "\"%w\"", zTxt);
       }else{
         sqlite3_str_appendall(pOut, zTxt);
@@ -783,7 +827,8 @@ static void qrfEncodeText(Qrf *p, sqlite3_str *pOut, const char *zTxt){
     case QRF_TEXT_Tcl:
     case QRF_TEXT_Json: {
       const unsigned char *z = (const unsigned char*)zTxt;
-      sqlite3_str_append(pOut, "\"", 1);
+      int eUseQuote = qrfUseQuote(p, zTxt);
+      if( eUseQuote ) sqlite3_str_append(pOut, "\"", 1);
       while( *z ){
         unsigned int i;
         for(i=0; z[i]>=0x20 && z[i]!='\\' && z[i]!='"'; i++){}
@@ -810,7 +855,7 @@ static void qrfEncodeText(Qrf *p, sqlite3_str *pOut, const char *zTxt){
         }
         z += i + 1;
       }
-      sqlite3_str_append(pOut, "\"", 1);
+      if( eUseQuote ) sqlite3_str_append(pOut, "\"", 1);
       break;
     }
     default: {

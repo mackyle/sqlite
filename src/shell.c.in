@@ -7702,6 +7702,7 @@ static int modeTitleDsply(ShellState *p, int bAll){
 **   --limits L,C             Shorthand for "--linelimit L --charlimit C".
 **                            Or "off" to mean "0,0".  Or "on" for "5,300".
 **   --list                   List available modes
+**   --loose on|off           If enabled, avoid unnecessary text quoting
 **   --null STRING            Render SQL NULL values as the given string
 **   --once                   Setting changes to the right are reverted after
 **                            the next SQL command.
@@ -7895,6 +7896,18 @@ static int dotCmdMode(ShellState *p){
       cli_puts(" batch tty\n", p->out);
       chng = 1;  /* Not really a change, but we still want to suppress the
                  ** "current mode" output */
+    }else if( optionMatch(z,"loose") ){
+      if( (++i)>=nArg ){
+        dotCmdError(p, i-1, "missing argument", 0);
+        return 1;
+      }
+      k = pickStr(azArg[i],0,"on","off","");
+      if( k<0 ){
+        dotCmdError(p, i, "bad argument", "Should be \"on\" or \"off\"");
+        return 1;
+      }
+      p->mode.spec.bLoose = k ? QRF_Auto : QRF_Yes;
+      chng = 1;
     }else if( optionMatch(z,"once") ){
       p->nPopMode = 0;
       modePush(p);
@@ -8154,6 +8167,10 @@ static int dotCmdMode(ShellState *p){
     if( p->mode.spec.nCharLimit==0 && p->mode.spec.nLineLimit>0 && pI->eCx>0 ){
       sqlite3_str_appendf(pDesc, " --linelimit %d",p->mode.spec.nLineLimit);
     }
+    if( bAll || p->mode.spec.bLoose==QRF_Yes ){
+      sqlite3_str_appendf(pDesc, " --loose %s",
+           p->mode.spec.bLoose==QRF_Yes ? "on" : "off");
+    }
     zSetting = aModeStr[pI->eNull];
     if( bAll || (zSetting && cli_strcmp(zSetting,p->mode.spec.zNull)!=0) ){
       sqlite3_str_appendf(pDesc, " --null ");
@@ -8208,13 +8225,13 @@ static int dotCmdMode(ShellState *p){
     }else if( bAll ){
       sqlite3_str_appendall(pDesc, " --widths \"\"");
     }
+    if( bAll || p->mode.spec.nWrap ){
+      sqlite3_str_appendf(pDesc, " --wrap %d", p->mode.spec.nWrap);
+    }
     if( bAll || (pI->eCx>0 && p->mode.spec.bWordWrap) ){
       if( bAll ){
         sqlite3_str_appendf(pDesc, " --wordwrap %s",
           p->mode.spec.bWordWrap==QRF_Yes ? "on" : "off");
-      }
-      if( p->mode.spec.nWrap ){
-        sqlite3_str_appendf(pDesc, " --wrap %d", p->mode.spec.nWrap);
       }
       if( !bAll ) sqlite3_str_append(pDesc, " --ww", 5);
     }

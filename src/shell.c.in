@@ -11476,6 +11476,10 @@ static int do_meta_command(const char *zLine, ShellState *p){
 
         /* sqlite3_test_control(sqlite3*) */
         case SQLITE_TESTCTRL_INTERNAL_FUNCTIONS:
+#ifdef SQLITE_SHELL_HAVE_RECOVER
+          /* Create the sqlite_dbdata and sqlite_dbptr virtual tables */
+          sqlite3_dbdata_init(p->db, 0, 0);
+#endif
           rc2 = sqlite3_test_control(testctrl, p->db);
           isOk = 3;
           break;

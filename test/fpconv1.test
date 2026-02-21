@@ -83,4 +83,14 @@ do_execsql_test fpconv1-3.1 {
 } {2.8781999999999996}
 #  ^---  Not 2.8782 as you would expect.  2.8782 has a different bit pattern
 
+sqlite3_db_config db 15DIGIT_ROUNDING 1
+
+# Repeat the above tests with 15-digit rounding enabled.
+do_execsql_test fpconv1-3.2 {
+  SELECT 1.23 - 2.34;
+} {-1.11}
+do_execsql_test fpconv1-3.3 {
+  SELECT 1.23 * 2.34;
+} {2.8782}
+
 finish_test

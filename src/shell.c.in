@@ -9256,6 +9256,7 @@ static int do_meta_command(const char *zLine, ShellState *p){
       const char *zName;
       int op;
     } aDbConfig[] = {
+        { "15digit_rounding",   SQLITE_DBCONFIG_15DIGIT_ROUNDING      },
         { "attach_create",      SQLITE_DBCONFIG_ENABLE_ATTACH_CREATE  },
         { "attach_write",       SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE   },
         { "comments",           SQLITE_DBCONFIG_ENABLE_COMMENTS       },

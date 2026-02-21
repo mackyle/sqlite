@@ -2648,6 +2648,29 @@ struct sqlite3_mem_methods {
 ** comments are allowed in SQL text after processing the first argument.
 ** </dd>
 **
+** [[SQLITE_DBCONFIG_15DIGIT_ROUNDING]
+** <dt>SQLITE_DBCONFIG_15DIGIT_ROUNDING</dt>
+** <dd>The SQLITE_DBCONFIG_15DIGIT_ROUNDING option affects the way that
+** floating point values are converted to text.  In versions of SQLite
+** prior to 3.52.0, the text value would be rounded to 15 significant digits.
+** Beginning with version 3.52.0, the conversion rounds to 17 significant
+** digits, which means that the text result can be converted back into a
+** exactly the same 64-bit "double" value that it was derived from.  If
+** this option is enabled, the reverts the behavior back to the pre-3.52.0
+** design of rounding to only 15 significant digits.  The legacy behavior
+** may be desired by some because the 17-digit answer, while technically
+** better, is sometime unintuitive.  For example, with 15-digit rounding,
+** 2.34*1.23 results in 2.8782, whereas with 17-digit rounding the answer
+** is 2.8781999999999997.
+** <p>
+** This option takes two arguments which are an integer and a pointer
+** to an integer.  The first argument is 1, 0, or -1 to enable, disable, or
+** leave unchanged the ability to use comments in SQL text,
+** respectively.  If the second argument is not NULL, then 0 or 1 is written
+** into the integer that the second argument points to depending on if 
+** comments are allowed in SQL text after processing the first argument.
+** </dd>
+**
 ** </dl>
 **
 ** [[DBCONFIG arguments]] <h3>Arguments To SQLITE_DBCONFIG Options</h3>
@@ -2692,7 +2715,8 @@ struct sqlite3_mem_methods {
 #define SQLITE_DBCONFIG_ENABLE_ATTACH_CREATE  1020 /* int int* */
 #define SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE   1021 /* int int* */
 #define SQLITE_DBCONFIG_ENABLE_COMMENTS       1022 /* int int* */
-#define SQLITE_DBCONFIG_MAX                   1022 /* Largest DBCONFIG */
+#define SQLITE_DBCONFIG_15DIGIT_ROUNDING      1023 /* int int* */
+#define SQLITE_DBCONFIG_MAX                   1023 /* Largest DBCONFIG */
 
 /*
 ** CAPI3REF: Enable Or Disable Extended Result Codes

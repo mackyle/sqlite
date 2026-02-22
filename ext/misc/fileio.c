@@ -100,6 +100,8 @@ SQLITE_EXTENSION_INIT1
 #  define STRUCT_STAT struct _stat
 #  define chmod(path,mode) fileio_chmod(path,mode)
 #  define mkdir(path,mode) fileio_mkdir(path)
+   extern LPWSTR sqlite3_win32_utf8_to_unicode(const char*);
+   extern char *sqlite3_win32_unicode_to_utf8(LPCWSTR);
 #endif
 #include <time.h>
 #include <errno.h>
@@ -131,12 +133,9 @@ SQLITE_EXTENSION_INIT1
 */
 #if defined(_WIN32) || defined(WIN32)
 static int fileio_chmod(const char *zPath, int pmode){
-  sqlite3_int64 sz = strlen(zPath);
-  wchar_t *b1 = sqlite3_malloc64( (sz+1)*sizeof(b1[0]) );
   int rc;
+  wchar_t *b1 = sqlite3_win32_utf8_to_unicode(zPath);
   if( b1==0 ) return -1;
-  sz = MultiByteToWideChar(CP_UTF8, 0, zPath, sz, b1, sz);
-  b1[sz] = 0;
   rc = _wchmod(b1, pmode);
   sqlite3_free(b1);
   return rc;
@@ -148,12 +147,9 @@ static int fileio_chmod(const char *zPath, int pmode){
 */
 #if defined(_WIN32) || defined(WIN32)
 static int fileio_mkdir(const char *zPath){
-  sqlite3_int64 sz = strlen(zPath);
-  wchar_t *b1 = sqlite3_malloc64( (sz+1)*sizeof(b1[0]) );
   int rc;
+  wchar_t *b1 = sqlite3_win32_utf8_to_unicode(zPath);
   if( b1==0 ) return -1;
-  sz = MultiByteToWideChar(CP_UTF8, 0, zPath, sz, b1, sz);
-  b1[sz] = 0;
   rc = _wmkdir(b1);
   sqlite3_free(b1);
   return rc;
@@ -266,50 +262,7 @@ static sqlite3_uint64 fileTimeToUnixTime(
 
   return (fileIntervals.QuadPart - epochIntervals.QuadPart) / 10000000;
 }
-
-
-#if defined(FILEIO_WIN32_DLL) && (defined(_WIN32) || defined(WIN32))
-#  /* To allow a standalone DLL, use this next replacement function: */
-#  undef sqlite3_win32_utf8_to_unicode
-#  define sqlite3_win32_utf8_to_unicode utf8_to_utf16
-#
-LPWSTR utf8_to_utf16(const char *z){
-  int nAllot = MultiByteToWideChar(CP_UTF8, 0, z, -1, NULL, 0);
-  LPWSTR rv = sqlite3_malloc(nAllot * sizeof(WCHAR));
-  if( rv!=0 && 0 < MultiByteToWideChar(CP_UTF8, 0, z, -1, rv, nAllot) )
-    return rv;
-  sqlite3_free(rv);
-  return 0;
-}
-#endif
-
-/*
-** This function attempts to normalize the time values found in the stat()
-** buffer to UTC.  This is necessary on Win32, where the runtime library
-** appears to return these values as local times.
-*/
-static void statTimesToUtc(
-  const char *zPath,
-  STRUCT_STAT *pStatBuf
-){
-  HANDLE hFindFile;
-  WIN32_FIND_DATAW fd;
-  LPWSTR zUnicodeName;
-  extern LPWSTR sqlite3_win32_utf8_to_unicode(const char*);
-  zUnicodeName = sqlite3_win32_utf8_to_unicode(zPath);
-  if( zUnicodeName ){
-    memset(&fd, 0, sizeof(WIN32_FIND_DATAW));
-    hFindFile = FindFirstFileW(zUnicodeName, &fd);
-    if( hFindFile!=NULL ){
-      pStatBuf->st_ctime = (time_t)fileTimeToUnixTime(&fd.ftCreationTime);
-      pStatBuf->st_atime = (time_t)fileTimeToUnixTime(&fd.ftLastAccessTime);
-      pStatBuf->st_mtime = (time_t)fileTimeToUnixTime(&fd.ftLastWriteTime);
-      FindClose(hFindFile);
-    }
-    sqlite3_free(zUnicodeName);
-  }
-}
-#endif
+#endif /* _WIN32 */
 
 /*
 ** This function is used in place of stat().  On Windows, special handling
@@ -321,14 +274,22 @@ static int fileStat(
   STRUCT_STAT *pStatBuf
 ){
 #if defined(_WIN32)
-  sqlite3_int64 sz = strlen(zPath);
-  wchar_t *b1 = sqlite3_malloc64( (sz+1)*sizeof(b1[0]) );
   int rc;
+  wchar_t *b1 = sqlite3_win32_utf8_to_unicode(zPath);
   if( b1==0 ) return 1;
-  sz = MultiByteToWideChar(CP_UTF8, 0, zPath, sz, b1, sz);
-  b1[sz] = 0;
   rc = _wstat(b1, pStatBuf);
-  if( rc==0 ) statTimesToUtc(zPath, pStatBuf);
+  if( rc==0 ){
+    HANDLE hFindFile;
+    WIN32_FIND_DATAW fd;
+    memset(&fd, 0, sizeof(WIN32_FIND_DATAW));
+    hFindFile = FindFirstFileW(b1, &fd);
+    if( hFindFile!=NULL ){
+      pStatBuf->st_ctime = (time_t)fileTimeToUnixTime(&fd.ftCreationTime);
+      pStatBuf->st_atime = (time_t)fileTimeToUnixTime(&fd.ftLastAccessTime);
+      pStatBuf->st_mtime = (time_t)fileTimeToUnixTime(&fd.ftLastWriteTime);
+      FindClose(hFindFile);
+    }
+  }
   sqlite3_free(b1);
   return rc;
 #else
@@ -1093,6 +1054,74 @@ static int fsdirRegister(sqlite3 *db){
 # define fsdirRegister(x) SQLITE_OK
 #endif
 
+/*
+** The realpath() C-language function, implemented as an SQL function.
+*/
+static void realpathFunc(
+  sqlite3_context *context,
+  int argc,
+  sqlite3_value **argv
+){
+#if !defined(_WIN32)       /* BEGIN unix */
+
+  const char *zPath;       /* Input */
+  char *zOut = 0;          /* Result */
+  char *z = 0;             /* Temporary buffer */
+#if defined(PATH_MAX)
+  char zBuf[PATH_MAX+1];   /* Space for the temporary buffer */
+#endif
+
+  (void)argc;
+  zPath = (const char*)sqlite3_value_text(argv[0]);
+  if( zPath==0 ) return;
+
+#if defined(PATH_MAX)
+  z = realpath(zPath, zBuf);
+  if( z ){
+    zOut = sqlite3_mprintf("%s", zBuf);
+  }
+#endif /* defined(PATH_MAX) */
+  if( zOut==0 ){
+    /* Try POSIX.1-2008 malloc behavior */
+    z = realpath(zPath, NULL);
+    if( z ){
+      zOut = sqlite3_mprintf("%s", z);
+      free(z);
+    }
+  }
+
+#else /* End UNIX, Begin WINDOWS */
+
+  const char *zPath;       /* Input */
+  wchar_t *zPath16;        /* UTF16 translation of zPath */
+  char *zOut = 0;          /* Result */
+  wchar_t *z = 0;          /* Temporary buffer */
+
+  (void)argc;
+  zPath = (const char*)sqlite3_value_text(argv[0]);
+  if( zPath==0 ) return;
+
+  zPath16 = sqlite3_win32_utf8_to_unicode(zPath);
+  if( zPath16==0 ) return;
+  z = _wfullpath(NULL, zPath16, 0);
+  sqlite3_free(zPath16);
+  if( z==0 ){
+    sqlite3_result_error(context, "unable to resolve path", -1);
+    return;
+  }
+  zOut = sqlite3_win32_unicode_to_utf8(z);
+  free(z);
+
+#endif /* End WINDOWS, Begin common code */
+
+  if( zOut==0 ){
+    sqlite3_result_error(context, "unable to resolve path", -1);
+    return;
+  }
+  sqlite3_result_text(context, zOut, -1, sqlite3_free);
+}
+
+
 #ifdef _WIN32
 __declspec(dllexport)
 #endif
@@ -1119,5 +1148,11 @@ int sqlite3_fileio_init(
   if( rc==SQLITE_OK ){
     rc = fsdirRegister(db);
   }
+  if( rc==SQLITE_OK ){
+    rc = sqlite3_create_function(db, "realpath", 1,
+                                 SQLITE_UTF8, 0,
+                                 realpathFunc, 0, 0);
+  }
+
   return rc;
 }

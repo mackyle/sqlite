@@ -1114,16 +1114,20 @@ static char *portable_realpath(const char *zPath){
 ** Try to convert file or pathname X into its real, absolute pathname.
 ** Return NULL if unable.
 **
-** The file X is not required to exist.  However, if any directory
-** in the path to X does not exist, then the function returns NULL.
+** The file or directory X is not required to exist.  The answer is formed
+** by calling system realpath() on the prefix of X that does exist and
+** appending the tail of X that does not (yet) exist.
 */
 static void realpathFunc(
   sqlite3_context *context,
   int argc,
   sqlite3_value **argv
 ){
-  const char *zPath;
-  char *zOut;
+  const char *zPath;    /* Original input path */
+  char *zCopy;          /* An editable copy of zPath */
+  char *zOut;           /* The result */
+  char cSep = 0;        /* Separator turned into \000 */
+  size_t len;           /* Prefix length before cSep */
 #ifdef _WIN32
   const int isWin = 1;
 #else
@@ -1134,30 +1138,67 @@ static void realpathFunc(
   zPath = (const char*)sqlite3_value_text(argv[0]);
   if( zPath==0 ) return;
   if( zPath[0]==0 ) zPath = ".";
-  zOut = portable_realpath(zPath);
-  if( zOut==0
-   && (strchr(zPath,'/') || (isWin && strchr(zPath,'\\')))
-  ){
-    char *zCopy = sqlite3_mprintf("%s", zPath);
-    size_t i;
-    char cSep = 0;
-    if( zCopy==0 ) return;
-    for(i = strlen(zCopy) - 1; i>0; i--){
-      if( zCopy[i]=='/' || (isWin && zCopy[i]=='\\') ){
-        cSep = zCopy[i];
-        zCopy[i] = 0;
+  zCopy = sqlite3_mprintf("%s",zPath);
+  len = strlen(zCopy);
+  while( len>1 && (zCopy[len-1]=='/' || (isWin && zCopy[len-1]=='\\')) ){
+    len--;
+  }
+  zCopy[len] = 0;
+  while( 1 /*exit-by-break*/ ){
+    zOut = portable_realpath(zCopy);
+    zCopy[len] = cSep;
+    if( zOut ){
+      if( cSep ){
+        zOut = sqlite3_mprintf("%z%s",zOut,&zCopy[len]);
+      }
+      break;
+    }else{
+      size_t i = len-1;
+      while( i>0 ){
+        if( zCopy[i]=='/' || (isWin && zCopy[i]=='\\') ) break;
+        i--;
+      }
+      if( i<=0 ){
+        if( zCopy[0]=='/' ){
+          zOut = zCopy;
+          zCopy = 0;
+        }else if( (zOut = portable_realpath("."))!=0 ){
+          zOut = sqlite3_mprintf("%z/%s", zOut, zCopy);
+        }          
         break;
       }
+      cSep = zCopy[i];
+      zCopy[i] = 0;
+      len = i;
     }
-    if( cSep ){
-      zOut = portable_realpath(zCopy);
-      if( zOut ){
-        zOut = sqlite3_mprintf("%z%c%s",zOut,cSep,&zCopy[i+1]);
-      }
-    }
-    sqlite3_free(zCopy);
   }
+  sqlite3_free(zCopy);
   if( zOut ){
+    /* Simplify any "/./" or "/../" that might have snuck into the
+    ** pathname due to appending of zCopy.  We only have to consider
+    ** unix "/" separators, because the _wfilepath() system call on
+    ** Windows will have already done this simplification for us. */
+    size_t i, j, n;
+    n = strlen(zOut);
+    for(i=j=0; i<n; i++){
+      if( zOut[i]=='/' ){
+        if( zOut[i+1]=='/' ) continue;
+        if( zOut[i+1]=='.' && i+2<n && zOut[i+2]=='/' ){
+          i += 1;
+          continue;
+        }
+        if( zOut[i+1]=='.' && i+3<n && zOut[i+2]=='.' && zOut[i+3]=='/' ){
+          while( j>0 && zOut[j-1]!='/' ){ j--; }
+          if( j>0 ){ j--; }
+          i += 2;
+          continue;
+        }
+      }
+      zOut[j++] = zOut[i];
+    }
+    zOut[j] = 0;
+
+    /* Return the result */
     sqlite3_result_text(context, zOut, -1, sqlite3_free);
   }
 }

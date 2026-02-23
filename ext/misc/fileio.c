@@ -94,6 +94,8 @@ SQLITE_EXTENSION_INIT1
 #  include <utime.h>
 #  include <sys/time.h>
 #  define STRUCT_STAT struct stat
+#  include <limits.h>
+#  include <stdlib.h>
 #else
 #  include "windirent.h"
 #  include <direct.h>
@@ -1055,26 +1057,20 @@ static int fsdirRegister(sqlite3 *db){
 #endif
 
 /*
-** The realpath() C-language function, implemented as an SQL function.
+** This version of realpath() works on any system.  The string
+** returned is held in memory allocated using sqlite3_malloc64().
+** The caller is responsible for calling sqlite3_free().
 */
-static void realpathFunc(
-  sqlite3_context *context,
-  int argc,
-  sqlite3_value **argv
-){
+static char *portable_realpath(const char *zPath){
 #if !defined(_WIN32)       /* BEGIN unix */
 
-  const char *zPath;       /* Input */
   char *zOut = 0;          /* Result */
-  char *z = 0;             /* Temporary buffer */
+  char *z;                 /* Temporary buffer */
 #if defined(PATH_MAX)
   char zBuf[PATH_MAX+1];   /* Space for the temporary buffer */
 #endif
 
-  (void)argc;
-  zPath = (const char*)sqlite3_value_text(argv[0]);
-  if( zPath==0 ) return;
-
+  if( zPath==0 ) return 0;
 #if defined(PATH_MAX)
   z = realpath(zPath, zBuf);
   if( z ){
@@ -1089,36 +1085,81 @@ static void realpathFunc(
       free(z);
     }
   }
+  return zOut;
 
 #else /* End UNIX, Begin WINDOWS */
 
-  const char *zPath;       /* Input */
   wchar_t *zPath16;        /* UTF16 translation of zPath */
   char *zOut = 0;          /* Result */
   wchar_t *z = 0;          /* Temporary buffer */
 
+  if( zPath==0 ) return 0;
+
+  zPath16 = sqlite3_win32_utf8_to_unicode(zPath);
+  if( zPath16==0 ) return 0;
+  z = _wfullpath(NULL, zPath16, 0);
+  sqlite3_free(zPath16);
+  if( z ){
+    zOut = sqlite3_win32_unicode_to_utf8(z);
+    free(z);
+  }
+  return zOut;
+
+#endif /* End WINDOWS, Begin common code */
+}
+
+/*
+** SQL function:   realpath(X)
+**
+** Try to convert file or pathname X into its real, absolute pathname.
+** Return NULL if unable.
+**
+** The file X is not required to exist.  However, if any directory
+** in the path to X does not exist, then the function returns NULL.
+*/
+static void realpathFunc(
+  sqlite3_context *context,
+  int argc,
+  sqlite3_value **argv
+){
+  const char *zPath;
+  char *zOut;
+#ifdef _WIN32
+  const int isWin = 1;
+#else
+  const int isWin = 0;
+#endif
+
   (void)argc;
   zPath = (const char*)sqlite3_value_text(argv[0]);
   if( zPath==0 ) return;
-
-  zPath16 = sqlite3_win32_utf8_to_unicode(zPath);
-  if( zPath16==0 ) return;
-  z = _wfullpath(NULL, zPath16, 0);
-  sqlite3_free(zPath16);
-  if( z==0 ){
-    sqlite3_result_error(context, "unable to resolve path", -1);
-    return;
+  if( zPath[0]==0 ) zPath = ".";
+  zOut = portable_realpath(zPath);
+  if( zOut==0
+   && (strchr(zPath,'/') || (isWin && strchr(zPath,'\\')))
+  ){
+    char *zCopy = sqlite3_mprintf("%s", zPath);
+    size_t i;
+    char cSep = 0;
+    if( zCopy==0 ) return;
+    for(i = strlen(zCopy) - 1; i>0; i--){
+      if( zCopy[i]=='/' || (isWin && zCopy[i]=='\\') ){
+        cSep = zCopy[i];
+        zCopy[i] = 0;
+        break;
+      }
+    }
+    if( cSep ){
+      zOut = portable_realpath(zCopy);
+      if( zOut ){
+        zOut = sqlite3_mprintf("%z%c%s",zOut,cSep,&zCopy[i+1]);
+      }
+    }
+    sqlite3_free(zCopy);
   }
-  zOut = sqlite3_win32_unicode_to_utf8(z);
-  free(z);
-
-#endif /* End WINDOWS, Begin common code */
-
-  if( zOut==0 ){
-    sqlite3_result_error(context, "unable to resolve path", -1);
-    return;
+  if( zOut ){
+    sqlite3_result_text(context, zOut, -1, sqlite3_free);
   }
-  sqlite3_result_text(context, zOut, -1, sqlite3_free);
 }
 
 
@@ -1153,6 +1194,5 @@ int sqlite3_fileio_init(
                                  SQLITE_UTF8, 0,
                                  realpathFunc, 0, 0);
   }
-
   return rc;
 }

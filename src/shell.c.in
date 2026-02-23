@@ -6665,14 +6665,15 @@ static int arRemoveCommand(ArCommand *pAr){
 */
 static int arExtractCommand(ArCommand *pAr){
   const char *zSql1 =
+    "WITH dest(dpath,dlen) AS (SELECT realpath($dir),length(realpath($dir)))\n"
     "SELECT ($dir || name),\n"
-    "       writefile(($dir || name), %s, mode, mtime)\n"
-    "  FROM %s\n"
+    "       CASE WHEN $dryrun THEN 0\n"
+    "            ELSE writefile($dir||name, %s, mode, mtime) END\n"
+    "  FROM dest CROSS JOIN %s\n"
     " WHERE (%s)\n"
-    "   AND NOT ((mode&0xf000)==0x8000 AND $pass>0)\n"  /* Files on pass 0 */
-    "   AND NOT (data IS NULL AND $pass==1)\n"          /* Dirs on passes 0,2 */
-    "   AND NOT ((mode&0xf000)==0xa000 AND $pass<>1)\n" /* Symlink on pass 1 */
-    "   AND name NOT GLOB '*..[/\\]*'\n";
+    "   AND (data IS NULL OR $pass==0)\n"                /* Dirs both passes */
+    "   AND dpath=substr(realpath($dir||name),1,dlen)\n" /* No escapes */
+    "   AND name NOT GLOB '*..[/\\]*'\n";                /* No /../ in paths */
 
   const char *azExtraArg[] = {
     "sqlar_uncompress(data, sz)",
@@ -6707,29 +6708,28 @@ static int arExtractCommand(ArCommand *pAr){
   if( rc==SQLITE_OK ){
     j = sqlite3_bind_parameter_index(pSql, "$dir");
     sqlite3_bind_text(pSql, j, zDir, -1, SQLITE_STATIC);
+    j = sqlite3_bind_parameter_index(pSql, "$dryrun");
+    sqlite3_bind_int(pSql, j, pAr->bDryRun);
 
-    /* Run the SELECT statement thrice:
-    **   (1) writefile() all files and directories, but not symlinks
-    **   (2) writefile() for symlinks
-    **   (3) writefile() for directory again
-    ** Symlinks are created after everything else to prevent writing content
-    ** through a symlink that was created by the extraction.
-    ** The third pass is so that the timestamps for extracted directories
+    /* Run the SELECT statement twice
+    **   (0) writefile() all files and directories
+    **   (1) writefile() for directory again
+    ** The second pass is so that the timestamps for extracted directories
     ** will be reset to the value in the archive, since populating them
-    ** in the previous passes will have changed the timestamp. */
-    for(i=0; i<3; i++){
+    ** in the first pass will have changed the timestamp. */
+    for(i=0; i<2; i++){
       j = sqlite3_bind_parameter_index(pSql, "$pass");
       sqlite3_bind_int(pSql, j, i);
       if( pAr->bDryRun ){
         cli_printf(pAr->out, "%s\n", sqlite3_sql(pSql));
-        break;
-      }else{
-        while( rc==SQLITE_OK && SQLITE_ROW==sqlite3_step(pSql) ){
-          if( i==0 && pAr->bVerbose ){
-            cli_printf(pAr->out, "%s\n", sqlite3_column_text(pSql, 0));
-          }
+        if( pAr->bVerbose==0 ) break;
+      }
+      while( rc==SQLITE_OK && SQLITE_ROW==sqlite3_step(pSql) ){
+        if( i==0 && pAr->bVerbose ){
+          cli_printf(pAr->out, "%s\n", sqlite3_column_text(pSql, 0));
         }
       }
+      if( pAr->bDryRun ) break;
       shellReset(&rc, pSql);
     }
     shellFinalize(&rc, pSql);

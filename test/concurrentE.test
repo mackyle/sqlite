@@ -1,0 +1,214 @@
+# 2026 February 23 
+#
+# The author disclaims copyright to this source code.  In place of
+# a legal notice, here is a blessing:
+#
+#    May you do good and not evil.
+#    May you find forgiveness for yourself and forgive others.
+#    May you share freely, never taking more than you give.
+#
+#*************************************************************************
+# This file implements regression tests for SQLite library.
+#
+
+set testdir [file dirname $argv0]
+source $testdir/tester.tcl
+set testprefix concurrentE
+
+db close
+sqlite3_shutdown
+#sqlite3_config_sharedlog_maxsize 0
+reset_db
+
+expr srand(0)
+
+do_execsql_test 1.0 {
+  PRAGMA journal_mode = wal2;
+  PRAGMA page_size = 512;
+  CREATE TABLE jobs(
+    jobID       INTEGER NOT NULL PRIMARY KEY,
+    parentJobID INTEGER NOT NULL DEFAULT 0,
+    state TEXT NOT NULL
+  );
+  CREATE INDEX jobs_idx ON jobs(parentJobID, state) WHERE parentJobID!=0;
+} {wal2}
+
+# Possible text values for jobs.state column
+#
+set lStateVal { FINISHED QUEUED RUNQUEUED RUNNING PAUSED }
+
+proc insert_job {db} {
+  set iParent [rand 0 10000000000]
+  $db eval { INSERT INTO jobs VALUES($iParent, 0, 'QUEUED'); }
+  set iParent [$db last_insert_rowid]
+  for {set ii 0} {$ii < 3} {incr ii} {
+    set iChild [rand 0 10000000000]
+    $db eval { INSERT INTO jobs VALUES($iChild, $iParent, 'QUEUED'); }
+  }
+}
+
+proc rand_state {} {
+  set lStateVal { FINISHED QUEUED RUNQUEUED RUNNING PAUSED }
+  lindex $lStateVal [rand 0 4]
+}
+db func rand_state rand_state
+
+proc rand {min max} {
+  expr {$min + int(abs(rand() * (1 + $max - $min)))}
+}
+db func rand rand
+
+# Each transaction is:
+#
+#   1. Select at random a child job to work on. Any child job with a state
+#      other than 'FINISHED' can be worked on. If no child job can be
+#      found, it is an error.
+#
+#   2. Open a transaction with BEGIN CONCURRENT.
+#
+#   3. Check that the child job is still available to work on.
+#
+#   4. Check parent job is not 'FINISHED' or missing. If it is, this is an
+#      error.
+#
+#   5. Set child job state to a randomly selected state.
+#
+#   6. check if there are any children of the parent with state set to
+#      anything other than FINISHED. If there are not, (a) set parent to 
+#      FINISHED, (b) add a new parent and its child jobs. All new jobs 
+#      entries are set to QUEUED state. jobid values are assigned randomly.
+#
+#   7. Commit transaction.
+#
+# This procedure does steps 1-6 of the above with
+#
+proc start_transaction {db} {
+  # Step 1: Choose a job to "work" on.
+  unset -nocomplain iChild iParent
+  $db eval {
+    WITH children(rownum, jobid, parentid, state) AS (
+      SELECT row_number() OVER (), jobid, parentjobid, state 
+      FROM jobs WHERE parentJobId!=0 AND state!='FINISHED'
+    )
+    SELECT jobid AS iChild, parentid AS iParent, state FROM children 
+    LIMIT 1 
+    OFFSET rand( 0, (SELECT count(*) FROM children)-1 );
+  } { }
+  if {[info exists iChild]==0} {
+    error "Could not find a child to work on!!!"
+  }
+
+  # Step 2: Open transaction.
+  $db eval { BEGIN CONCURRENT }
+
+  # Step 3: Check that our job is still available to work on. If it
+  # is not, close the transaction just opened and return zero. 
+  #
+  set child_ok 0
+  $db eval {
+    SELECT state IN ('QUEUED', 'RUNQUEUED', 'RUNNING', 'PAUSED')
+      FROM jobs 
+      WHERE jobId=$iChild
+  } {
+    set child_ok 1
+  }
+  if {$child_ok==0} {
+    $db eval { ROLLBACK }
+    return 0
+  }
+
+  # Step 4: Check parent is not finished or deleted.
+  set parent_ok 0
+  $db eval {
+    SELECT 
+      state IN ('QUEUED', 'RUNQUEUED', 'RUNNING', 'PAUSED')
+    FROM jobs 
+    WHERE jobId=$iParent
+  } {
+    set parent_ok 1
+  }
+  if {$parent_ok==0} {
+    error "Parent job is not in expected state!"
+  }
+
+  # Step 5: Update child job.
+  $db eval {
+    UPDATE jobs SET state=rand_state() WHERE jobid=$iChild
+  }
+
+  # Step 6: Check if all children of parent are finished. If so,
+  # set parent to FINISHED and add a new parent + child jobs.
+  # 
+  set iUnfinishedChild 0
+  $db eval {
+    SELECT jobId AS j FROM jobs 
+    WHERE parentJobID!=0 AND parentJobID=$iParent AND 
+      state IN ('QUEUED', 'RUNQUEUED', 'RUNNING', 'PAUSED')
+    LIMIT 1
+  } {
+    set iUnfinishedChild $j
+  }
+  if {$iUnfinishedChild==0} {
+    $db eval {
+      UPDATE jobs SET state = 'FINISHED' WHERE jobID = $iParent
+    }
+    insert_job $db
+  }
+
+  return 1
+}
+
+proc commit_transction {db} {
+  set rb [catch { $db eval COMMIT }]
+
+  if {$rb==0} {
+    incr ::O(commit)
+  } else {
+    catch { $db eval ROLLBACK }
+    incr ::O(rollback)
+  }
+}
+
+set ::O(commit) 0
+set ::O(rollback) 0
+
+set nInitialJob 8
+db eval BEGIN
+for {set ii 0} {$ii < $nInitialJob} {incr ii} {
+  insert_job db
+}
+db eval COMMIT
+
+set DBLIST [list db1 db2 db3 db4 db5 db6]
+foreach db $DBLIST {
+  sqlite3 $db test.db
+  $db func rand_state rand_state
+  $db func rand rand
+}
+
+for {set i 0} {$i < 1000} {incr i} {
+  foreach db $DBLIST {
+    start_transaction $db
+  }
+  foreach db $DBLIST {
+    commit_transction $db
+  }
+
+  db eval {
+    DELETE FROM jobs AS j WHERE 
+        (parentjobid=0 AND state='FINISHED') OR
+        (SELECT state FROM jobs WHERE jobID=j.parentJobID)='FINISHED'
+  }
+
+  do_execsql_test 1.$i { PRAGMA integrity_check } {ok}
+}
+
+foreach db $DBLIST {
+  $db close
+}
+
+do_execsql_test 1.x.c=$O(commit).r=$O(rollback) { SELECT 1 } 1
+
+
+finish_test
+

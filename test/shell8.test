@@ -246,10 +246,10 @@ if {$tcl_platform(platform)=="unix"} {
   }
   do_test 3.4.1 {
     catchcmd shell8.db {.ar -x --directory ar2}
-    lsort [glob -tails -directory ar2 *]
+    lsort [glob -tails -directory ar2 -nocomplain *]
   } {abc escape ghi}
   do_test 3.4.2 {
-    lsort [glob -tails -directory ar3 *]
+    lsort [glob -tails -directory ar3 -nocomplain *]
   } {}
   # ^^---  An extraction into ar2 should not leak any files into ar3
 

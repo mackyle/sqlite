@@ -107,11 +107,12 @@ static void vdbeMemRenderNum(int sz, char *zBuf, Mem *p){
   StrAccum acc;
   assert( p->flags & (MEM_Int|MEM_Real|MEM_IntReal) );
   assert( sz>22 );
- if( p->flags & (MEM_Int|MEM_IntReal) ){
-#if GCC_VERSION>=7000000 && defined(__i386__)
-    /* Work-around for GCC bug
+  if( p->flags & (MEM_Int|MEM_IntReal) ){
+#if GCC_VERSION>=7000000 && GCC_VERSION<15000000 && defined(__i386__)
+    /* Work-around for GCC bug or bugs:
     ** https://gcc.gnu.org/bugzilla/show_bug.cgi?id=96270
-    ** This is still an issue as of 2026-02-25, GCC 13.3.0 with -m32 */
+    ** https://gcc.gnu.org/bugzilla/show_bug.cgi?id=114659
+    ** The problem appears to be fixed in GCC 15 */
     i64 x;
     assert( (MEM_Str&~p->flags)*4==sizeof(x) );
     memcpy(&x, (char*)&p->u, (MEM_Str&~p->flags)*4);

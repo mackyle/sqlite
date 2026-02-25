@@ -108,13 +108,13 @@ static void vdbeMemRenderNum(int sz, char *zBuf, Mem *p){
   assert( p->flags & (MEM_Int|MEM_Real|MEM_IntReal) );
   assert( sz>22 );
  if( p->flags & (MEM_Int|MEM_IntReal) ){
-#if 0 
+#if GCC_VERSION>=7000000 && defined(__i386__)
     /* Work-around for GCC bug
-    ** https://gcc.gnu.org/bugzilla/show_bug.cgi?id=96270.
-    ** Bug fixed circa 2020, so this work-around removed in 2026. */
+    ** https://gcc.gnu.org/bugzilla/show_bug.cgi?id=96270
+    ** This is still an issue as of 2026-02-25, GCC 13.3.0 with -m32 */
     i64 x;
-    assert( (p->flags&MEM_Int)*2==sizeof(x) );
-    memcpy(&x, (char*)&p->u, (p->flags&MEM_Int)*2);
+    assert( (MEM_Str&~p->flags)*4==sizeof(x) );
+    memcpy(&x, (char*)&p->u, (MEM_Str&~p->flags)*4);
     p->n = sqlite3Int64ToText(x, zBuf);
 #else
     p->n = sqlite3Int64ToText(p->u.i, zBuf);

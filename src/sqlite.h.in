@@ -4457,7 +4457,7 @@ int sqlite3_limit(sqlite3*, int id, int newVal);
 ** security constraints that would otherwise only be enforced when parsing
 ** the database schema.  In other words, the SQLITE_PREPARE_FROM_DDL flag
 ** causes the SQL compiler to treat the SQL statement being prepared as if
-** it had come from an attacker.  When SQLITE_PREPARE_FROM_DLL is used and
+** it had come from an attacker.  When SQLITE_PREPARE_FROM_DDL is used and
 ** [SQLITE_DBCONFIG_TRUSTED_SCHEMA] is off, SQL functions may only be called
 ** if they are tagged with [SQLITE_INNOCUOUS] and virtual tables may only
 ** be used if they are tagged with [SQLITE_VTAB_INNOCUOUS].  Best practice
@@ -4465,7 +4465,7 @@ int sqlite3_limit(sqlite3*, int id, int newVal);
 ** is derived from parts of the database schema. In particular, virtual
 ** table implementations that run SQL statements that are derived from
 ** arguments to their CREATE VIRTUAL TABLE statement should always use
-** [sqlite3_prepare_v3()] and set the SQLITE_PREPARE_FROM_DLL flag to
+** [sqlite3_prepare_v3()] and set the SQLITE_PREPARE_FROM_DDL flag to
 ** prevent bypass of the [SQLITE_DBCONFIG_TRUSTED_SCHEMA] security checks.
 ** </dl>
 */

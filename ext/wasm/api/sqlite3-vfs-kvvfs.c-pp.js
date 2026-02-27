@@ -222,8 +222,8 @@ globalThis.sqlite3ApiBootstrap.initializers.push(function(sqlite3){
     }
 
     key(n){
-      const k = this.#getKeys();
-      return (n>=0 && n<k.length) ? k[n] : null;
+      if(n < 0 || n >= this.#size) return null;
+      return this.#getKeys()[n];
     }
 
     getItem(k){

@@ -701,7 +701,7 @@ static double sqlite3Fp10Convert2(u64 d, int p){
   if( e1<=(-972) ){
     return INFINITY;
   }
-  out = (out + 1 + ((out>>2)&1)) >> 2;
+  out = (out + 1) >> 2;
   if( (out & U64_BIT(52))!=0 ){
     out = (out & ~U64_BIT(52)) | ((u64)(1075-e1)<<52);
   }

@@ -2630,7 +2630,7 @@ static void qrfOneSimpleRow(Qrf *p){
         do{
           int nThis, nWide, iNext;
           qrfWrapLine(zVal, mxW, bWW, &nThis, &nWide, &iNext);
-          if( cnt ) sqlite3_str_appendchar(p->pOut,p->u.sLine.mxColWth+3,' ');
+          if( cnt ) sqlite3_str_appendchar(p->pOut,p->u.sLine.mxColWth+2,' ');
           cnt++;
           if( cnt>p->mxHeight ){
             zVal = "...";

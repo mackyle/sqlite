@@ -672,6 +672,7 @@ static double sqlite3Fp10Convert2(u64 d, int p){
   int e1;
   int e2;
   int lp;
+  int x;
   u64 h;
   double r;
   assert( (d & U64_BIT(63))==0 );
@@ -691,11 +692,12 @@ static double sqlite3Fp10Convert2(u64 d, int p){
   }
   e2 = e1 - (64-b);
   h = sqlite3Multiply128(d<<(64-b), powerOfTen(p));
-  assert( -(e2 + lp + 3) >=0 );
-  assert( -(e2 + lp + 3) <64 );
-  out = (h >> -(e2 + lp + 3)) | 1;
+  x = -(e2 + lp + 3);
+  assert( x >= 0  );
+  assert( x <= 63 );
+  out = (h >> x) | 1;
   if( out >= U64_BIT(55)-2 ){
-    out = (out>>1) | (out&1);
+    out = (out>>1) | 1;
     e1--;
   }
   if( e1<=(-972) ){

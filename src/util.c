@@ -668,9 +668,8 @@ static void sqlite3Fp2Convert10(u64 m, int e, int n, u64 *pD, int *pP){
 */
 static double sqlite3Fp10Convert2(u64 d, int p){
   u64 out;
-  int b;
   int e1;
-  int e2;
+  int lz;
   int lp;
   int x;
   u64 h;
@@ -683,27 +682,26 @@ static double sqlite3Fp10Convert2(u64 d, int p){
   if( p>POWERSOF10_LAST ){
     return INFINITY;
   }
-  b = 64 - countLeadingZeros(d);
+  lz = countLeadingZeros(d);
   lp = pwr10to2(p);
-  e1 = 53 - b - lp;
+  e1 = lz - (lp + 11);
   if( e1>1074 ){
-    if( -(b + lp) >= 1077 ) return 0.0;
+    if( e1>=1130 ) return 0.0;
     e1 = 1074;
   }
-  e2 = e1 - (64-b);
-  h = sqlite3Multiply128(d<<(64-b), powerOfTen(p));
-  x = -(e2 + lp + 3);
+  h = sqlite3Multiply128(d<<lz, powerOfTen(p));
+  x = lz - (e1 + lp + 3);
   assert( x >= 0  );
   assert( x <= 63 );
-  out = (h >> x) | 1;
+  out = h >> x;
   if( out >= U64_BIT(55)-2 ){
-    out = (out>>1) | 1;
+    out >>= 1;
     e1--;
   }
   if( e1<=(-972) ){
     return INFINITY;
   }
-  out = (out + 1) >> 2;
+  out = (out + 2) >> 2;
   if( (out & U64_BIT(52))!=0 ){
     out = (out & ~U64_BIT(52)) | ((u64)(1075-e1)<<52);
   }

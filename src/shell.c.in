@@ -13648,6 +13648,7 @@ int SQLITE_CDECL main(int argc, char **argv){
   if( bEnableVfstrace ){
     vfstrace_unregister("trace");
   }
+  sqlite3_reset_auto_extension();
 #ifdef SQLITE_DEBUG
   if( sqlite3_memory_used()>mem_main_enter ){
     cli_printf(stderr,"Memory leaked: %u bytes\n",

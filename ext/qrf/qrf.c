@@ -9,8 +9,8 @@
 **    May you share freely, never taking more than you give.
 **
 *************************************************************************
-** Implementation of the Result-Format or "qrf" utility library for SQLite.
-** See the qrf.md documentation for additional information.
+** Implementation of the Query Result-Format or "qrf" utility library for
+** SQLite.  See the README.md documentation for additional information.
 */
 #ifndef SQLITE_QRF_H
 #include "qrf.h"

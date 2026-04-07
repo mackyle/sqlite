@@ -19,7 +19,9 @@
 #include <assert.h>
 #include <stdint.h>
 
+#ifndef SQLITE_AMALGAMATION
 typedef sqlite3_int64 i64;
+#endif
 
 /* A single line in the EQP output */
 typedef struct qrfEQPGraphRow qrfEQPGraphRow;

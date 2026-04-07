@@ -12876,7 +12876,8 @@ static int vfstraceOut(const char *z, void *pArg){
 ** sqlite3_reset_auto_extension() call from main(), most shell tests
 ** will fail because of a leak message in their output. */
 static int auto_ext_leak_tester(
-  sqlite3 *db, const char **pzErrMsg,
+  sqlite3 *db,
+  char **pzErrMsg,
   const struct sqlite3_api_routines *pThunk
 ){
   (void)db; (void)pzErrMsg; (void)pThunk;

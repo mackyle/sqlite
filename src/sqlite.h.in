@@ -7615,7 +7615,7 @@ int sqlite3_enable_load_extension(sqlite3 *db, int onoff);
 ** <blockquote><pre>
 ** &nbsp;  int xEntryPoint(
 ** &nbsp;    sqlite3 *db,
-** &nbsp;    const char **pzErrMsg,
+** &nbsp;    char **pzErrMsg,
 ** &nbsp;    const struct sqlite3_api_routines *pThunk
 ** &nbsp;  );
 ** </pre></blockquote>)^

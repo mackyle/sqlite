@@ -1892,7 +1892,7 @@ static int SQLITE_TCLAPI test_changegroup_cmd(
       ){
         rc = TCL_ERROR;
       }else{
-        int nVal = 0;
+        Tcl_Size nVal = 0;
         const char *pVal = Tcl_GetStringFromObj(objv[4], &nVal);
         rc = sqlite3changegroup_change_text(p->pGrp, bNew, iCol, pVal, nVal);
         if( rc!=SQLITE_OK ){
@@ -1910,7 +1910,7 @@ static int SQLITE_TCLAPI test_changegroup_cmd(
       ){
         rc = TCL_ERROR;
       }else{
-        int nVal = 0;
+        Tcl_Size nVal = 0;
         const u8 *pVal = Tcl_GetByteArrayFromObj(objv[4], &nVal);
         rc = sqlite3changegroup_change_blob(p->pGrp, bNew, iCol, pVal, nVal);
         if( rc!=SQLITE_OK ){

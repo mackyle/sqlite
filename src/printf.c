@@ -621,7 +621,7 @@ void sqlite3_str_vappendf(
           e2 = s.iDP - 1;
         }
 
-        szBufNeeded = MAX(e2,0)+(i64)precision+(i64)width+8;
+        szBufNeeded = MAX(e2,0)+(i64)precision+(i64)width+10;
         if( cThousand && e2>0 ) szBufNeeded += (e2+2)/3;
         if( sqlite3StrAccumEnlargeIfNeeded(pAccum, szBufNeeded) ){
           width = length = 0;

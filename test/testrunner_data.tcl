@@ -493,7 +493,7 @@ proc make_sh_script {srcdir opts cflags makeOpts configOpts} {
   set myopts ""
   if {[info exists ::env(OPTS)]} {
     append myopts "# From environment variable:\n"
-    append myopts "OPTIONS=$::env(OPTS)\n\n"
+    append myopts "OPTIONS=\"$::env(OPTS)\"\n\n"
   }
   foreach o [lsort $opts] { 
     append myopts "OPTIONS=\"\$OPTS $o\"\n"

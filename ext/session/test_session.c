@@ -1116,6 +1116,21 @@ static int SQLITE_TCLAPI test_sqlite3changeset_invert(
 }
 
 /*
+** Copy buffer aIn[] to a new nIn byte buffer obtained from malloc(). Use
+** plain malloc() instead of any Tcl function because valgrind and asan are
+** better at detecting small overflows in that case. Avoid sqlite3_malloc()
+** here because that means dealing with injected OOM errors. 
+**
+** The caller is responsible for eventually calling free() on the returned
+** value.
+*/
+static u8 *copyToMalloc(const u8 *aIn, int nIn){
+  u8 *pRet = malloc(nIn);
+  memcpy(pRet, aIn, nIn);
+  return pRet;
+}
+
+/*
 ** sqlite3changeset_concat LEFT RIGHT
 */
 static int SQLITE_TCLAPI test_sqlite3changeset_concat(
@@ -1145,6 +1160,9 @@ static int SQLITE_TCLAPI test_sqlite3changeset_concat(
   sLeft.nStream = test_tcl_integer(interp, SESSION_STREAM_TCL_VAR);
   sRight.nStream = sLeft.nStream;
 
+  sLeft.aData = copyToMalloc(sLeft.aData, sLeft.nData);
+  sRight.aData = copyToMalloc(sRight.aData, sRight.nData);
+
   if( sLeft.nStream>0 ){
     rc = sqlite3changeset_concat_strm(
         testStreamInput, (void*)&sLeft,
@@ -1156,6 +1174,9 @@ static int SQLITE_TCLAPI test_sqlite3changeset_concat(
         sLeft.nData, sLeft.aData, sRight.nData, sRight.aData, &sOut.n, &sOut.p
     );
   }
+
+  free(sLeft.aData);
+  free(sRight.aData);
 
   if( rc!=SQLITE_OK ){
     rc = test_session_error(interp, rc, 0);

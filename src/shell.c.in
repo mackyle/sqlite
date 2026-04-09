@@ -927,11 +927,100 @@ static char *local_getline(char *zLine, FILE *in){
 }
 
 /*
+** Expand escapes in the given input prompt string.  Return the
+** expanded prompt in memory obtained from sqlite3_malloc().  The
+** caller is responsible for freeing the memory.
+*/
+static char *expand_prompt(
+  ShellState *p,        /* The current shell state */
+  const char *zPrior,   /* Prior input lines not yet processed */
+  const char *zPrompt   /* Prompt string to be expanded */
+){
+  sqlite3_str *pOut = sqlite3_str_new(0);
+  int i;
+  char c;
+  for(i=0; zPrompt[i]; i++){
+    if( zPrompt[i]!='\\' ) continue;
+    if( i>0 ){
+      sqlite3_str_append(pOut, zPrompt, i);
+      zPrompt += i;
+      i = 0;
+    }
+    /* At this point zPrompt[0] is a \ character and all prior
+    ** characters have already been loaded into pOut.  Process the
+    ** escape sequence that zPrompt points to. */
+    c = zPrompt[1];
+    if( c==0 ){
+      /* \ at the end of a line is silently ignored */
+      break;
+    }
+    if( c=='\\' ){
+      /* \\ maps into a single \  */
+      zPrompt++;
+      continue;
+    }
+    if( c>='0' && c<='7' ){
+      /* \nnn becomes a single byte given by octal nnn */
+      int v = c - '0';
+      while( i<=2 && zPrompt[i+1]>='0' && zPrompt[i+1]<='7' ){
+        v = v*8 + zPrompt[++i] - '0';
+      }
+      sqlite3_str_appendchar(pOut, 1, v);
+      zPrompt += i+1;
+      i = -1;
+      continue;
+    }
+    if( c=='x' ){
+      /* \x becomes "*" if in a transaction and nothing if not */
+      if( p->db && !sqlite3_get_autocommit(p->db) ){
+        sqlite3_str_append(pOut, "*", 1);
+      }
+      zPrompt += 2;
+      i = -1;
+      continue;
+    }
+    if( c=='f' || c=='F' || c=='~' ){
+      /* \f becomes the tail of the database filename */
+      /* \F becomes the full pathname */
+      /* \~ becomes the full pathname relative to $HOME */
+      sqlite3_filename pFN = p->db ? sqlite3_db_filename(p->db,0) : 0;
+      const char *zFN;
+      if( pFN && (zFN = sqlite3_filename_database(pFN))!=0 ){
+        if( c=='f' ){
+          const char *zTail = strrchr(zFN,'/');
+          if( zTail && zTail[1] ) zFN = &zTail[1];
+        }else if( c=='~' ){
+          const char *zHOME = getenv("HOME");
+          size_t nHOME = zHOME ? strlen(zHOME) : 0;
+          if( nHOME<strlen(zFN) && memcmp(zHOME,zFN,nHOME)==0 ){
+            sqlite3_str_append(pOut,"~",1);
+            zFN += nHOME;
+          }
+        }
+        sqlite3_str_appendall(pOut, zFN);
+      }
+      zPrompt += 2;
+      i = -1;
+      continue;
+    }
+
+    /* No match to a known escape.  Generate an error. */
+    sqlite3_str_appendf(pOut,"UNKNOWN(\"\\%c\")",c);
+    zPrompt += 2;
+    i = -1;
+  }
+  if( i>0 ){
+    sqlite3_str_append(pOut, zPrompt, i);
+  }
+  return sqlite3_str_finish(pOut);
+}
+
+/*
 ** Retrieve a single line of input text.
 **
 ** If in==0 then read from standard input and prompt before each line.
-** If isContinuation is true, then a continuation prompt is appropriate.
-** If isContinuation is zero, then the main prompt should be used.
+** If bContinue is true, then a continuation prompt is appropriate.
+** If bContinue is zero, then the main prompt should be used.
 **
 ** If zPrior is not NULL then it is a buffer from a prior call to this
 ** routine that can be reused.
@@ -941,14 +1030,15 @@ static char *local_getline(char *zLine, FILE *in){
 ** zPrior argument for reuse.
 */
 #ifndef SQLITE_SHELL_FIDDLE
-static char *one_input_line(ShellState *p, char *zPrior, int isContinuation){
-  char *zPrompt;
+static char *one_input_line(ShellState *p, char *zPrior, int bContinue){
   char *zResult;
   FILE *in = p->in;
   if( in!=0 ){
     zResult = local_getline(zPrior, in);
   }else{
-    zPrompt = isContinuation ? p->contPrompt : p->mainPrompt;
+    const char *zBase = bContinue ? p->contPrompt : p->mainPrompt;
+    char *zPrompt = expand_prompt(p, zPrior, zBase);
+    shell_check_oom(zPrompt);
 #if SHELL_USE_LOCAL_GETLINE
     sputz(stdout, zPrompt);
     fflush(stdout);
@@ -969,6 +1059,7 @@ static char *one_input_line(ShellState *p, char *zPrior, int isContinuation){
     }
     if( zResult && *zResult ) shell_add_history(zResult);
 #endif
+    sqlite3_free(zPrompt);
   }
   return zResult;
 }
@@ -12202,7 +12293,7 @@ static void echo_group_input(ShellState *p, const char *zDo){
 ** impl because we need the global shellState and cannot access it from that
 ** function without moving lots of code around (creating a larger/messier diff).
 */
-static char *one_input_line(ShellState *p, char *zPrior, int isContinuation){
+static char *one_input_line(ShellState *p, char *zPrior, int bContinue){
   /* Parse the next line from shellState.wasm.zInput. */
   const char *zBegin = shellState.wasm.zPos;
   const char *z = zBegin;
@@ -12211,7 +12302,7 @@ static char *one_input_line(ShellState *p, char *zPrior, int isContinuation){
   FILE *in = p->in;
 
   UNUSED_PARAMETER(in);
-  UNUSED_PARAMETER(isContinuation);
+  UNUSED_PARAMETER(bContinue);
   if(!z || !*z){
     return 0;
   }

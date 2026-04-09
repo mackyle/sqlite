@@ -355,6 +355,10 @@ typedef struct Mode {
 #define MFLG_CRLF  0x02  /* Use CR/LF output line endings */
 #define MFLG_HDR   0x04  /* .header used to change headers on/off */
 
+/*
+** Size of the prompt strings
+*/
+#define PROMPT_MAX 128
 
 /*
 ** State information about the database connection is contained in an
@@ -397,8 +401,6 @@ struct ShellState {
   char *zDestTable;      /* Name of destination table when MODE_Insert */
   char *zTempFile;       /* Temporary file that might need deleting */
   char *zErrPrefix;      /* Alternative error message prefix */
-  char zTestcase[30];    /* Name of current test case */
-  char outfile[FILENAME_MAX]; /* Filename for *out */
   sqlite3_stmt *pStmt;   /* Current statement if any. */
   FILE *pLog;            /* Write log output here */
   Mode mode;             /* Current display mode */
@@ -438,6 +440,10 @@ struct ShellState {
     const char * zDefaultDbName; /* Default name for db file */
   } wasm;
 #endif
+  char zTestcase[30];           /* Name of current test case */
+  char outfile[FILENAME_MAX];   /* Filename for *out */
+  char mainPrompt[PROMPT_MAX];  /* Main prompt */
+  char contPrompt[PROMPT_MAX];  /* Continuation prompt */
 };
 
 #ifdef SQLITE_SHELL_FIDDLE
@@ -673,16 +679,6 @@ static volatile int seenInterrupt = 0;
 ** in a number of other places, mostly for error messages.
 */
 static char *Argv0;
-
-/*
-** Prompt strings. Initialized in main. Settable with
-**   .prompt main continue
-*/
-#define PROMPT_LEN_MAX 128
-/* First line prompt.   default: "sqlite> " */
-static char mainPrompt[PROMPT_LEN_MAX];
-/* Continuation prompt. default: "   ...> " */
-static char continuePrompt[PROMPT_LEN_MAX];
 
 /*
 ** Write I/O traces to the following stream.
@@ -952,7 +948,7 @@ static char *one_input_line(ShellState *p, char *zPrior, int isContinuation){
   if( in!=0 ){
     zResult = local_getline(zPrior, in);
   }else{
-    zPrompt = isContinuation ? continuePrompt : mainPrompt;
+    zPrompt = isContinuation ? p->contPrompt : p->mainPrompt;
 #if SHELL_USE_LOCAL_GETLINE
     sputz(stdout, zPrompt);
     fflush(stdout);
@@ -10343,10 +10339,10 @@ static int do_meta_command(const char *zLine, ShellState *p){
 
   if( c=='p' && cli_strncmp(azArg[0], "prompt", n)==0 ){
     if( nArg >= 2) {
-      shell_strncpy(mainPrompt,azArg[1],(int)ArraySize(mainPrompt)-1);
+      shell_strncpy(p->mainPrompt,azArg[1],sizeof(p->mainPrompt)-1);
     }
     if( nArg >= 3) {
-      shell_strncpy(continuePrompt,azArg[2],(int)ArraySize(continuePrompt)-1);
+      shell_strncpy(p->contPrompt,azArg[2],sizeof(p->contPrompt)-1);
     }
   }else
 
@@ -12640,8 +12636,8 @@ static void main_init(ShellState *p) {
 #endif
   sqlite3_config(SQLITE_CONFIG_URI, 1);
   sqlite3_config(SQLITE_CONFIG_MULTITHREAD);
-  sqlite3_snprintf(sizeof(mainPrompt), mainPrompt,"sqlite> ");
-  sqlite3_snprintf(sizeof(continuePrompt), continuePrompt,"   ...> ");
+  sqlite3_snprintf(sizeof(p->mainPrompt), p->mainPrompt,"sqlite> ");
+  sqlite3_snprintf(sizeof(p->contPrompt), p->contPrompt,"   ...> ");
 }
 
 /*

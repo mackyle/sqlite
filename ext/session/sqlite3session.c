@@ -356,6 +356,7 @@ static int sessionVarintGet(const u8 *aBuf, int *piVal){
 static int sessionVarintGetSafe(const u8 *aBuf, int nBuf, int *piVal){
   u8 aCopy[9];
   const u8 *aRead = aBuf;
+  memset(aCopy, 0, sizeof(aCopy));
   if( nBuf<sizeof(aCopy) ){
     memcpy(aCopy, aBuf, nBuf);
     aRead = aCopy;
@@ -3686,7 +3687,7 @@ static int sessionChangesetBufferRecord(
   int *pnByte                     /* OUT: Size of record in bytes */
 ){
   int rc = SQLITE_OK;
-  int nByte = 0;
+  i64 nByte = 0;
   int i;
   for(i=0; rc==SQLITE_OK && i<nCol; i++){
     int eType;
@@ -3695,12 +3696,16 @@ static int sessionChangesetBufferRecord(
       eType = pIn->aData[pIn->iNext + nByte++];
       if( eType==SQLITE_TEXT || eType==SQLITE_BLOB ){
         int n;
-        nByte += sessionVarintGet(&pIn->aData[pIn->iNext+nByte], &n);
+        int nRem = pIn->nData - (pIn->iNext + nByte);
+        nByte += sessionVarintGetSafe(&pIn->aData[pIn->iNext+nByte], nRem, &n);
         nByte += n;
         rc = sessionInputBuffer(pIn, nByte);
       }else if( eType==SQLITE_INTEGER || eType==SQLITE_FLOAT ){
         nByte += 8;
       }
+    }
+    if( (pIn->iNext+nByte)>pIn->nData ){
+      rc = SQLITE_CORRUPT_BKPT;
     }
   }
   *pnByte = nByte;
@@ -5717,6 +5722,10 @@ struct sqlite3_changegroup {
 ** This function is called to merge two changes to the same row together as
 ** part of an sqlite3changeset_concat() operation. A new change object is
 ** allocated and a pointer to it stored in *ppNew.
+**
+** Because they have been vetted by sqlite3changegroup_add() or similar,
+** both the aRec[] change and the pExist change are safe to use without
+** checking for buffer overflows.
 */
 static int sessionChangeMerge(
   SessionTable *pTab,             /* Table structure */
@@ -5857,7 +5866,7 @@ static int sessionChangeMerge(
           memcpy(aCsr, aRec, nRec);
           aCsr += nRec;
         }else{
-          if( 0==sessionMergeUpdate(&aCsr, pTab, bPatchset, aExist, 0,aRec,0) ){
+          if( 0==sessionMergeUpdate(&aCsr, pTab, bPatchset, aExist,0,aRec,0) ){
             sqlite3_free(pNew);
             pNew = 0;
           }

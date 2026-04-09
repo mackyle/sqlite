@@ -828,16 +828,16 @@ static char *shell_strncpy(char *dest, const char *src, size_t n){
 typedef void *t_NoDynaPrompt;
 # define SCAN_TRACKER_REFTYPE t_NoDynaPrompt
 #else
-# define CONTINUATION_PROMPT dynamicContinuePrompt()
-# define CONTINUE_PROMPT_RESET \
+# define CONTINUATION_PROMPT(X) dynamicContinuePrompt()
+# define CONTINUE_PROMPT_RESET(X) \
   do {setLexemeOpen(&dynPrompt,0,0); trackParenLevel(&dynPrompt,0);} while(0)
-# define CONTINUE_PROMPT_AWAITS(p,s) \
+# define CONTINUE_PROMPT_AWAITS(X,p,s) \
   if(p && stdin_is_interactive) setLexemeOpen(p, s, 0)
-# define CONTINUE_PROMPT_AWAITC(p,c) \
+# define CONTINUE_PROMPT_AWAITC(X,p,c) \
   if(p && stdin_is_interactive) setLexemeOpen(p, 0, c)
-# define CONTINUE_PAREN_INCR(p,n) \
+# define CONTINUE_PAREN_INCR(X,p,n) \
   if(p && stdin_is_interactive) (trackParenLevel(p,n))
-# define CONTINUE_PROMPT_PSTATE (&dynPrompt)
+# define CONTINUE_PROMPT_PSTATE(X) (&dynPrompt)
 typedef struct DynaPrompt *t_DynaPromptRef;
 # define SCAN_TRACKER_REFTYPE t_DynaPromptRef
 
@@ -1048,7 +1048,7 @@ static char *one_input_line(ShellState *p, char *zPrior, int isContinuation){
   if( in!=0 ){
     zResult = local_getline(zPrior, in);
   }else{
-    zPrompt = isContinuation ? CONTINUATION_PROMPT : mainPrompt;
+    zPrompt = isContinuation ? CONTINUATION_PROMPT(p) : mainPrompt;
 #if SHELL_USE_LOCAL_GETLINE
     sputz(stdout, zPrompt);
     fflush(stdout);
@@ -12082,8 +12082,10 @@ meta_command_exit:
 # define CHAR_BIT 8
 #endif
 typedef enum {
-  QSS_HasDark = 1<<CHAR_BIT, QSS_EndingSemi = 2<<CHAR_BIT,
-  QSS_CharMask = (1<<CHAR_BIT)-1, QSS_ScanMask = 3<<CHAR_BIT,
+  QSS_HasDark = 1<<CHAR_BIT,
+  QSS_EndingSemi = 2<<CHAR_BIT,
+  QSS_CharMask = (1<<CHAR_BIT)-1,
+  QSS_ScanMask = 3<<CHAR_BIT,
   QSS_Start = 0
 } QuickScanState;
 #define QSS_SETV(qss, newst) ((newst) | ((qss) & QSS_ScanMask))
@@ -12095,10 +12097,14 @@ typedef enum {
 /*
 ** Scan line for classification to guide shell's handling.
 ** The scan is resumable for subsequent lines when prior
-** return values are passed as the 2nd argument.
+** return values are passed as the 3rd argument (qss).
 */
-static QuickScanState quickscan(char *zLine, QuickScanState qss,
-                                SCAN_TRACKER_REFTYPE pst){
+static QuickScanState quickscan(
+  ShellState *p,
+  char *zLine,
+  QuickScanState qss,
+  SCAN_TRACKER_REFTYPE pst
+){
   char cin;
   char cWait = (char)qss; /* intentional narrowing loss */
   if( cWait==0 ){
@@ -12121,7 +12127,7 @@ static QuickScanState quickscan(char *zLine, QuickScanState qss,
         if( *zLine=='*' ){
           ++zLine;
           cWait = '*';
-          CONTINUE_PROMPT_AWAITS(pst, "/*");
+          CONTINUE_PROMPT_AWAITS(p, pst, "/*");
           qss = QSS_SETV(qss, cWait);
           goto TermScan;
         }
@@ -12129,18 +12135,18 @@ static QuickScanState quickscan(char *zLine, QuickScanState qss,
       case '[':
         cWait = ']';
         qss = QSS_HasDark | cWait;
-        CONTINUE_PROMPT_AWAITC(pst, cin);
+        CONTINUE_PROMPT_AWAITC(p, pst, cin);
         goto TermScan;
       case '`': case '\'': case '"':
         cWait = cin;
         qss = QSS_HasDark | cWait;
-        CONTINUE_PROMPT_AWAITC(pst, cin);
+        CONTINUE_PROMPT_AWAITC(p, pst, cin);
         goto TermScan;
       case '(':
-        CONTINUE_PAREN_INCR(pst, 1);
+        CONTINUE_PAREN_INCR(p, pst, 1);
         break;
       case ')':
-        CONTINUE_PAREN_INCR(pst, -1);
+        CONTINUE_PAREN_INCR(p, pst, -1);
         break;
       default:
         break;
@@ -12156,7 +12162,7 @@ static QuickScanState quickscan(char *zLine, QuickScanState qss,
           if( *zLine != '/' )
             continue;
           ++zLine;
-          CONTINUE_PROMPT_AWAITC(pst, 0);
+          CONTINUE_PROMPT_AWAITC(p, pst, 0);
           qss = QSS_SETV(qss, 0);
           goto PlainScan;
         case '`': case '\'': case '"':
@@ -12167,7 +12173,7 @@ static QuickScanState quickscan(char *zLine, QuickScanState qss,
           }
           deliberate_fall_through; /* FALLTHRU */
         case ']':
-          CONTINUE_PROMPT_AWAITC(pst, 0);
+          CONTINUE_PROMPT_AWAITC(p, pst, 0);
           qss = QSS_SETV(qss, 0);
           goto PlainScan;
         default: assert(0);
@@ -12183,7 +12189,7 @@ static QuickScanState quickscan(char *zLine, QuickScanState qss,
 ** than a semi-colon.  The SQL Server style "go" command is understood
 ** as is the Oracle "/".
 */
-static int line_is_command_terminator(char *zLine){
+static int line_is_command_terminator(ShellState *p, char *zLine){
   while( IsSpace(zLine[0]) ){ zLine++; };
   if( zLine[0]=='/' )
     zLine += 1; /* Oracle */
@@ -12191,7 +12197,7 @@ static int line_is_command_terminator(char *zLine){
     zLine += 2; /* SQL Server */
   else
     return 0;
-  return quickscan(zLine, QSS_Start, 0)==QSS_Start;
+  return quickscan(p, zLine, QSS_Start, 0)==QSS_Start;
 }
 
 /*
@@ -12440,7 +12446,7 @@ static int process_input(ShellState *p, const char *zSrc){
   p->zInFile = zSrc;
   saved_lineno = p->lineno;
   p->lineno = 0;
-  CONTINUE_PROMPT_RESET;
+  CONTINUE_PROMPT_RESET(p);
   while( errCnt==0 || !bail_on_error || (p->in==0 && stdin_is_interactive) ){
     fflush(p->out);
     zLine = one_input_line(p, zLine, nSql>0);
@@ -12455,11 +12461,11 @@ static int process_input(ShellState *p, const char *zSrc){
     }
     p->lineno++;
     if( QSS_INPLAIN(qss)
-        && line_is_command_terminator(zLine)
+        && line_is_command_terminator(p, zLine)
         && line_is_complete(zSql, nSql) ){
       memcpy(zLine,";",2);
     }
-    qss = quickscan(zLine, qss, CONTINUE_PROMPT_PSTATE);
+    qss = quickscan(p, zLine, qss, CONTINUE_PROMPT_PSTATE(p));
     if( QSS_PLAINWHITE(qss) && nSql==0 ){
       /* Just swallow single-line whitespace */
       echo_group_input(p, zLine);
@@ -12467,7 +12473,7 @@ static int process_input(ShellState *p, const char *zSrc){
       continue;
     }
     if( zLine && (zLine[0]=='.' || zLine[0]=='#') && nSql==0 ){
-      CONTINUE_PROMPT_RESET;
+      CONTINUE_PROMPT_RESET(p);
       echo_group_input(p, zLine);
       if( zLine[0]=='.' ){
         rc = do_meta_command(zLine, p);
@@ -12511,7 +12517,7 @@ static int process_input(ShellState *p, const char *zSrc){
     }else if( nSql && QSS_SEMITERM(qss) && sqlite3_complete(zSql) ){
       echo_group_input(p, zSql);
       errCnt += runOneSqlLine(p, zSql, p->zInFile, startline);
-      CONTINUE_PROMPT_RESET;
+      CONTINUE_PROMPT_RESET(p);
       nSql = 0;
       if( p->nPopOutput ){
         output_reset(p);
@@ -12535,7 +12541,7 @@ static int process_input(ShellState *p, const char *zSrc){
     /* This may be incomplete. Let the SQL parser deal with that. */
     echo_group_input(p, zSql);
     errCnt += runOneSqlLine(p, zSql, p->zInFile, startline);
-    CONTINUE_PROMPT_RESET;
+    CONTINUE_PROMPT_RESET(p);
   }
   free(zSql);
   free(zLine);

@@ -355,6 +355,10 @@ typedef struct Mode {
 #define MFLG_CRLF  0x02  /* Use CR/LF output line endings */
 #define MFLG_HDR   0x04  /* .header used to change headers on/off */
 
+/*
+** Size of the prompt strings
+*/
+#define PROMPT_MAX 128
 
 /*
 ** State information about the database connection is contained in an
@@ -397,8 +401,6 @@ struct ShellState {
   char *zDestTable;      /* Name of destination table when MODE_Insert */
   char *zTempFile;       /* Temporary file that might need deleting */
   char *zErrPrefix;      /* Alternative error message prefix */
-  char zTestcase[30];    /* Name of current test case */
-  char outfile[FILENAME_MAX]; /* Filename for *out */
   sqlite3_stmt *pStmt;   /* Current statement if any. */
   FILE *pLog;            /* Write log output here */
   Mode mode;             /* Current display mode */
@@ -438,6 +440,10 @@ struct ShellState {
     const char * zDefaultDbName; /* Default name for db file */
   } wasm;
 #endif
+  char zTestcase[30];           /* Name of current test case */
+  char outfile[FILENAME_MAX];   /* Filename for *out */
+  char mainPrompt[PROMPT_MAX];  /* Main prompt */
+  char contPrompt[PROMPT_MAX];  /* Continuation prompt */
 };
 
 #ifdef SQLITE_SHELL_FIDDLE
@@ -675,16 +681,6 @@ static volatile int seenInterrupt = 0;
 static char *Argv0;
 
 /*
-** Prompt strings. Initialized in main. Settable with
-**   .prompt main continue
-*/
-#define PROMPT_LEN_MAX 128
-/* First line prompt.   default: "sqlite> " */
-static char mainPrompt[PROMPT_LEN_MAX];
-/* Continuation prompt. default: "   ...> " */
-static char continuePrompt[PROMPT_LEN_MAX];
-
-/*
 ** Write I/O traces to the following stream.
 */
 #ifdef SQLITE_ENABLE_IOTRACE
@@ -811,102 +807,6 @@ static char *shell_strncpy(char *dest, const char *src, size_t n){
   return dest;
 }
 
-/*
-** Optionally disable dynamic continuation prompt.
-** Unless disabled, the continuation prompt shows open SQL lexemes if any,
-** or open parentheses level if non-zero, or continuation prompt as set.
-** This facility interacts with the scanner and process_input() where the
-** below 5 macros are used.
-*/
-#ifdef SQLITE_OMIT_DYNAPROMPT
-# define CONTINUATION_PROMPT continuePrompt
-# define CONTINUE_PROMPT_RESET
-# define CONTINUE_PROMPT_AWAITS(p,s)
-# define CONTINUE_PROMPT_AWAITC(p,c)
-# define CONTINUE_PAREN_INCR(p,n)
-# define CONTINUE_PROMPT_PSTATE 0
-typedef void *t_NoDynaPrompt;
-# define SCAN_TRACKER_REFTYPE t_NoDynaPrompt
-#else
-# define CONTINUATION_PROMPT(X) dynamicContinuePrompt()
-# define CONTINUE_PROMPT_RESET(X) \
-  do {setLexemeOpen(&dynPrompt,0,0); trackParenLevel(&dynPrompt,0);} while(0)
-# define CONTINUE_PROMPT_AWAITS(X,p,s) \
-  if(p && stdin_is_interactive) setLexemeOpen(p, s, 0)
-# define CONTINUE_PROMPT_AWAITC(X,p,c) \
-  if(p && stdin_is_interactive) setLexemeOpen(p, 0, c)
-# define CONTINUE_PAREN_INCR(X,p,n) \
-  if(p && stdin_is_interactive) (trackParenLevel(p,n))
-# define CONTINUE_PROMPT_PSTATE(X) (&dynPrompt)
-typedef struct DynaPrompt *t_DynaPromptRef;
-# define SCAN_TRACKER_REFTYPE t_DynaPromptRef
-
-static struct DynaPrompt {
-  char dynamicPrompt[PROMPT_LEN_MAX];
-  char acAwait[2];
-  int inParenLevel;
-  char *zScannerAwaits;
-} dynPrompt = { {0}, {0}, 0, 0 };
-
-/* Record parenthesis nesting level change, or force level to 0. */
-static void trackParenLevel(struct DynaPrompt *p, int ni){
-  p->inParenLevel += ni;
-  if( ni==0 ) p->inParenLevel = 0;
-  p->zScannerAwaits = 0;
-}
-
-/* Record that a lexeme is opened, or closed with args==0. */
-static void setLexemeOpen(struct DynaPrompt *p, char *s, char c){
-  if( s!=0 || c==0 ){
-    p->zScannerAwaits = s;
-    p->acAwait[0] = 0;
-  }else{
-    p->acAwait[0] = c;
-    p->zScannerAwaits = p->acAwait;
-  }
-}
-
-/* Upon demand, derive the continuation prompt to display. */
-static char *dynamicContinuePrompt(void){
-  int k;         /* Number of context hint characters */
-  int nSpace;    /* Spaces at the start of continuePrompt */
-  int nDot;      /* Dots following spaces */
-  int nOrig;     /* Total size of continuePrompt in bytes */
-  int nCore;     /* nOrig + 1 - nSpace */
-
-  nOrig = (int)strlen(continuePrompt);
-  if( nOrig<=1
-   || (dynPrompt.zScannerAwaits==0 && dynPrompt.inParenLevel == 0)
-  ){
-    return continuePrompt;
-  }
-  for(nSpace=0; continuePrompt[nSpace]==' '; nSpace++){}
-  for(nDot=0; continuePrompt[nSpace+nDot]=='.'; nDot++){}
-  nCore = nOrig + 1 - nSpace;
-  for(k=0; k<dynPrompt.inParenLevel && k+nCore<PROMPT_LEN_MAX; k++){
-    dynPrompt.dynamicPrompt[k] = '(';
-  }
-  if( dynPrompt.zScannerAwaits ){
-    int i = 0;
-    const char *z = dynPrompt.zScannerAwaits;
-    while( z[i] && k+nCore<PROMPT_LEN_MAX ){
-      dynPrompt.dynamicPrompt[k++] = z[i++];
-    }
-  }
-  while( k<nSpace ){
-    dynPrompt.dynamicPrompt[k++] = ' ';
-  }
-  if( k>nSpace && nDot ){
-    nSpace++;
-    nDot--;
-  }
-  memcpy(&dynPrompt.dynamicPrompt[k],
-         &continuePrompt[nSpace],
-         nCore);
-  return dynPrompt.dynamicPrompt;
-}
-#endif /* !defined(SQLITE_OMIT_DYNAPROMPT) */
-
 /* Indicate out-of-memory and exit. */
 static void shell_out_of_memory(void){
   eputz("Error: out of memory\n");
@@ -1027,11 +927,199 @@ static char *local_getline(char *zLine, FILE *in){
 }
 
 /*
+** Expand escapes in the given input prompt string.  Return the
+** expanded prompt in memory obtained from sqlite3_malloc().  The
+** caller is responsible for freeing the memory.
+*/
+static char *expand_prompt(
+  ShellState *p,        /* The current shell state */
+  const char *zPrior,   /* Prior input lines not yet processed */
+  const char *zPrompt   /* Prompt string to be expanded */
+){
+  sqlite3_str *pOut = sqlite3_str_new(0);
+  int i;
+  char c;
+  int onoff = 1;
+  int idxSpace = -1;
+  for(i=0; zPrompt[i]; i++){
+    if( zPrompt[i]!='\\' ) continue;
+    if( i>0 ){
+      if( onoff ) sqlite3_str_append(pOut, zPrompt, i);
+      zPrompt += i;
+      i = 0;
+    }
+    /* At this point zPrompt[0] is a \ character and all prior
+    ** characters have already been loaded into pOut.  Process the
+    ** escape sequence that zPrompt points to. */
+    c = zPrompt[1];
+    if( c==0 ){
+      /* \ at the end of a line is silently ignored */
+      break;
+    }
+    if( c=='\\' ){
+      /* \\ maps into a single \  */
+      zPrompt++;
+      continue;
+    }
+    if( c>='0' && c<='7' ){
+      /* \nnn becomes a single byte given by octal nnn */
+      int v = c - '0';
+      while( i<=2 && zPrompt[i+1]>='0' && zPrompt[i+1]<='7' ){
+        v = v*8 + zPrompt[++i] - '0';
+      }
+      if( onoff ) sqlite3_str_appendchar(pOut, 1, v);
+      zPrompt += i+1;
+      i = -1;
+      continue;
+    }
+    if( c=='e' ){
+      /* \e is \033 "Escape" */
+      if( onoff ) sqlite3_str_append(pOut, "\033", 1);
+      zPrompt += 2;
+      i = -1;
+      continue;
+    }
+
+    /* The intent of the following codes it to provide alternative
+    ** text displays depending on whether or not the connection is
+    ** currently in a transaction.  Example 1:  Show a "*" before the ">"
+    ** like psql:
+    **
+    **         .prompt 'sqlite\x*\;> '
+    **
+    ** Example 2: Show database filename is blue if not in a transaction,
+    ** or red if within a transaction:
+    **
+    **         .prompt '\e[1;\x31\:34\;m\f>\e[0m '
+    */
+    if( c==':' ){
+      /* toggle display on/off */
+      onoff = !onoff;
+      zPrompt += 2;
+      i = -1;
+      continue;
+    }
+    if( c==';' ){
+      /* Turn display on */
+      onoff = 1;
+      zPrompt += 2;
+      i = -1;
+      continue;
+    }
+    if( c=='x' ){
+      /* \x turns display off not in a transaction, on if in txn */
+      onoff = p->db && !sqlite3_get_autocommit(p->db);
+      zPrompt += 2;
+      i = -1;
+      continue;
+    }
+
+    if( c=='f' || c=='F' || c=='~' ){
+      /* \f becomes the tail of the database filename */
+      /* \F becomes the full pathname */
+      /* \~ becomes the full pathname relative to $HOME */
+      if( onoff ){
+        sqlite3_filename pFN = p->db ? sqlite3_db_filename(p->db,0) : 0;
+        const char *zFN = pFN ? sqlite3_filename_database(pFN) : ":memory:";
+        if( zFN ){
+          if( c=='f' ){
+            const char *zTail = strrchr(zFN,'/');
+            if( zTail && zTail[1] ) zFN = &zTail[1];
+          }else if( c=='~' ){
+            const char *zHOME = getenv("HOME");
+            size_t nHOME = zHOME ? strlen(zHOME) : 0;
+            if( nHOME<strlen(zFN) && memcmp(zHOME,zFN,nHOME)==0 ){
+              sqlite3_str_append(pOut,"~",1);
+              zFN += nHOME;
+            }
+          }
+          sqlite3_str_appendall(pOut, zFN);
+        }
+      }
+      zPrompt += 2;
+      i = -1;
+      continue;
+    }
+
+    if( c=='H' ){
+      /* \H becomes text needed to terminate current input */
+      if( onoff ){
+        sqlite3_int64 R = zPrior ? sqlite3_incomplete(zPrior) : 0;
+        int c = (R>>16)&0xff;
+        int nParen = R>>32;
+        int eSemi = (R>>8)&0xff;
+        if( c==0 ){
+          /* no-op */
+        }else if( c=='-' ){
+          sqlite3_str_append(pOut,"\\n",3);
+        }else if( c=='/' ){
+          sqlite3_str_append(pOut,"*/",2);
+        }else{
+          sqlite3_str_appendchar(pOut, 1, c);
+        }
+        if( nParen>0 ){
+          sqlite3_str_appendf(pOut, "%.*c",nParen,')');
+        }
+        if( eSemi==1 ){
+          sqlite3_str_append(pOut, ";", 1);
+        }else if( eSemi==2 ){
+          sqlite3_str_append(pOut, "END;", 4);
+        }else if( eSemi==3 ){
+          sqlite3_str_append(pOut, ";END;", 5);
+        }
+      }
+      zPrompt += 2;
+      i = -1;
+      continue;
+    }
+
+    if( c=='B' ){
+      /* \B is a no-op for the main prmopt.  For the continuation prompt,
+      ** \B expands to zero or more spaces to make the continuation prompt
+      ** at least as wide as the main prompt. */
+      if( onoff ) idxSpace = sqlite3_str_length(pOut);
+      zPrompt += 2;
+      i = -1;
+      continue;
+    }
+
+    /* No match to a known escape.  Generate an error. */
+    if( onoff ) sqlite3_str_appendf(pOut,"UNKNOWN(\"\\%c\")",c);
+    zPrompt += 2;
+    i = -1;
+  }
+  if( i>0 && onoff ){
+    sqlite3_str_append(pOut, zPrompt, i);
+  }
+
+  /* Expand the \B, if there is one and if this is a continuation prompt */
+  if( idxSpace>=0 && zPrior!=0 && zPrior[0]!=0 ){
+    char *zOther = expand_prompt(p, 0, p->mainPrompt);
+    int nOther = strlen30(zOther);
+    sqlite3_free(zOther);
+    if( nOther>sqlite3_str_length(pOut) ){
+      char *z;
+      int nNew = nOther - sqlite3_str_length(pOut);
+      int len;
+      sqlite3_str_appendchar(pOut, nNew, ' ');
+      len = sqlite3_str_length(pOut);
+      if( len>idxSpace ){
+        z = sqlite3_str_value(pOut);
+        memmove(z+idxSpace+nNew, z+idxSpace, len-nNew-idxSpace);
+        memset(z+idxSpace, ' ', nNew);
+      }
+    }
+  }
+  
+  return sqlite3_str_finish(pOut);
+}
+
+/*
 ** Retrieve a single line of input text.
 **
 ** If in==0 then read from standard input and prompt before each line.
-** If isContinuation is true, then a continuation prompt is appropriate.
-** If isContinuation is zero, then the main prompt should be used.
+** If bContinue is true, then a continuation prompt is appropriate.
+** If bContinue is zero, then the main prompt should be used.
 **
 ** If zPrior is not NULL then it is a buffer from a prior call to this
 ** routine that can be reused.
@@ -1041,14 +1129,15 @@ static char *local_getline(char *zLine, FILE *in){
 ** zPrior argument for reuse.
 */
 #ifndef SQLITE_SHELL_FIDDLE
-static char *one_input_line(ShellState *p, char *zPrior, int isContinuation){
-  char *zPrompt;
+static char *one_input_line(ShellState *p, char *zPrior, int bContinue){
   char *zResult;
   FILE *in = p->in;
   if( in!=0 ){
     zResult = local_getline(zPrior, in);
   }else{
-    zPrompt = isContinuation ? CONTINUATION_PROMPT(p) : mainPrompt;
+    const char *zBase = bContinue ? p->contPrompt : p->mainPrompt;
+    char *zPrompt = expand_prompt(p, zPrior, zBase);
+    shell_check_oom(zPrompt);
 #if SHELL_USE_LOCAL_GETLINE
     sputz(stdout, zPrompt);
     fflush(stdout);
@@ -1069,6 +1158,7 @@ static char *one_input_line(ShellState *p, char *zPrior, int isContinuation){
     }
     if( zResult && *zResult ) shell_add_history(zResult);
 #endif
+    sqlite3_free(zPrompt);
   }
   return zResult;
 }
@@ -1389,6 +1479,23 @@ static void shellAddSchemaName(
   sqlite3_result_value(pCtx, apVal[0]);
 }
 
+/*
+** SQL function:  shell_expand_prompt(PROMPT,PRIOR)
+**
+** Invoke the internal expand_prompt() function, for testing purposes.
+*/
+static void shellExpandPrompt(
+  sqlite3_context *pCtx,
+  int nVal,
+  sqlite3_value **apVal
+){
+  const char *zPrompt = (const char*)sqlite3_value_text(apVal[0]);
+  const char *zPrior = nVal>=2 ? (const char*)sqlite3_value_text(apVal[1]) : 0;
+  ShellState *p = (ShellState*)sqlite3_user_data(pCtx);
+  char *zRes = expand_prompt(p, zPrior, zPrompt);
+  sqlite3_result_text(pCtx, zRes, -1, SQLITE_TRANSIENT);
+  sqlite3_free(zRes);
+}
 
 /************************* BEGIN PERFORMANCE TIMER *****************************/
 #if !defined(_WIN32) && !defined(WIN32) && !defined(__minux)
@@ -4611,6 +4718,11 @@ static void open_db(ShellState *p, int openFlags){
     sqlite3_create_function(p->db, "edit", 2, SQLITE_UTF8, 0,
                             editFunc, 0, 0);
 #endif
+    sqlite3_create_function(p->db, "shell_expand_prompt", 1, SQLITE_UTF8,
+                            p, shellExpandPrompt, 0, 0);
+    sqlite3_create_function(p->db, "shell_expand_prompt", 2, SQLITE_UTF8,
+                            p, shellExpandPrompt, 0, 0);
+
 
     if( p->openMode==SHELL_OPEN_ZIPFILE ){
       char *zSql = sqlite3_mprintf(
@@ -10439,10 +10551,10 @@ static int do_meta_command(const char *zLine, ShellState *p){
 
   if( c=='p' && cli_strncmp(azArg[0], "prompt", n)==0 ){
     if( nArg >= 2) {
-      shell_strncpy(mainPrompt,azArg[1],(int)ArraySize(mainPrompt)-1);
+      shell_strncpy(p->mainPrompt,azArg[1],sizeof(p->mainPrompt)-1);
     }
     if( nArg >= 3) {
-      shell_strncpy(continuePrompt,azArg[2],(int)ArraySize(continuePrompt)-1);
+      shell_strncpy(p->contPrompt,azArg[2],sizeof(p->contPrompt)-1);
     }
   }else
 
@@ -12076,112 +12188,28 @@ meta_command_exit:
   return rc;
 }
 
-/* Line scan result and intermediate states (supporting scan resumption)
-*/
-#ifndef CHAR_BIT
-# define CHAR_BIT 8
-#endif
-typedef enum {
-  QSS_HasDark = 1<<CHAR_BIT,
-  QSS_EndingSemi = 2<<CHAR_BIT,
-  QSS_CharMask = (1<<CHAR_BIT)-1,
-  QSS_ScanMask = 3<<CHAR_BIT,
-  QSS_Start = 0
-} QuickScanState;
-#define QSS_SETV(qss, newst) ((newst) | ((qss) & QSS_ScanMask))
-#define QSS_INPLAIN(qss) (((qss)&QSS_CharMask)==QSS_Start)
-#define QSS_PLAINWHITE(qss) (((qss)&~QSS_EndingSemi)==QSS_Start)
-#define QSS_PLAINDARK(qss) (((qss)&~QSS_EndingSemi)==QSS_HasDark)
-#define QSS_SEMITERM(qss) (((qss)&~QSS_HasDark)==QSS_EndingSemi)
-
 /*
-** Scan line for classification to guide shell's handling.
-** The scan is resumable for subsequent lines when prior
-** return values are passed as the 3rd argument (qss).
+** Test to see if a line consists entirely of whitespace.
 */
-static QuickScanState quickscan(
-  ShellState *p,
-  char *zLine,
-  QuickScanState qss,
-  SCAN_TRACKER_REFTYPE pst
-){
-  char cin;
-  char cWait = (char)qss; /* intentional narrowing loss */
-  if( cWait==0 ){
-  PlainScan:
-    while( (cin = *zLine++)!=0 ){
-      if( IsSpace(cin) )
-        continue;
-      switch (cin){
-      case '-':
-        if( *zLine!='-' )
-          break;
-        while((cin = *++zLine)!=0 )
-          if( cin=='\n')
-            goto PlainScan;
-        return qss;
-      case ';':
-        qss |= QSS_EndingSemi;
-        continue;
-      case '/':
-        if( *zLine=='*' ){
-          ++zLine;
-          cWait = '*';
-          CONTINUE_PROMPT_AWAITS(p, pst, "/*");
-          qss = QSS_SETV(qss, cWait);
-          goto TermScan;
-        }
-        break;
-      case '[':
-        cWait = ']';
-        qss = QSS_HasDark | cWait;
-        CONTINUE_PROMPT_AWAITC(p, pst, cin);
-        goto TermScan;
-      case '`': case '\'': case '"':
-        cWait = cin;
-        qss = QSS_HasDark | cWait;
-        CONTINUE_PROMPT_AWAITC(p, pst, cin);
-        goto TermScan;
-      case '(':
-        CONTINUE_PAREN_INCR(p, pst, 1);
-        break;
-      case ')':
-        CONTINUE_PAREN_INCR(p, pst, -1);
-        break;
-      default:
-        break;
-      }
-      qss = (qss & ~QSS_EndingSemi) | QSS_HasDark;
+static int line_is_all_whitespace(const char *z){
+  for(; *z; z++){
+    if( IsSpace(z[0]) ) continue;
+    if( *z=='/' && z[1]=='*' ){
+      z += 2;
+      while( *z && (*z!='*' || z[1]!='/') ){ z++; }
+      if( *z==0 ) return 0;
+      z++;
+      continue;
     }
-  }else{
-  TermScan:
-    while( (cin = *zLine++)!=0 ){
-      if( cin==cWait ){
-        switch( cWait ){
-        case '*':
-          if( *zLine != '/' )
-            continue;
-          ++zLine;
-          CONTINUE_PROMPT_AWAITC(p, pst, 0);
-          qss = QSS_SETV(qss, 0);
-          goto PlainScan;
-        case '`': case '\'': case '"':
-          if(*zLine==cWait){
-            /* Swallow doubled end-delimiter.*/
-            ++zLine;
-            continue;
-          }
-          deliberate_fall_through; /* FALLTHRU */
-        case ']':
-          CONTINUE_PROMPT_AWAITC(p, pst, 0);
-          qss = QSS_SETV(qss, 0);
-          goto PlainScan;
-        default: assert(0);
-        }
-      }
+    if( *z=='-' && z[1]=='-' ){
+      z += 2;
+      while( *z && *z!='\n' ){ z++; }
+      if( *z==0 ) return 1;
+      continue;
     }
+    return 0;
   }
-  return qss;
+  return 1;
 }
 
 /*
@@ -12189,15 +12217,16 @@ static QuickScanState quickscan(
 ** than a semi-colon.  The SQL Server style "go" command is understood
 ** as is the Oracle "/".
 */
-static int line_is_command_terminator(ShellState *p, char *zLine){
+static int line_is_command_terminator(const char *zLine){
   while( IsSpace(zLine[0]) ){ zLine++; };
-  if( zLine[0]=='/' )
-    zLine += 1; /* Oracle */
-  else if ( ToLower(zLine[0])=='g' && ToLower(zLine[1])=='o' )
-    zLine += 2; /* SQL Server */
-  else
-    return 0;
-  return quickscan(p, zLine, QSS_Start, 0)==QSS_Start;
+  if( zLine[0]=='/' && line_is_all_whitespace(&zLine[1]) ){
+    return 1;  /* Oracle */
+  }
+  if( ToLower(zLine[0])=='g' && ToLower(zLine[1])=='o'
+         && line_is_all_whitespace(&zLine[2]) ){
+    return 1;  /* SQL Server */
+  }
+  return 0;
 }
 
 /*
@@ -12385,7 +12414,7 @@ static void echo_group_input(ShellState *p, const char *zDo){
 ** impl because we need the global shellState and cannot access it from that
 ** function without moving lots of code around (creating a larger/messier diff).
 */
-static char *one_input_line(ShellState *p, char *zPrior, int isContinuation){
+static char *one_input_line(ShellState *p, char *zPrior, int bContinue){
   /* Parse the next line from shellState.wasm.zInput. */
   const char *zBegin = shellState.wasm.zPos;
   const char *z = zBegin;
@@ -12394,7 +12423,7 @@ static char *one_input_line(ShellState *p, char *zPrior, int isContinuation){
   FILE *in = p->in;
 
   UNUSED_PARAMETER(in);
-  UNUSED_PARAMETER(isContinuation);
+  UNUSED_PARAMETER(bContinue);
   if(!z || !*z){
     return 0;
   }
@@ -12430,8 +12459,8 @@ static int process_input(ShellState *p, const char *zSrc){
   i64 nAlloc = 0;           /* Allocated zSql[] space */
   int rc;                   /* Error code */
   int errCnt = 0;           /* Number of errors seen */
+  int hasSemi = 0;          /* Input line contains a semicolon */
   i64 startline = 0;        /* Line number for start of current input */
-  QuickScanState qss = QSS_Start; /* Accumulated line status (so far) */
   const char *saved_zInFile;      /* Prior value of p->zInFile */
   i64 saved_lineno;               /* Prior value of p->lineno */
 
@@ -12446,7 +12475,6 @@ static int process_input(ShellState *p, const char *zSrc){
   p->zInFile = zSrc;
   saved_lineno = p->lineno;
   p->lineno = 0;
-  CONTINUE_PROMPT_RESET(p);
   while( errCnt==0 || !bail_on_error || (p->in==0 && stdin_is_interactive) ){
     fflush(p->out);
     zLine = one_input_line(p, zLine, nSql>0);
@@ -12460,20 +12488,12 @@ static int process_input(ShellState *p, const char *zSrc){
       seenInterrupt = 0;
     }
     p->lineno++;
-    if( QSS_INPLAIN(qss)
-        && line_is_command_terminator(p, zLine)
-        && line_is_complete(zSql, nSql) ){
-      memcpy(zLine,";",2);
-    }
-    qss = quickscan(p, zLine, qss, CONTINUE_PROMPT_PSTATE(p));
-    if( QSS_PLAINWHITE(qss) && nSql==0 ){
+    if( nSql==0 && line_is_all_whitespace(zLine) ){
       /* Just swallow single-line whitespace */
       echo_group_input(p, zLine);
-      qss = QSS_Start;
       continue;
     }
     if( zLine && (zLine[0]=='.' || zLine[0]=='#') && nSql==0 ){
-      CONTINUE_PROMPT_RESET(p);
       echo_group_input(p, zLine);
       if( zLine[0]=='.' ){
         rc = do_meta_command(zLine, p);
@@ -12483,10 +12503,12 @@ static int process_input(ShellState *p, const char *zSrc){
           errCnt++;
         }
       }
-      qss = QSS_Start;
       continue;
     }
-    /* No single-line dispositions remain; accumulate line(s). */
+    if( line_is_command_terminator(zLine) && line_is_complete(zSql, nSql) ){
+      memcpy(zLine,";",2);
+    }
+    hasSemi = strchr(zLine,';')!=0;
     nLine = strlen(zLine);
     if( nSql+nLine+2>=nAlloc ){
       /* Grow buffer by half-again increments when big. */
@@ -12514,10 +12536,10 @@ static int process_input(ShellState *p, const char *zSrc){
       nSql = 0;
       errCnt++;
       break;
-    }else if( nSql && QSS_SEMITERM(qss) && sqlite3_complete(zSql) ){
+    }
+    if( nSql && hasSemi && sqlite3_complete(zSql) ){
       echo_group_input(p, zSql);
       errCnt += runOneSqlLine(p, zSql, p->zInFile, startline);
-      CONTINUE_PROMPT_RESET(p);
       nSql = 0;
       if( p->nPopOutput ){
         output_reset(p);
@@ -12530,18 +12552,15 @@ static int process_input(ShellState *p, const char *zSrc){
         p->nPopMode = 0;
       }
       p->bSafeMode = p->bSafeModePersist;
-      qss = QSS_Start;
-    }else if( nSql && QSS_PLAINWHITE(qss) ){
+    }else if( nSql && line_is_all_whitespace(zSql) ){
       echo_group_input(p, zSql);
       nSql = 0;
-      qss = QSS_Start;
     }
   }
   if( nSql ){
     /* This may be incomplete. Let the SQL parser deal with that. */
     echo_group_input(p, zSql);
     errCnt += runOneSqlLine(p, zSql, p->zInFile, startline);
-    CONTINUE_PROMPT_RESET(p);
   }
   free(zSql);
   free(zLine);
@@ -12829,8 +12848,8 @@ static void main_init(ShellState *p) {
 #endif
   sqlite3_config(SQLITE_CONFIG_URI, 1);
   sqlite3_config(SQLITE_CONFIG_MULTITHREAD);
-  sqlite3_snprintf(sizeof(mainPrompt), mainPrompt,"sqlite> ");
-  sqlite3_snprintf(sizeof(continuePrompt), continuePrompt,"   ...> ");
+  sqlite3_snprintf(sizeof(p->mainPrompt), p->mainPrompt,"SQLite:\\f> ");
+  sqlite3_snprintf(sizeof(p->contPrompt), p->contPrompt,"\\B...\\H> ");
 }
 
 /*
@@ -13565,6 +13584,10 @@ int SQLITE_CDECL main(int argc, char **argv){
           modePop(&data);
           data.nPopMode = 0;
         }
+        if( rc ){
+          goto shell_main_exit;
+        }
+
       }
       if( data.nPopOutput && azCmd[i][0]!='.' ){
         output_reset(&data);

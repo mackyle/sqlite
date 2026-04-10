@@ -192,6 +192,7 @@ namespace eval trd {
     -DSQLITE_ENABLE_HIDDEN_COLUMNS
     -DSQLITE_MAX_ATTACHED=125
     -DSQLITE_MUTATION_TEST
+    -DSQLITE_THREAD_MISUSE_ABORT
     --enable-fts5
   }
   set build(Debug-Two) {
@@ -480,7 +481,7 @@ proc make_sh_script {srcdir opts cflags makeOpts configOpts} {
   set myopts ""
   if {[info exists ::env(OPTS)]} {
     append myopts "# From environment variable:\n"
-    append myopts "OPTS=$::env(OPTS)\n\n"
+    append myopts "OPTS=\"$::env(OPTS)\"\n\n"
   }
   foreach o [lsort $opts] { 
     append myopts "OPTS=\"\$OPTS $o\"\n"

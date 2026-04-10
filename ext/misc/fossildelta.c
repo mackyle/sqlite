@@ -543,8 +543,8 @@ static int delta_apply(
   int lenDelta,          /* Length of the delta */
   char *zOut             /* Write the output into this preallocated buffer */
 ){
-  unsigned int limit;
-  unsigned int total = 0;
+  sqlite3_uint64 limit;
+  sqlite3_uint64 total = 0;
 #ifdef FOSSIL_ENABLE_DELTA_CKSUM_TEST
   char *zOrigOut = zOut;
 #endif
@@ -843,7 +843,7 @@ static int deltaparsevtabDisconnect(sqlite3_vtab *pVtab){
 */
 static int deltaparsevtabOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   deltaparsevtab_cursor *pCur;
-  pCur = sqlite3_malloc( sizeof(*pCur) );
+  pCur = sqlite3_malloc64( sizeof(*pCur) );
   if( pCur==0 ) return SQLITE_NOMEM;
   memset(pCur, 0, sizeof(*pCur));
   *ppCursor = &pCur->base;

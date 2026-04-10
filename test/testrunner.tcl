@@ -97,15 +97,16 @@ proc usage {} {
 Usage: 
     $a0 ?SWITCHES? ?PERMUTATION? ?PATTERNS?
     $a0 PERMUTATION FILE
+    $a0 clean
     $a0 errors ?-v|--verbose? ?-s|--summary? ?PATTERN?
+    $a0 estwork
+    $a0 halt
     $a0 help
     $a0 joblist ?PATTERN?
     $a0 njob ?NJOB?
     $a0 retest
     $a0 script ?-msvc? CONFIG
     $a0 status ?-d SECS? ?--cls?
-    $a0 halt
-    $a0 estwork
 
   where SWITCHES are:
     --buildonly              Build test exes but do not run tests
@@ -141,7 +142,10 @@ are run. Otherwise, each pattern is interpreted as a glob pattern. Only
 those tcl tests for which the final component of the filename matches at
 least one specified pattern are run.  The glob wildcard '*' is prepended
 to the pattern if it does not start with '^' and appended to every
-pattern that does not end with '$'.
+pattern that does not end with '$'.  If PATTERN begins with "~", then it
+is an anti-pattern that only matches tests that do not match PATTERN.
+Tests or only run if they match one or more patterns and match no
+anti-patterns.
 
 If no PATTERN arguments are present, then various fuzztest, threadtest
 and other tests are run as part of the "release" permutation. These are
@@ -157,6 +161,12 @@ directory as a running testrunner.tcl script that is running tests. The
 of the tests.  Use the "-d N" option to have the status display clear the
 screen and repeat every N seconds.  The "njob" command may be used to query
 or modify the number of sub-processes the test script uses to run tests.
+
+The "halt" command modifies the database so that all tasks are marked
+as complete.  Testing will halt when all tests currently running complete.
+
+The "clean" command removes files and directories created by a prior
+invocation of testrunner.tcl.
 
 The "script" command outputs the script used to build a configuration.
 Add the "-msvc" option for a Windows-compatible script. For a list of
@@ -455,6 +465,32 @@ if {([llength $argv]==2 || [llength $argv]==1)
   puts "$res"
   exit
 }
+#--------------------------------------------------------------------------
+
+#--------------------------------------------------------------------------
+# Check if this is the "clean" command:
+#
+if {([llength $argv]==2 || [llength $argv]==1) 
+ && [string compare -nocase clean [lindex $argv 0]]==0
+} {
+  set pattern {_(fuzzcheck|sessionfuzz|sqlite3|testfixture)}
+  foreach f [glob testrun_*] {
+    if {[file isdir $f] && [regexp $pattern $f]} {
+      file delete -force $f
+    }
+  }
+  foreach f [glob testdir*] {
+    if {[file isdir $f] && [regexp {^testdir[0-9]+$} $f]} {
+      file delete -force $f
+    }
+  }
+  foreach f [glob testrunner.db*] {
+    file delete -force $f
+  }
+  file delete -force testrunner.log
+  exit
+}
+
 #--------------------------------------------------------------------------
 
 #--------------------------------------------------------------------------
@@ -1124,10 +1160,21 @@ proc add_job {args} {
 #
 # An empty patternlist matches everything
 #
+# Entries of patternlist that begin with "~" mean "match anything that
+# does not match the following pattern".  For example, a patternlist
+# of {fuzzcheck ~san} will match "fuzzcheck" but not "fuzzcheck-asan".
+#
 proc job_matches_any_pattern {patternlist jobcmd} {
   set bMatch 0
+  set bMiss 0
   if {[llength $patternlist]==0} {return 1}
   foreach p $patternlist {
+    if {[string index $p 0] eq "~"} {
+      set p [string range $p 1 end]
+      set not 1
+    } else {
+      set not 0
+    }
     set p [string trim $p *]
     if {[string index $p 0]=="^"} {
       set p [string range $p 1 end]
@@ -1139,10 +1186,18 @@ proc job_matches_any_pattern {patternlist jobcmd} {
     } else {
       set p "$p*"
     }
-    if {[string match $p $jobcmd]} {
-      set bMatch 1
-      break
+    if {$not} {
+      if {[string match $p $jobcmd]} {return 0}
+    } else {
+      if {[string match $p $jobcmd]} {
+        set bMatch 1
+      } else {
+        set bMiss 1
+      }
     }
+  }
+  if {!$bMiss} {
+    set bMatch 1
   }
   return $bMatch
 }
@@ -1155,7 +1210,7 @@ proc job_matches_any_pattern {patternlist jobcmd} {
 # 
 # e.g    
 #
-#    {1 /home/user/sqlite/test/testrunner_bld_xyz All-Debug}
+#    {1 /home/user/sqlite/test/testrun_xyz All-Debug}
 # 
 proc add_tcl_jobs {build config patternlist {shelldepid ""}} {
   global TRG
@@ -1221,7 +1276,8 @@ proc add_build_job {buildname target {postcmd ""} {depid ""}} {
   global TRG
 
   set dirname "[string tolower [string map {- _} $buildname]]_$target"
-  set dirname "testrunner_bld_$dirname"
+  regsub {\.exe$} $dirname {} dirname
+  set dirname "testrun_$dirname"
 
   set cmd "$TRG(makecmd) $target"
   if {$postcmd!=""} {

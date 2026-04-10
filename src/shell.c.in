@@ -1040,6 +1040,38 @@ static char *expand_prompt(
       continue;
     }
 
+    if( c=='H' ){
+      /* \H becomes text needed to terminate current input */
+      if( onoff ){
+        sqlite3_int64 R = zPrior ? sqlite3_incomplete(zPrior) : 0;
+        int c = (R>>16)&0xff;
+        int nParen = R>>32;
+        int eSemi = (R>>8)&0xff;
+        if( c==0 ){
+          /* no-op */
+        }else if( c=='-' ){
+          sqlite3_str_append(pOut,"\\n",3);
+        }else if( c=='/' ){
+          sqlite3_str_append(pOut,"*/",2);
+        }else{
+          sqlite3_str_appendchar(pOut, 1, c);
+        }
+        if( nParen>0 ){
+          sqlite3_str_appendf(pOut, "%.*c",nParen,')');
+        }
+        if( eSemi==1 ){
+          sqlite3_str_append(pOut, ";", 1);
+        }else if( eSemi==2 ){
+          sqlite3_str_append(pOut, "END;", 4);
+        }else if( eSemi==3 ){
+          sqlite3_str_append(pOut, ";END;", 5);
+        }
+      }
+      zPrompt += 2;
+      i = -1;
+      continue;
+    }
+
     /* No match to a known escape.  Generate an error. */
     if( onoff ) sqlite3_str_appendf(pOut,"UNKNOWN(\"\\%c\")",c);
     zPrompt += 2;
@@ -1416,6 +1448,23 @@ static void shellAddSchemaName(
   sqlite3_result_value(pCtx, apVal[0]);
 }
 
+/*
+** SQL function:  shell_expand_prompt(PROMPT,PRIOR)
+**
+** Invoke the internal expand_prompt() function, for testing purposes.
+*/
+static void shellExpandPrompt(
+  sqlite3_context *pCtx,
+  int nVal,
+  sqlite3_value **apVal
+){
+  const char *zPrompt = (const char*)sqlite3_value_text(apVal[0]);
+  const char *zPrior = nVal>=2 ? (const char*)sqlite3_value_text(apVal[1]) : 0;
+  ShellState *p = (ShellState*)sqlite3_user_data(pCtx);
+  char *zRes = expand_prompt(p, zPrior, zPrompt);
+  sqlite3_result_text(pCtx, zRes, -1, SQLITE_TRANSIENT);
+  sqlite3_free(zRes);
+}
 
 /************************* BEGIN PERFORMANCE TIMER *****************************/
 #if !defined(_WIN32) && !defined(WIN32) && !defined(__minux)
@@ -4638,6 +4687,11 @@ static void open_db(ShellState *p, int openFlags){
     sqlite3_create_function(p->db, "edit", 2, SQLITE_UTF8, 0,
                             editFunc, 0, 0);
 #endif
+    sqlite3_create_function(p->db, "shell_expand_prompt", 1, SQLITE_UTF8,
+                            p, shellExpandPrompt, 0, 0);
+    sqlite3_create_function(p->db, "shell_expand_prompt", 2, SQLITE_UTF8,
+                            p, shellExpandPrompt, 0, 0);
+
 
     if( p->openMode==SHELL_OPEN_ZIPFILE ){
       char *zSql = sqlite3_mprintf(

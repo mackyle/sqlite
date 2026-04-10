@@ -2801,7 +2801,8 @@ qrf_reinit:
     case QRF_STYLE_Eqp: {
       int expMode = sqlite3_stmt_isexplain(p->pStmt);
       if( expMode!=2 ){
-        sqlite3_stmt_explain(p->pStmt, 2);
+        int rc = sqlite3_stmt_explain(p->pStmt, 2);
+        if( rc ){ qrfError(p, SQLITE_ERROR, sqlite3_errstr(rc)); }
         p->expMode = expMode+1;
       }
       break;
@@ -2809,7 +2810,8 @@ qrf_reinit:
     case QRF_STYLE_Explain: {
       int expMode = sqlite3_stmt_isexplain(p->pStmt);
       if( expMode!=1 ){
-        sqlite3_stmt_explain(p->pStmt, 1);
+        int rc = sqlite3_stmt_explain(p->pStmt, 1);
+        if( rc ){ qrfError(p, SQLITE_ERROR, sqlite3_errstr(rc)); }
         p->expMode = expMode+1;
       }
       break;
@@ -2968,6 +2970,7 @@ int sqlite3_format_query_result(
 
   if( pStmt==0 ) return SQLITE_OK;       /* No-op */
   if( pSpec==0 ) return SQLITE_MISUSE;
+  if( sqlite3_stmt_busy(pStmt) ) return SQLITE_BUSY;
   qrfInitialize(&qrf, pStmt, pSpec, pzErr);
   switch( qrf.spec.eStyle ){
     case QRF_STYLE_Box:

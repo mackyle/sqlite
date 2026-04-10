@@ -165,7 +165,7 @@ static char *printfTempBuf(sqlite3_str *pAccum, sqlite3_int64 n){
     sqlite3StrAccumSetError(pAccum, SQLITE_TOOBIG);
     return 0;
   }
-  z = sqlite3DbMallocRaw(pAccum->db, n);
+  z = sqlite3_malloc(n);
   if( z==0 ){
     sqlite3StrAccumSetError(pAccum, SQLITE_NOMEM);
   }
@@ -628,7 +628,7 @@ void sqlite3_str_vappendf(
             /* Unable to allocate space in pAccum, perhaps because it
             ** is coming from sqlite3_snprintf() or similar.  We'll have
             ** to render into temporary space and the memcpy() it over. */
-            bufpt = sqlite3DbMallocRaw(pAccum->db, szBufNeeded);
+            bufpt = sqlite3_malloc(szBufNeeded);
             if( bufpt==0 ){
               sqlite3StrAccumSetError(pAccum, SQLITE_NOMEM);
               return;

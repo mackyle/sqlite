@@ -13602,7 +13602,6 @@ int SQLITE_CDECL main(int argc, char **argv){
         if( rc ){
           goto shell_main_exit;
         }
-
       }
       if( data.nPopOutput && azCmd[i][0]!='.' ){
         output_reset(&data);
@@ -13860,5 +13859,9 @@ void fiddle_exec(const char * zSql){
     process_input(&shellState, "<stdin>");
     shellState.wasm.zInput = shellState.wasm.zPos = 0;
   }
+}
+
+char *fiddle_get_prompt(void){
+  return expand_prompt(&shellState, 0, &shellState.mainPrompt[0]);
 }
 #endif /* SQLITE_SHELL_FIDDLE */

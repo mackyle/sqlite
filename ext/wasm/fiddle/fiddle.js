@@ -349,9 +349,10 @@
     SF.e.wasmInfo.innerText = 'WASM: '+(
       4===v.pointerSize ? 32 : 64
     )+'-bit'
-    //+' heap size: '+Number(v.heapSize)
+    +' heap: '+Number(v.heapSize)
     // Heap size is not changing even when loading a huge db?
     ;
+    SF.jqTerm?.set_prompt?.(v.prompt);
   });
 
   /* querySelectorAll() proxy */
@@ -865,7 +866,7 @@
       const jqeTerm = window.jQuery(SF.e.terminal).empty();
       SF.jqTerm = jqeTerm.terminal(SF.dbExec.bind(SF),{
         prompt: 'sqlite> ',
-        greetings: false /* note that the docs incorrectly call this 'greeting' */
+        greetings: false /* the docs incorrectly call this 'greeting' */
       });
       EAll('.unhide-if-terminal-available').forEach(e=>{
         e.classList.remove('hidden');

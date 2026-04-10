@@ -245,4 +245,5 @@ _fiddle_reset_db
 _fiddle_db_handle
 _fiddle_db_vfs
 _fiddle_export_db
+_fiddle_get_prompt
 //#/if fiddle

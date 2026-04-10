@@ -939,10 +939,11 @@ static char *expand_prompt(
   sqlite3_str *pOut = sqlite3_str_new(0);
   int i;
   char c;
+  int onoff = 1;
   for(i=0; zPrompt[i]; i++){
     if( zPrompt[i]!='\\' ) continue;
     if( i>0 ){
-      sqlite3_str_append(pOut, zPrompt, i);
+      if( onoff ) sqlite3_str_append(pOut, zPrompt, i);
       zPrompt += i;
       i = 0;
     }
@@ -965,39 +966,74 @@ static char *expand_prompt(
       while( i<=2 && zPrompt[i+1]>='0' && zPrompt[i+1]<='7' ){
         v = v*8 + zPrompt[++i] - '0';
       }
-      sqlite3_str_appendchar(pOut, 1, v);
+      if( onoff ) sqlite3_str_appendchar(pOut, 1, v);
       zPrompt += i+1;
       i = -1;
       continue;
     }
-    if( c=='x' ){
-      /* \x becomes "*" if in a transaction and nothing if not */
-      if( p->db && !sqlite3_get_autocommit(p->db) ){
-        sqlite3_str_append(pOut, "*", 1);
-      }
+    if( c=='e' ){
+      /* \e is \033 "Escape" */
+      if( onoff ) sqlite3_str_append(pOut, "\033", 1);
       zPrompt += 2;
       i = -1;
       continue;
     }
+
+    /* The intent of the following codes it to provide alternative
+    ** text displays depending on whether or not the connection is
+    ** currently in a transaction.  Example 1:  Show a "*" before the ">"
+    ** like psql:
+    **
+    **         .prompt 'sqlite\x*\;> '
+    **
+    ** Example 2: Show database filename is blue if not in a transaction,
+    ** or red if within a transaction:
+    **
+    **         .prompt '\e[1;\x31\:34\;m\f>\e[0m '
+    */
+    if( c==':' ){
+      /* toggle display on/off */
+      onoff = !onoff;
+      zPrompt += 2;
+      i = -1;
+      continue;
+    }
+    if( c==';' ){
+      /* Turn display on */
+      onoff = 1;
+      zPrompt += 2;
+      i = -1;
+      continue;
+    }
+    if( c=='x' ){
+      /* \x turns display off not in a transaction, on if in txn */
+      onoff = p->db && !sqlite3_get_autocommit(p->db);
+      zPrompt += 2;
+      i = -1;
+      continue;
+    }
+
     if( c=='f' || c=='F' || c=='~' ){
       /* \f becomes the tail of the database filename */
       /* \F becomes the full pathname */
       /* \~ becomes the full pathname relative to $HOME */
-      sqlite3_filename pFN = p->db ? sqlite3_db_filename(p->db,0) : 0;
-      const char *zFN;
-      if( pFN && (zFN = sqlite3_filename_database(pFN))!=0 ){
-        if( c=='f' ){
-          const char *zTail = strrchr(zFN,'/');
-          if( zTail && zTail[1] ) zFN = &zTail[1];
-        }else if( c=='~' ){
-          const char *zHOME = getenv("HOME");
-          size_t nHOME = zHOME ? strlen(zHOME) : 0;
-          if( nHOME<strlen(zFN) && memcmp(zHOME,zFN,nHOME)==0 ){
-            sqlite3_str_append(pOut,"~",1);
-            zFN += nHOME;
+      if( onoff ){
+        sqlite3_filename pFN = p->db ? sqlite3_db_filename(p->db,0) : 0;
+        const char *zFN = pFN ? sqlite3_filename_database(pFN) : ":memory:";
+        if( zFN ){
+          if( c=='f' ){
+            const char *zTail = strrchr(zFN,'/');
+            if( zTail && zTail[1] ) zFN = &zTail[1];
+          }else if( c=='~' ){
+            const char *zHOME = getenv("HOME");
+            size_t nHOME = zHOME ? strlen(zHOME) : 0;
+            if( nHOME<strlen(zFN) && memcmp(zHOME,zFN,nHOME)==0 ){
+              sqlite3_str_append(pOut,"~",1);
+              zFN += nHOME;
+            }
           }
+          sqlite3_str_appendall(pOut, zFN);
         }
-        sqlite3_str_appendall(pOut, zFN);
       }
       zPrompt += 2;
       i = -1;
@@ -1005,11 +1041,11 @@ static char *expand_prompt(
     }
 
     /* No match to a known escape.  Generate an error. */
-    sqlite3_str_appendf(pOut,"UNKNOWN(\"\\%c\")",c);
+    if( onoff ) sqlite3_str_appendf(pOut,"UNKNOWN(\"\\%c\")",c);
     zPrompt += 2;
     i = -1;
   }
-  if( i>0 ){
+  if( i>0 && onoff ){
     sqlite3_str_append(pOut, zPrompt, i);
   }
   return sqlite3_str_finish(pOut);

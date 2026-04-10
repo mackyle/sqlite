@@ -1024,7 +1024,11 @@ static char *expand_prompt(
         if( zFN ){
           if( zFN[0]==0 ) zFN = "in-memory";
           if( c=='f' ){
+#ifdef _WIN32
+            const char *zTail = strrchr(zFN,'\\');
+#else
             const char *zTail = strrchr(zFN,'/');
+#endif
             if( zTail && zTail[1] ) zFN = &zTail[1];
           }else if( c=='~' ){
             const char *zHOME = getenv("HOME");
@@ -1046,17 +1050,17 @@ static char *expand_prompt(
       /* \H becomes text needed to terminate current input */
       if( onoff ){
         sqlite3_int64 R = zPrior ? sqlite3_incomplete(zPrior) : 0;
-        int c = (R>>16)&0xff;
+        int cc = (R>>16)&0xff;
         int nParen = R>>32;
         int eSemi = (R>>8)&0xff;
-        if( c==0 ){
+        if( cc==0 ){
           /* no-op */
-        }else if( c=='-' ){
+        }else if( cc=='-' ){
           sqlite3_str_append(pOut,"\\n",3);
-        }else if( c=='/' ){
+        }else if( cc=='/' ){
           sqlite3_str_append(pOut,"*/",2);
         }else{
-          sqlite3_str_appendchar(pOut, 1, c);
+          sqlite3_str_appendchar(pOut, 1, cc);
         }
         if( nParen>0 ){
           sqlite3_str_appendf(pOut, "%.*c",nParen,')');

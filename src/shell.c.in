@@ -940,6 +940,7 @@ static char *expand_prompt(
   int i;
   char c;
   int onoff = 1;
+  int idxSpace = -1;
   for(i=0; zPrompt[i]; i++){
     if( zPrompt[i]!='\\' ) continue;
     if( i>0 ){
@@ -1072,6 +1073,16 @@ static char *expand_prompt(
       continue;
     }
 
+    if( c=='B' ){
+      /* \B is a no-op for the main prmopt.  For the continuation prompt,
+      ** \B expands to zero or more spaces to make the continuation prompt
+      ** at least as wide as the main prompt. */
+      if( onoff ) idxSpace = sqlite3_str_length(pOut);
+      zPrompt += 2;
+      i = -1;
+      continue;
+    }
+
     /* No match to a known escape.  Generate an error. */
     if( onoff ) sqlite3_str_appendf(pOut,"UNKNOWN(\"\\%c\")",c);
     zPrompt += 2;
@@ -1080,6 +1091,26 @@ static char *expand_prompt(
   if( i>0 && onoff ){
     sqlite3_str_append(pOut, zPrompt, i);
   }
+
+  /* Expand the \B, if there is one and if this is a continuation prompt */
+  if( idxSpace>=0 && zPrior!=0 && zPrior[0]!=0 ){
+    char *zOther = expand_prompt(p, 0, p->mainPrompt);
+    int nOther = strlen30(zOther);
+    sqlite3_free(zOther);
+    if( nOther>sqlite3_str_length(pOut) ){
+      char *z;
+      int nNew = nOther - sqlite3_str_length(pOut);
+      int len;
+      sqlite3_str_appendchar(pOut, nNew, ' ');
+      len = sqlite3_str_length(pOut);
+      if( len>idxSpace ){
+        z = sqlite3_str_value(pOut);
+        memmove(z+idxSpace+nNew, z+idxSpace, len-nNew-idxSpace);
+        memset(z+idxSpace, ' ', nNew);
+      }
+    }
+  }
+  
   return sqlite3_str_finish(pOut);
 }
 
@@ -12817,8 +12848,8 @@ static void main_init(ShellState *p) {
 #endif
   sqlite3_config(SQLITE_CONFIG_URI, 1);
   sqlite3_config(SQLITE_CONFIG_MULTITHREAD);
-  sqlite3_snprintf(sizeof(p->mainPrompt), p->mainPrompt,"sqlite> ");
-  sqlite3_snprintf(sizeof(p->contPrompt), p->contPrompt,"   ...> ");
+  sqlite3_snprintf(sizeof(p->mainPrompt), p->mainPrompt,"SQLite:\\f> ");
+  sqlite3_snprintf(sizeof(p->contPrompt), p->contPrompt,"\\B...\\H> ");
 }
 
 /*

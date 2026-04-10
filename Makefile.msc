@@ -2937,4 +2937,5 @@ clean:
 	del /Q fts5.* fts5parse.* 2>NUL
 	del /q src-verify.exe 2>NUL
 	del /q jimsh.exe jimsh0.exe 2>NUL
+	-$(TCLSH_CMD) test/testrunner.tcl clean
 # <</mark>>

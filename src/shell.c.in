@@ -13499,6 +13499,10 @@ int SQLITE_CDECL main(int argc, char **argv){
           modePop(&data);
           data.nPopMode = 0;
         }
+        if( rc ){
+          goto shell_main_exit;
+        }
+
       }
       if( data.nPopOutput && azCmd[i][0]!='.' ){
         output_reset(&data);

@@ -890,5 +890,6 @@
     SF.dbExec(urlParams.get('sql') || null);
     delete SF.ForceResizeKludge.$disabled;
     SF.ForceResizeKludge();
+    globalThis.fiddle = SF;
   }/*onSFLoaded()*/;
 })();

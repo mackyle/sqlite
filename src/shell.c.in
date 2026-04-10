@@ -1020,8 +1020,9 @@ static char *expand_prompt(
       /* \~ becomes the full pathname relative to $HOME */
       if( onoff ){
         sqlite3_filename pFN = p->db ? sqlite3_db_filename(p->db,0) : 0;
-        const char *zFN = pFN ? sqlite3_filename_database(pFN) : ":memory:";
+        const char *zFN = pFN ? sqlite3_filename_database(pFN) : "";
         if( zFN ){
+          if( zFN[0]==0 ) zFN = "in-memory";
           if( c=='f' ){
             const char *zTail = strrchr(zFN,'/');
             if( zTail && zTail[1] ) zFN = &zTail[1];
@@ -1129,14 +1130,19 @@ static char *expand_prompt(
 ** zPrior argument for reuse.
 */
 #ifndef SQLITE_SHELL_FIDDLE
-static char *one_input_line(ShellState *p, char *zPrior, int bContinue){
+static char *one_input_line(
+  ShellState *p,        /* Shell state */
+  char *zPrior,         /* Just the previous line */
+  const char *zAll,     /* All statement text accumulated so far */
+  int bContinue         /* True for a continuation prompt */
+){
   char *zResult;
   FILE *in = p->in;
   if( in!=0 ){
     zResult = local_getline(zPrior, in);
   }else{
     const char *zBase = bContinue ? p->contPrompt : p->mainPrompt;
-    char *zPrompt = expand_prompt(p, zPrior, zBase);
+    char *zPrompt = expand_prompt(p, zAll, zBase);
     shell_check_oom(zPrompt);
 #if SHELL_USE_LOCAL_GETLINE
     sputz(stdout, zPrompt);
@@ -12414,7 +12420,12 @@ static void echo_group_input(ShellState *p, const char *zDo){
 ** impl because we need the global shellState and cannot access it from that
 ** function without moving lots of code around (creating a larger/messier diff).
 */
-static char *one_input_line(ShellState *p, char *zPrior, int bContinue){
+static char *one_input_line(
+  ShellState *p,     /* Shell state */
+  char *zPrior,      /* Just the prior line of text */
+  const char *zAll,  /* All accumulated statement text */
+  int bContinue      /* True if this is an accumulation */
+){
   /* Parse the next line from shellState.wasm.zInput. */
   const char *zBegin = shellState.wasm.zPos;
   const char *z = zBegin;
@@ -12477,7 +12488,7 @@ static int process_input(ShellState *p, const char *zSrc){
   p->lineno = 0;
   while( errCnt==0 || !bail_on_error || (p->in==0 && stdin_is_interactive) ){
     fflush(p->out);
-    zLine = one_input_line(p, zLine, nSql>0);
+    zLine = one_input_line(p, zLine, zSql, nSql>0);
     if( zLine==0 ){
       /* End of input */
       if( p->in==0 && stdin_is_interactive ) cli_puts("\n", p->out);
@@ -12848,7 +12859,7 @@ static void main_init(ShellState *p) {
 #endif
   sqlite3_config(SQLITE_CONFIG_URI, 1);
   sqlite3_config(SQLITE_CONFIG_MULTITHREAD);
-  sqlite3_snprintf(sizeof(p->mainPrompt), p->mainPrompt,"SQLite:\\f> ");
+  sqlite3_snprintf(sizeof(p->mainPrompt), p->mainPrompt,"SQLite \\f> ");
   sqlite3_snprintf(sizeof(p->contPrompt), p->contPrompt,"\\B...\\H> ");
 }
 

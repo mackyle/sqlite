@@ -911,10 +911,10 @@ static char *local_getline(char *zLine, FILE *in){
 ** The default prompts.
 */
 #ifndef SQLITE_PS1
-# define SQLITE_PS1 "SQLite \\f> "
+# define SQLITE_PS1 "SQLite %f> "
 #endif
 #ifndef SQLITE_PS2
-# define SQLITE_PS2 "\\B...\\H> "
+# define SQLITE_PS2 "%B...%H> "
 #endif
 
 /*
@@ -967,6 +967,11 @@ static const char *prompt_filename(ShellState *p){
 ** Expand escapes in the given input prompt string.  Return the
 ** expanded prompt in memory obtained from sqlite3_malloc().  The
 ** caller is responsible for freeing the memory.
+**
+** Early prototypes use U+005c '\\' as the escape character.  But
+** that is an escape character for shells and C and many other languages,
+** which can lead to nested quoting problems and confusion.  For that
+** reason, the escape character is changed to U+0025 '%'.
 */
 static char *expand_prompt(
   ShellState *p,        /* The current shell state */
@@ -979,27 +984,27 @@ static char *expand_prompt(
   int onoff = 1;
   int idxSpace = -1;
   for(i=0; zPrompt[i]; i++){
-    if( zPrompt[i]!='\\' ) continue;
+    if( zPrompt[i]!='%' ) continue;
     if( i>0 ){
       if( onoff ) sqlite3_str_append(pOut, zPrompt, i);
       zPrompt += i;
       i = 0;
     }
-    /* At this point zPrompt[0] is a \ character and all prior
+    /* At this point zPrompt[0] is a % character and all prior
     ** characters have already been loaded into pOut.  Process the
     ** escape sequence that zPrompt points to. */
     c = zPrompt[1];
     if( c==0 ){
-      /* \ at the end of a line is silently ignored */
+      /* ~ at the end of a line is silently ignored */
       break;
     }
-    if( c=='\\' ){
-      /* \\ maps into a single \  */
+    if( c=='%' ){
+      /* %% maps into a single %  */
       zPrompt++;
       continue;
     }
     if( c>='0' && c<='7' ){
-      /* \nnn becomes a single byte given by octal nnn */
+      /* %nnn becomes a single byte given by octal nnn */
       int v = c - '0';
       while( i<=2 && zPrompt[i+1]>='0' && zPrompt[i+1]<='7' ){
         v = v*8 + zPrompt[++i] - '0';
@@ -1010,7 +1015,7 @@ static char *expand_prompt(
       continue;
     }
     if( c=='e' ){
-      /* \e is \033 "Escape" */
+      /* %e is shorthand for %033 which is U+001B "Escape" */
       if( onoff ) sqlite3_str_append(pOut, "\033", 1);
       zPrompt += 2;
       i = -1;
@@ -1022,12 +1027,12 @@ static char *expand_prompt(
     ** currently in a transaction.  Example 1:  Show a "*" before the ">"
     ** like psql:
     **
-    **         .prompt 'sqlite\x*\;> '
+    **         .prompt 'sqlite%x*%;> '
     **
     ** Example 2: Show database filename is blue if not in a transaction,
     ** or red if within a transaction:
     **
-    **         .prompt '\e[1;\x31\:34\;m\f>\e[0m '
+    **         .prompt '%e[1;%x31%:34%;m~f>%e[0m '
     */
     if( c==':' ){
       /* toggle display on/off */
@@ -1044,7 +1049,7 @@ static char *expand_prompt(
       continue;
     }
     if( c=='x' ){
-      /* \x turns display off not in a transaction, on if in txn */
+      /* %x turns display off not in a transaction, on if in txn */
       onoff = p->db && !sqlite3_get_autocommit(p->db);
       zPrompt += 2;
       i = -1;
@@ -1052,9 +1057,9 @@ static char *expand_prompt(
     }
 
     if( c=='f' || c=='F' || c=='~' ){
-      /* \f becomes the tail of the database filename */
-      /* \F becomes the full pathname */
-      /* \~ becomes the full pathname relative to $HOME */
+      /* %f becomes the tail of the database filename */
+      /* %F becomes the full pathname */
+      /* %~ becomes the full pathname relative to $HOME */
       if( onoff ){
         const char *zFN = prompt_filename(p);
         if( c=='f' ){
@@ -1083,7 +1088,7 @@ static char *expand_prompt(
     }
 
     if( c=='H' ){
-      /* \H becomes text needed to terminate current input */
+      /* %H becomes text needed to terminate current input */
       if( onoff ){
         sqlite3_int64 R = zPrior ? sqlite3_incomplete(zPrior) : 0;
         int cc = (R>>16)&0xff;
@@ -1115,8 +1120,8 @@ static char *expand_prompt(
     }
 
     if( c=='B' ){
-      /* \B is a no-op for the main prompt.  For the continuation prompt,
-      ** \B expands to zero or more spaces to make the continuation prompt
+      /* %B is a no-op for the main prompt.  For the continuation prompt,
+      ** %B expands to zero or more spaces to make the continuation prompt
       ** at least as wide as the main prompt. */
       if( onoff ) idxSpace = sqlite3_str_length(pOut);
       zPrompt += 2;
@@ -1125,7 +1130,7 @@ static char *expand_prompt(
     }
 
     /* No match to a known escape.  Generate an error. */
-    if( onoff ) sqlite3_str_appendf(pOut,"UNKNOWN(\"\\%c\")",c);
+    if( onoff ) sqlite3_str_appendf(pOut,"UNKNOWN(\"%%%c\")",c);
     zPrompt += 2;
     i = -1;
   }
@@ -1133,7 +1138,7 @@ static char *expand_prompt(
     sqlite3_str_append(pOut, zPrompt, i);
   }
 
-  /* Expand the \B, if there is one and if this is a continuation prompt */
+  /* Expand the %B, if there is one and if this is a continuation prompt */
   if( idxSpace>=0 && zPrior!=0 && zPrior[0]!=0 ){
     char *zOther = expand_prompt(p, 0, prompt_string(p,0));
     size_t wOther = sqlite3_qrf_wcswidth(zOther);

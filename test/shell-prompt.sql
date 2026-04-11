@@ -28,8 +28,8 @@
 .testcase 110
 .prompt --show
 .check <<END
-Main prompt:  'SQLite \f> '
-Continuation: '\B...\H> '
+Main prompt:  'SQLite %f> '
+Continuation: '%B...%H> '
 END
 
 .testcase 1000
@@ -61,7 +61,7 @@ SELECT shell_prompt_test(NULL,'CREATE TRIGGER t1 BEGIN SELECT 1;');
 .check "       ...END;> ";
 
 .testcase 2000
-.prompt 'SQLite\x-txn$\:>\; '
+.prompt 'SQLite%x-txn$%:>%; '
 SELECT shell_prompt_test(NULL);
 .check 'SQLite> ';
 .testcase 2001

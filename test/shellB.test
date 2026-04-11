@@ -49,5 +49,6 @@ ifcapable vtab {
   do_clitest intck01.sql
 }
 do_clitest fptest01.sql
+do_clitest shell-prompt.sql
 
 finish_test

@@ -186,6 +186,7 @@
       if(!f._){
         if(!this.runMain()) return;
         f._ = sqlite3.wasm.xWrap('fiddle_exec', undefined, ['string']);
+        f.getPrompt = sqlite3.wasm.xWrap('fiddle_get_prompt', 'string:dealloc', []);
       }
       if(fiddleModule.isDead){
         stderr("shell module has exit()ed. Cannot run SQL.");
@@ -207,7 +208,8 @@
         wMsg('working','end');
         wMsg('wasm-info', {
           pointerSize: sqlite3.wasm.ptr.size,
-          heapSize: sqlite3.wasm.heap8().byteLength
+          heapSize: sqlite3.wasm.heap8().byteLength,
+          prompt: f.getPrompt()
         });
       }
     },

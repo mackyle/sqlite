@@ -868,6 +868,12 @@
         prompt: 'sqlite> ',
         greetings: false /* the docs incorrectly call this 'greeting' */
       });
+      /* Disable all special handling of the input:
+         https://sqlite.org/forum/forumpost/c6665017c0dbba1f
+         https://github.com/jcubic/jquery.terminal/issues/1044 */
+      const no_formatting = (str)=>window.jQuery.terminal.escape_formatting(str);
+      no_formatting.__meta__ = true;
+      window.jQuery.terminal.new_formatter(no_formatting);
       EAll('.unhide-if-terminal-available').forEach(e=>{
         e.classList.remove('hidden');
       });

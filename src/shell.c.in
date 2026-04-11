@@ -1057,7 +1057,10 @@ static char *expand_prompt(
         }else if( c=='~' ){
           const char *zHOME = getenv("HOME");
           size_t nHOME = zHOME ? strlen(zHOME) : 0;
-          if( nHOME<strlen(zFN) && memcmp(zHOME,zFN,nHOME)==0 ){
+          if( nHOME<strlen(zFN)
+           && zHOME!=0 && zFN!=0  /* <--- these silence compiler warnings */
+           && memcmp(zHOME,zFN,nHOME)==0
+          ){
             sqlite3_str_append(pOut,"~",1);
             zFN += nHOME;
           }
@@ -1130,7 +1133,8 @@ static char *expand_prompt(
       char *z;
       int len;
       size_t nNew = wOther - wThis;
-      sqlite3_str_appendchar(pOut, nNew, ' ');
+      assert( nNew>0 && nNew<0x7fffffff );
+      sqlite3_str_appendchar(pOut, (int)nNew, ' ');
       len = sqlite3_str_length(pOut);
       if( len>idxSpace ){
         z = sqlite3_str_value(pOut);

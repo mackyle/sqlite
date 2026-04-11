@@ -908,6 +908,16 @@ static char *local_getline(char *zLine, FILE *in){
 }
 
 /*
+** The default prompts.
+*/
+#ifndef SQLITE_PS1
+# define SQLITE_PS1 "SQLite \\f> "
+#endif
+#ifndef SQLITE_PS2
+# define SQLITE_PS2 "\\B...\\H> "
+#endif
+
+/*
 ** Return the raw (unexpanded) prompt string.  This will be the
 ** first of the following that exist:
 **
@@ -929,9 +939,9 @@ static const char *prompt_string(ShellState *p, int bContinue){
   if( zPS ) return zPS;
 #endif
   if( bContinue ){
-    return "\\B...\\H> ";
+    return SQLITE_PS2;
   }else{
-    return "SQLite \\f> ";
+    return SQLITE_PS1;
   }
 }
 

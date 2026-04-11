@@ -332,10 +332,10 @@ sqlite3_int64 sqlite3_incomplete(const char *zSql){
   }
 incomplete_finish:
   if( state==1 ) nParen = 0;
-  return (((i64)nParen)<<32) |
-          ((i64)pending<<16) |
-          ((i64)statemap[state]<<8) |
-          (state!=1);
+  return (i64)((((u64)nParen)<<32) |
+               ((u64)pending<<16) |
+               ((u64)statemap[state]<<8) |
+               (state!=1));
 }
 int sqlite3_complete(const char *zSql){
   return sqlite3_incomplete(zSql)==0;

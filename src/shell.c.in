@@ -1100,12 +1100,13 @@ static char *expand_prompt(
   /* Expand the \B, if there is one and if this is a continuation prompt */
   if( idxSpace>=0 && zPrior!=0 && zPrior[0]!=0 ){
     char *zOther = expand_prompt(p, 0, p->mainPrompt);
-    int nOther = strlen30(zOther);
+    size_t wOther = sqlite3_qrf_wcswidth(zOther);
+    size_t wThis = sqlite3_qrf_wcswidth(sqlite3_str_value(pOut));
     sqlite3_free(zOther);
-    if( nOther>sqlite3_str_length(pOut) ){
+    if( wOther>wThis ){
       char *z;
-      int nNew = nOther - sqlite3_str_length(pOut);
       int len;
+      size_t nNew = wOther - wThis;
       sqlite3_str_appendchar(pOut, nNew, ' ');
       len = sqlite3_str_length(pOut);
       if( len>idxSpace ){

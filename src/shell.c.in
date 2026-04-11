@@ -410,6 +410,7 @@ struct ShellState {
     sqlite3 *db;               /* Connection pointer */
     const char *zDbFilename;   /* Filename used to open the connection */
     char *zFreeOnClose;        /* Free this memory allocation on close */
+    int mFlgs;                 /* 0x001: Use zDbFilenaem for prompt */
 #if defined(SQLITE_ENABLE_SESSION)
     int nSession;              /* Number of active sessions */
     OpenSession aSession[4];   /* Array of sessions.  [0] is in focus. */
@@ -935,6 +936,24 @@ static const char *prompt_string(ShellState *p, int bContinue){
 }
 
 /*
+** Return the name of the open database file, to be used for prompt
+** expansion purposes.
+*/
+static const char *prompt_filename(ShellState *p){
+  sqlite3_filename pFN;
+  const char *zFN = 0;
+  if( p->pAuxDb->mFlgs & 0x01 ){
+    zFN = p->pAuxDb->zDbFilename;
+  }else if( p->db && (pFN = sqlite3_db_filename(p->db,0))!=0 ){
+    zFN = sqlite3_filename_database(pFN);
+  }
+  if( zFN==0 || zFN[0]==0 ){
+    zFN = "in-memory";
+  }
+  return zFN;
+}
+
+/*
 ** Expand escapes in the given input prompt string.  Return the
 ** expanded prompt in memory obtained from sqlite3_malloc().  The
 ** caller is responsible for freeing the memory.
@@ -1027,27 +1046,23 @@ static char *expand_prompt(
       /* \F becomes the full pathname */
       /* \~ becomes the full pathname relative to $HOME */
       if( onoff ){
-        sqlite3_filename pFN = p->db ? sqlite3_db_filename(p->db,0) : 0;
-        const char *zFN = pFN ? sqlite3_filename_database(pFN) : "";
-        if( zFN ){
-          if( zFN[0]==0 ) zFN = "in-memory";
-          if( c=='f' ){
+        const char *zFN = prompt_filename(p);
+        if( c=='f' ){
 #ifdef _WIN32
-            const char *zTail = strrchr(zFN,'\\');
+          const char *zTail = strrchr(zFN,'\\');
 #else
-            const char *zTail = strrchr(zFN,'/');
+          const char *zTail = strrchr(zFN,'/');
 #endif
-            if( zTail && zTail[1] ) zFN = &zTail[1];
-          }else if( c=='~' ){
-            const char *zHOME = getenv("HOME");
-            size_t nHOME = zHOME ? strlen(zHOME) : 0;
-            if( nHOME<strlen(zFN) && memcmp(zHOME,zFN,nHOME)==0 ){
-              sqlite3_str_append(pOut,"~",1);
-              zFN += nHOME;
-            }
+          if( zTail && zTail[1] ) zFN = &zTail[1];
+        }else if( c=='~' ){
+          const char *zHOME = getenv("HOME");
+          size_t nHOME = zHOME ? strlen(zHOME) : 0;
+          if( nHOME<strlen(zFN) && memcmp(zHOME,zFN,nHOME)==0 ){
+            sqlite3_str_append(pOut,"~",1);
+            zFN += nHOME;
           }
-          sqlite3_str_appendall(pOut, zFN);
         }
+        sqlite3_str_appendall(pOut, zFN);
       }
       zPrompt += 2;
       i = -1;
@@ -1499,19 +1514,50 @@ static void shellAddSchemaName(
 }
 
 /*
-** SQL function:  shell_expand_prompt(PROMPT,PRIOR)
+** SQL function:  shell_prompt_test(PROMPT)
+**                shell_prompt_test(PROMPT,PRIOR)
+**                shell_prompt_test(PROMPT,PRIOR,FILENAME)
 **
-** Invoke the internal expand_prompt() function, for testing purposes.
+** Return the shell prompt, with escapes expanded, for testing purposes.
+** The first argument is the raw (unexpanded) prompt string.  Or if the
+** first argument is NULL, then use whatever prompt string is currently
+** configured.  If the second argument exists and is not NULL, then the
+** second argument is understood to be prior incomplete text and a
+** continuation prompt is generated.  If a third argument is provided,
+** it is assumed to be the full pathname of the database file.
 */
 static void shellExpandPrompt(
   sqlite3_context *pCtx,
   int nVal,
   sqlite3_value **apVal
 ){
-  const char *zPrompt = (const char*)sqlite3_value_text(apVal[0]);
-  const char *zPrior = nVal>=2 ? (const char*)sqlite3_value_text(apVal[1]) : 0;
   ShellState *p = (ShellState*)sqlite3_user_data(pCtx);
-  char *zRes = expand_prompt(p, zPrior, zPrompt);
+  const char *zPrompt;
+  const char *zPrior;
+  const char *zSavedDbFile;
+  int mSavedFlgs;
+  const char *zFName;
+  char *zRes;
+
+  if( nVal<2 
+   || (zPrior = (const char*)sqlite3_value_text(apVal[1]))==0
+   || zPrior[0]==0
+  ){
+    zPrior = 0;
+  }
+  zPrompt = (const char*)sqlite3_value_text(apVal[0]);
+  if( zPrompt==0 ){
+    zPrompt = prompt_string(p, zPrior!=0);
+  }
+  zSavedDbFile = p->pAuxDb->zDbFilename;
+  mSavedFlgs = p->pAuxDb->mFlgs;
+  if( nVal>=3 && (zFName = (const char*)sqlite3_value_text(apVal[2]))!=0 ){
+    p->pAuxDb->zDbFilename = zFName;
+    p->pAuxDb->mFlgs |= 0x001;
+  }
+  zRes = expand_prompt(p, zPrior, zPrompt);
+  p->pAuxDb->zDbFilename = zSavedDbFile;
+  p->pAuxDb->mFlgs = mSavedFlgs;
   sqlite3_result_text(pCtx, zRes, -1, SQLITE_TRANSIENT);
   sqlite3_free(zRes);
 }
@@ -4604,6 +4650,31 @@ static void shellModuleSchema(
 static void open_db(ShellState *p, int openFlags){
   if( p->db==0 ){
     const char *zDbFilename = p->pAuxDb->zDbFilename;
+    const char *zHOME;    /* Value of HOME environment variable */
+    char *zToFree = 0;    /* Filename with ~/ prefix expansion */
+
+    /* If the zDbFilename does not exist and begins with ~/ then replace
+    ** the ~ with the home directory.
+    */
+    if( zDbFilename && zDbFilename[0]=='~'
+#ifdef _WIN32
+     && (zDbFilename[1]=='/' || zDbFilename[1]=='\\')
+#else
+     && zDbFilename[1]=='/'
+#endif
+     && access(zDbFilename,0)!=0
+     && (zHOME = getenv("HOME"))!=0 && zHOME[0]!=0
+    ){
+      size_t nHOME = strlen(zHOME);
+      size_t nFN = strlen(zDbFilename);
+      zToFree = malloc(nHOME+nFN+1);
+      if( zToFree ){
+        memcpy(zToFree, zHOME, nHOME);
+        memcpy(zToFree+nHOME, zDbFilename+1, nFN);
+        zDbFilename = zToFree;
+      }
+    }
+
     if( p->openMode==SHELL_OPEN_UNSPEC ){
       if( zDbFilename==0 || zDbFilename[0]==0 ){
         p->openMode = SHELL_OPEN_NORMAL;
@@ -4737,9 +4808,11 @@ static void open_db(ShellState *p, int openFlags){
     sqlite3_create_function(p->db, "edit", 2, SQLITE_UTF8, 0,
                             editFunc, 0, 0);
 #endif
-    sqlite3_create_function(p->db, "shell_expand_prompt", 1, SQLITE_UTF8,
+    sqlite3_create_function(p->db, "shell_prompt_test", 1, SQLITE_UTF8,
                             p, shellExpandPrompt, 0, 0);
-    sqlite3_create_function(p->db, "shell_expand_prompt", 2, SQLITE_UTF8,
+    sqlite3_create_function(p->db, "shell_prompt_test", 2, SQLITE_UTF8,
+                            p, shellExpandPrompt, 0, 0);
+    sqlite3_create_function(p->db, "shell_prompt_test", 3, SQLITE_UTF8,
                             p, shellExpandPrompt, 0, 0);
 
 
@@ -4775,6 +4848,7 @@ static void open_db(ShellState *p, int openFlags){
       }
     }
 #endif
+    free(zToFree);
   }
   if( p->db!=0 ){
 #ifndef SQLITE_OMIT_AUTHORIZATION

@@ -1320,12 +1320,13 @@ proc add_c_jobs {buildname} {
   foreach f [glob $dir/*.c] {
     set prg [string range [file tail $f] 0 end-2]
 
+    set cmd ""
     if {$TRG(platform)=="win"} {
-      set prg "${prg}.exe"
-      foreach cp {sqlite3.c sqlite3.o .target_source src-verify} {
-        append cmd "copy [file join $blddir $cp] .\n"
+      foreach cp {sqlite3.lo *.h *.c} {
+        append cmd "copy [file nativename [file join $blddir $cp]] .\n"
       }
       append cmd "SET AUXTEST=$prg\n"
+      set prg "${prg}.exe"
       append cmd "$TRG(makecmd) $prg\n"
       append cmd ".\\$prg\n"
     } else {

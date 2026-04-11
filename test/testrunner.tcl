@@ -1298,6 +1298,56 @@ proc add_build_job {buildname target {postcmd ""} {depid ""}} {
   list $id [file normalize $dirname] $buildname
 }
 
+# Add jobs to build and run all the *.c files in $testdir/c/ for build
+# configuration $buildname.
+# 
+proc add_c_jobs {buildname} {
+  global TRG
+
+  set dir [file join $::testdir c]
+
+  # One job to build the sqlite3.o file for this configuration. Each
+  # individual "c" job will copy this sqlite3.o into its working directory
+  # so that it doesn't have to build it separately every time. 
+  #
+  set obj sqlite3.o
+  if {$TRG(platform)=="win"} { set obj sqlite3.lo }
+  set B [add_build_job $buildname $obj]
+  foreach {bldid blddir dummy} $B {}
+
+  # One job for each C file.
+  #
+  foreach f [glob $dir/*.c] {
+    set prg [string range [file tail $f] 0 end-2]
+
+    if {$TRG(platform)=="win"} {
+      set prg "${prg}.exe"
+      foreach cp {sqlite3.c sqlite3.o .target_source src-verify} {
+        append cmd "copy [file join $blddir $cp] .\n"
+      }
+      append cmd "SET AUXTEST=$prg\n"
+      append cmd "$TRG(makecmd) $prg\n"
+      append cmd ".\\$prg\n"
+    } else {
+      set cmd "set -e\n"
+      foreach cp {sqlite3.c sqlite3.o .target_source src-verify} {
+        append cmd "cp [file join $blddir $cp] .\n"
+      }
+      append cmd "AUXTEST=$prg $TRG(makecmd) $prg\n"
+      append cmd "./$prg\n"
+    }
+    
+    set id [add_job                                \
+      -displaytype tcl                             \
+      -displayname "$prg ($buildname)"             \
+      -build $buildname                            \
+      -cmd  $cmd                                   \
+      -depid $bldid                                \
+      -priority 3
+    ]
+  }
+}
+
 proc add_shell_build_job {buildname dirname depid} {
   global TRG
 
@@ -1545,6 +1595,8 @@ proc add_jobs_from_cmdline {patternlist} {
             UPDATE jobs SET depid=$sbldid WHERE depid='SHELL'
           }
         }
+
+        add_c_jobs $b
       }
     }
 

@@ -356,11 +356,6 @@ typedef struct Mode {
 #define MFLG_HDR   0x04  /* .header used to change headers on/off */
 
 /*
-** Size of the prompt strings
-*/
-#define PROMPT_MAX 128
-
-/*
 ** State information about the database connection is contained in an
 ** instance of the following structure.
 */
@@ -403,6 +398,7 @@ struct ShellState {
   char *zErrPrefix;      /* Alternative error message prefix */
   sqlite3_stmt *pStmt;   /* Current statement if any. */
   FILE *pLog;            /* Write log output here */
+  char *azPrompt[2];     /* Main and continuation prompt strings */
   Mode mode;             /* Current display mode */
   Mode modePrior;        /* Backup */
   struct SavedMode {     /* Ability to define custom mode configurations */
@@ -442,8 +438,6 @@ struct ShellState {
 #endif
   char zTestcase[30];           /* Name of current test case */
   char outfile[FILENAME_MAX];   /* Filename for *out */
-  char mainPrompt[PROMPT_MAX];  /* Main prompt */
-  char contPrompt[PROMPT_MAX];  /* Continuation prompt */
 };
 
 #ifdef SQLITE_SHELL_FIDDLE
@@ -793,20 +787,6 @@ static sqlite3_int64 timeOfDay(void){
 #endif
 }
 
-
-
-/* This is variant of the standard-library strncpy() routine with the
-** one change that the destination string is always zero-terminated, even
-** if there is no zero-terminator in the first n-1 characters of the source
-** string.
-*/
-static char *shell_strncpy(char *dest, const char *src, size_t n){
-  size_t i;
-  for(i=0; i<n-1 && src[i]!=0; i++) dest[i] = src[i];
-  dest[i] = 0;
-  return dest;
-}
-
 /* Indicate out-of-memory and exit. */
 static void shell_out_of_memory(void){
   eputz("Error: out of memory\n");
@@ -924,6 +904,34 @@ static char *local_getline(char *zLine, FILE *in){
     }
   }
   return zLine;
+}
+
+/*
+** Return the raw (unexpanded) prompt string.  This will be the
+** first of the following that exist:
+**
+**    *  The prompt string specified by the ".prompt" command.
+**    *  The value of the SQLITE_PS1 (or SQLITE_PS2) environment variable.
+**    *  The default prompt string.
+**
+** The main prompt is returned if the argument is zero and the
+** continuation prompt is returned if the argument is 1.
+*/
+static const char *prompt_string(ShellState *p, int bContinue){
+  const char *zPS;
+  assert( bContinue==0 || bContinue==1 );
+  if( p->azPrompt[bContinue] ){
+    return p->azPrompt[bContinue];
+  }
+#ifndef SQLITE_SHELL_FIDDLE
+  zPS = getenv(bContinue ? "SQLITE_PS2" : "SQLITE_PS1");
+  if( zPS ) return zPS;
+#endif
+  if( bContinue ){
+    return "\\B...\\H> ";
+  }else{
+    return "SQLite \\f> ";
+  }
 }
 
 /*
@@ -1079,7 +1087,7 @@ static char *expand_prompt(
     }
 
     if( c=='B' ){
-      /* \B is a no-op for the main prmopt.  For the continuation prompt,
+      /* \B is a no-op for the main prompt.  For the continuation prompt,
       ** \B expands to zero or more spaces to make the continuation prompt
       ** at least as wide as the main prompt. */
       if( onoff ) idxSpace = sqlite3_str_length(pOut);
@@ -1099,7 +1107,7 @@ static char *expand_prompt(
 
   /* Expand the \B, if there is one and if this is a continuation prompt */
   if( idxSpace>=0 && zPrior!=0 && zPrior[0]!=0 ){
-    char *zOther = expand_prompt(p, 0, p->mainPrompt);
+    char *zOther = expand_prompt(p, 0, prompt_string(p,0));
     size_t wOther = sqlite3_qrf_wcswidth(zOther);
     size_t wThis = sqlite3_qrf_wcswidth(sqlite3_str_value(pOut));
     sqlite3_free(zOther);
@@ -1146,7 +1154,7 @@ static char *one_input_line(
   if( in!=0 ){
     zResult = local_getline(zPrior, in);
   }else{
-    const char *zBase = bContinue ? p->contPrompt : p->mainPrompt;
+    const char *zBase = prompt_string(p, bContinue!=0);
     char *zPrompt = expand_prompt(p, zAll, zBase);
     shell_check_oom(zPrompt);
 #if SHELL_USE_LOCAL_GETLINE
@@ -10562,10 +10570,12 @@ static int do_meta_command(const char *zLine, ShellState *p){
 
   if( c=='p' && cli_strncmp(azArg[0], "prompt", n)==0 ){
     if( nArg >= 2) {
-      shell_strncpy(p->mainPrompt,azArg[1],sizeof(p->mainPrompt)-1);
+      free(p->azPrompt[0]);
+      p->azPrompt[0] = strdup(azArg[1]);
     }
     if( nArg >= 3) {
-      shell_strncpy(p->contPrompt,azArg[2],sizeof(p->contPrompt)-1);
+      free(p->azPrompt[1]);
+      p->azPrompt[1] = strdup(azArg[2]);
     }
   }else
 
@@ -12864,8 +12874,6 @@ static void main_init(ShellState *p) {
 #endif
   sqlite3_config(SQLITE_CONFIG_URI, 1);
   sqlite3_config(SQLITE_CONFIG_MULTITHREAD);
-  sqlite3_snprintf(sizeof(p->mainPrompt), p->mainPrompt,"SQLite \\f> ");
-  sqlite3_snprintf(sizeof(p->contPrompt), p->contPrompt,"\\B...\\H> ");
 }
 
 /*
@@ -13702,6 +13710,8 @@ int SQLITE_CDECL main(int argc, char **argv){
   free(data.dot.azArg);
   free(data.dot.aiOfst);
   free(data.dot.abQuot);
+  free(data.azPrompt[0]);
+  free(data.azPrompt[1]);
   if( data.nTestRun ){
     sqlite3_fprintf(stdout, "%d test%s run with %d error%s\n",
        data.nTestRun, data.nTestRun==1 ? "" : "s",
@@ -13863,6 +13873,6 @@ void fiddle_exec(const char * zSql){
 }
 
 char *fiddle_get_prompt(void){
-  return expand_prompt(&shellState, 0, &shellState.mainPrompt[0]);
+  return expand_prompt(&shellState, 0, prompt_string(&shellState,0));
 }
 #endif /* SQLITE_SHELL_FIDDLE */

@@ -31,6 +31,27 @@
 Main prompt:  'SQLite /f> '
 Continuation: '/B.../H> '
 END
+.testcase 111
+.prompt 'abc> ' '123> ' -show
+.check <<END
+Main prompt:  'abc> '
+Continuation: '123> '
+END
+.testcase 112
+.prompt --  --first --second
+.prompt --show
+.check <<END
+Main prompt:  '--first'
+Continuation: '--second'
+END
+.testcase 113
+.prompt --reset --show
+.check <<END
+Main prompt:  'SQLite /f> '
+Continuation: '/B.../H> '
+END
+
+
 
 .testcase 1000
 SELECT shell_prompt_test(NULL);

@@ -10700,6 +10700,7 @@ static int do_meta_command(const char *zLine, ShellState *p){
       }else{
         free(p->azPrompt[cnt]);
         p->azPrompt[cnt] = strdup(z);
+        cnt++;
       }
     } 
   }else

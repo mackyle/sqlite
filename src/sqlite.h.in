@@ -2992,7 +2992,7 @@ int sqlite3_is_interrupted(sqlite3*);
 ** then the return value from sqlite3_complete16() will be non-zero
 ** regardless of whether or not the input SQL is complete.)^
 **
-** The X input to [sqlite3_complete(X)] and [sqlite3_incomplete(X)
+** The X input to [sqlite3_complete(X)] and [sqlite3_incomplete(X)]
 ** must be a zero-terminated UTF-8 string.
 **
 ** The input to [sqlite3_complete16()] must be a zero-terminated

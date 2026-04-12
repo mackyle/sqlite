@@ -3984,7 +3984,7 @@ static const char *(azHelp[]) = {
   "   --schema SCHEMA         Use SCHEMA instead of \"main\"",
   "   --help                  Show CMD details",
   ".fullschema ?--indent?   Show schema and the content of sqlite_stat tables",
-  ",headers on|off          Turn display of headers on or off",
+  ".headers on|off          Turn display of headers on or off",
   ".help ?-all? ?PATTERN?   Show help text for PATTERN",
 #ifndef SQLITE_SHELL_FIDDLE
   ".import FILE TABLE       Import data from FILE into TABLE",

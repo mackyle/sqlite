@@ -958,7 +958,10 @@ static const char *prompt_filename(ShellState *p){
     zFN = sqlite3_filename_database(pFN);
   }
   if( zFN==0 || zFN[0]==0 ){
-    zFN = "in-memory";
+    zFN = p->pAuxDb->zDbFilename;
+    if( zFN==0 || zFN[0]==0 || cli_strcmp(zFN,":memory:")==0 ){
+      zFN = "in-memory";
+    }
   }
   return zFN;
 }

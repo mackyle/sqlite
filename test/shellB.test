@@ -49,6 +49,8 @@ ifcapable vtab {
   do_clitest intck01.sql
 }
 do_clitest fptest01.sql
+unset -nocomplain ::env(SQLITE_PS1)
+unset -nocomplain ::env(SQLITE_PS2)
 do_clitest shell-prompt.sql
 
 finish_test

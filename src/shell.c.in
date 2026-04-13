@@ -4065,6 +4065,7 @@ static const char *(azHelp[]) = {
   "   --timeout S               Halt after running for S seconds",
 #endif
   ".prompt MAIN CONTINUE        Replace the standard prompts",
+  "   --hard-reset                 Unset SQLITE_PS1/2 and then --reset",
   "   --reset                      Revert to default prompts",
   "   --show                       Show the current prompt strings",
   "   --                           No more options. Subsequent args are prompts",
@@ -10679,6 +10680,11 @@ static int do_meta_command(const char *zLine, ShellState *p){
       const char *z = azArg[i];
       if( z[0]=='-' && !noOpt ){
         if( z[1]=='-' ) z++;
+        if( strcmp(z,"-hard-reset")==0 ){
+          unsetenv("SQLITE_PS1");
+          unsetenv("SQLITE_PS2");
+          z += 5;
+        }
         if( strcmp(z,"-reset")==0 ){
           free(p->azPrompt[0]);
           free(p->azPrompt[1]);
@@ -10700,6 +10706,8 @@ static int do_meta_command(const char *zLine, ShellState *p){
         dotCmdError(p, i, "extra argument", 0);
         rc = 1;
         goto meta_command_exit;
+      }else if( !p->dot.abQuot[i] && sqlite3_strglob("*[^a-z]*",z)!=0 ){
+        dotCmdError(p, i, "use quotes around the prompt string", 0);
       }else{
         free(p->azPrompt[cnt]);
         p->azPrompt[cnt] = strdup(z);

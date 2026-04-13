@@ -19,6 +19,7 @@
 .testcase setup
 .open -new test.db
 .mode list -quote off -escape ascii
+.prompt --hard-reset
 .check ''
 
 .testcase 100
@@ -51,6 +52,40 @@ Main prompt:  'SQLite /f> '
 Continuation: '/B.../H> '
 END
 
+.testcase 120 --error-prefix ERROR:
+.prompt show
+.check <<END
+ERROR: .prompt show
+ERROR:         ^--- use quotes around the prompt string
+END
+
+.testcase 121
+.prompt 'show'
+.check ''
+.testcase 122
+.prompt --show
+.check <<END
+Main prompt:  'show'
+Continuation: '/B.../H> '
+END
+
+.testcase 130
+.prompt --reset
+.help prompt
+.check <<END
+.prompt MAIN CONTINUE        Replace the standard prompts
+   --hard-reset                 Unset SQLITE_PS1/2 and then --reset
+   --reset                      Revert to default prompts
+   --show                       Show the current prompt strings
+   --                           No more options. Subsequent args are prompts
+END
+
+.testcase 140 --error-prefix ERROR:
+.prompt --xyz
+.check <<END
+ERROR: .prompt --xyz
+ERROR:         ^--- unknown option
+END
 
 
 .testcase 1000

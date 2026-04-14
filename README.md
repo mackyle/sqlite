@@ -80,8 +80,8 @@ Then run commands like this:
         fossil open https://sqlite.org/src
 
 The initial "fossil open" command will take two or three minutes.  Afterwards,
-you can do fast, bandwidth-efficient updates to the whatever versions
-of SQLite you like.  Some examples:
+you can do fast, bandwidth-efficient updates to whatever versions of SQLite you
+like.  Some examples:
 
         fossil update trunk             ;# latest trunk check-in
         fossil update release           ;# latest official release

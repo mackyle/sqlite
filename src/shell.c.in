@@ -2056,7 +2056,7 @@ static void dotCmdError(
 **     (4) Delete the temporary file
 **
 ** If the EDITOR argument is omitted, use the value in the VISUAL
-** environment variable.  If still there is no EDITOR, through an error.
+** environment variable.  If still there is no EDITOR, throw an error.
 **
 ** Also throw an error if the EDITOR program returns a non-zero exit code.
 */

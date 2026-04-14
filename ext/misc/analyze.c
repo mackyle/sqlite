@@ -43,6 +43,7 @@ static void analysisFree(Analysis *p){
   }
   sqlite3_str_free(p->pOut);
   sqlite3_free(p->zSU);
+  memset(p, 0, sizeof(*p));
 }
 
 /*
@@ -63,13 +64,16 @@ static sqlite3_stmt *analysisVPrep(Analysis *p, const char *zFmt, va_list ap){
   zSql = sqlite3_vmprintf(zFmt, ap);
   if( zSql==0 ){ analysisOom(p); return 0; }
   rc = sqlite3_prepare_v2(p->db, zSql, -1, &pStmt, 0);
-  sqlite3_free(zSql);
   if( rc ){
-    sqlite3_result_error(p->context, "SQL error", -1);
+    char *zErr = sqlite3_mprintf("SQL parse error: %s\nOriginal SQL: %s",
+                                 sqlite3_errmsg(p->db), zSql);
+    sqlite3_result_error(p->context, zErr, -1);
+    sqlite3_free(zErr);
     sqlite3_finalize(pStmt);
     analysisFree(p);
-    return 0;
+    pStmt = 0;
   }
+  sqlite3_free(zSql);
   return pStmt;
 }
 static sqlite3_stmt *analysisPrepare(Analysis *p, const char *zFormat, ...){
@@ -93,7 +97,17 @@ static int analysisSql(Analysis *p, const char *zFormat, ...){
   va_end(ap);
   if( pStmt==0 ) return 1;
   while( (rc = sqlite3_step(pStmt))==SQLITE_ROW ){}
-  return sqlite3_finalize(pStmt);
+  if( rc==SQLITE_DONE ){
+    rc = SQLITE_OK;
+  }else{
+    char *zErr = sqlite3_mprintf("SQL run-time error: %s\nOriginal SQL: %s",
+                                 sqlite3_errmsg(p->db), sqlite3_sql(pStmt));
+    sqlite3_result_error(p->context, zErr, -1);
+    sqlite3_free(zErr);
+    analysisFree(p);
+  }
+  sqlite3_finalize(pStmt);
+  return rc;
 }
 
 /*

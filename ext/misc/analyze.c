@@ -117,8 +117,8 @@ static int analysisStmtFinish(Analysis *p, int rc, sqlite3_stmt *pStmt){
   if( rc==SQLITE_DONE ){
     rc = SQLITE_OK;
   }
-  if( rc!=SQLITE_OK ){
-    analysisError(p, "SQL parse error: %s\nOriginal SQL: %s",
+  if( rc!=SQLITE_OK || (rc = sqlite3_reset(pStmt))!=SQLITE_OK ){
+    analysisError(p, "SQL run-time error: %s\nOriginal SQL: %s",
                   sqlite3_errmsg(p->db), sqlite3_sql(pStmt));
     analysisReset(p);
   }
@@ -351,20 +351,20 @@ static int analysisSubreport(
     rc = SQLITE_DONE;
 
     total_pages = leaf_pages + int_pages + ovfl_pages;
-    analysisLine(p, "Percentage of total database", "");
-    analysisPercent(p, 0, (total_pages*100.0)/(double)nPage);
+    analysisLine(p, "Percentage of total database", "%.3g%%\n",
+                 (total_pages*100.0)/(double)nPage);
     analysisLine(p, "Number of entries", "%lld\n", nentry);
     storage = total_pages*pgsz;
     analysisLine(p, "Bytes of storage consumed", "%lld\n", storage);
-    analysisLine(p, "Bytes of payload", "%-11lld", payload);
+    analysisLine(p, "Bytes of payload", "%-11lld ", payload);
     analysisPercent(p, 0, payload*100.0/(double)storage);
     if( ovfl_cnt>0 ){
-      analysisLine(p, "Bytes of payload in overflow", "%-11lld", ovfl_payload);
+      analysisLine(p, "Bytes of payload in overflow","%-11lld ",ovfl_payload);
       analysisPercent(p, 0, ovfl_payload*100.0/(double)payload);
     }
     total_unused = leaf_unused + int_unused + ovfl_unused;
     total_meta = storage - payload - total_unused;
-    analysisLine(p, "Bytes of metadata", "%-11lld", total_meta);
+    analysisLine(p, "Bytes of metadata","%-11lld ", total_meta);
     analysisPercent(p, 0, total_meta*100.0/(double)storage);
     if( cnt==1 ){
       analysisLine(p, "B-tree depth", "%lld\n", depth);
@@ -379,7 +379,7 @@ static int analysisSubreport(
     }
     analysisLine(p, "Maximum single-entry payload", "%lld\n", mx_payload);
     if( nentry>0 ){
-      analysisLine(p, "Entries that use overflow", "%-11lld", ovfl_cnt);
+      analysisLine(p, "Entries that use overflow", "%-11lld ", ovfl_cnt);
       analysisPercent(p, 0, ovfl_cnt*100.0/(double)nentry);
     }
     if( int_pages>0 ){
@@ -397,14 +397,10 @@ static int analysisSubreport(
     if( ovfl_cnt ){
       analysisLine(p, "Unused bytes on overflow pages", "%lld\n", ovfl_unused);
     }
-    analysisLine(p, "Unused bytes on all pages", "%-11lld", total_unused);
+    analysisLine(p, "Unused bytes on all pages", "%-11lld ", total_unused);
     analysisPercent(p, 0, total_unused*100.0/(double)storage);
   }
-  if( analysisStmtFinish(p, rc, pStmt) ){
-    return rc;
-  }else{
-    return SQLITE_OK;
-  }
+  return analysisStmtFinish(p, rc, pStmt);
 }
 
 /*
@@ -439,7 +435,7 @@ static void analyzeFunc(
   s.zSchema = (const char*)sqlite3_value_text(argv[0]);
   if( s.zSchema==0 ) s.zSchema = "main";
   sqlite3_randomness(sizeof(r), &r);
-  s.zSU = sqlite3_mprintf("analysis%016x%016x", r[0], r[1]);
+  s.zSU = sqlite3_mprintf("analysis%016llx%016llx", r[0], r[1]);
   if( s.zSU==0 ){ analysisError(&s, 0); return; }
 
   /* The s.zSU table contains the data used for the analysis.
@@ -573,7 +569,10 @@ static void analyzeFunc(
        "SELECT count(*) FROM \"%w\".pragma_table_list WHERE wr",
        s.zSchema);
   if( rc ) return;
-  analysisLine(&s, "Number of WITHOUT ROWID tables", "%lld\n", nWORowid);
+  if( nWORowid>0 ){
+    analysisLine(&s, "Number of WITHOUT ROWID tables", "%lld\n", nWORowid);
+    analysisLine(&s, "Number of rowid tables", "%lld\n", i64 - nWORowid);
+  }
   nIndex = 0;
   rc = analysisSqlInt(&s, &nIndex, 
        "SELECT count(*) FROM \"%w\".sqlite_schema WHERE type='index'",
@@ -595,7 +594,9 @@ static void analyzeFunc(
        " WHERE NOT is_index AND name NOT LIKE 'sqlite_schema'",
        s.zSU);
   if( rc ) return;
-  analysisLine(&s, "Bytes of payload", "%lld\n\n", i64);
+  analysisLine(&s, "Bytes of payload", "%-11lld ", i64);
+  analysisPercent(&s, 0, i64*100.0/(double)(pgsz*nPage));
+  sqlite3_str_append(s.pOut, "\n", 1);
 
   analysisTitle(&s, "Page counts for all tables with their indexes");
   sqlite3_str_append(s.pOut, "\n", 1);
@@ -609,7 +610,7 @@ static void analyzeFunc(
   if( pStmt==0 ) return;
   while( (rc = sqlite3_step(pStmt))==SQLITE_ROW ){
     sqlite3_int64 n = sqlite3_column_int64(pStmt,1);
-    analysisLine(&s, (const char*)sqlite3_column_text(pStmt,0), "%-11lld", n);
+    analysisLine(&s, (const char*)sqlite3_column_text(pStmt,0), "%-11lld ", n);
     analysisPercent(&s, 0, (n*100.0)/(double)nPage);
   }
   if( analysisStmtFinish(&s, rc, pStmt) ) return;
@@ -627,7 +628,7 @@ static void analyzeFunc(
   if( pStmt==0 ) return;
   while( (rc = sqlite3_step(pStmt))==SQLITE_ROW ){
     sqlite3_int64 n = sqlite3_column_int64(pStmt,1);
-    analysisLine(&s, (const char*)sqlite3_column_text(pStmt,0), "%-11lld", n);
+    analysisLine(&s, (const char*)sqlite3_column_text(pStmt,0), "%-11lld ", n);
     analysisPercent(&s, 0, (n*100.0)/(double)nPage);
   }
   if( analysisStmtFinish(&s, rc, pStmt) ) return;
@@ -652,6 +653,7 @@ static void analyzeFunc(
     "SELECT upper(tblname), tblname, sum(is_index) FROM temp.%s"
     " GROUP BY 1 ORDER BY 1",
     s.zSU);
+  if( pStmt==0 ) return;
   while( (rc = sqlite3_step(pStmt))==SQLITE_ROW ){
     const char *zUpper = (const char*)sqlite3_column_text(pStmt, 0);
     const char *zName = (const char*)sqlite3_column_text(pStmt, 1);
@@ -665,7 +667,6 @@ static void analyzeFunc(
       if( rc ) break;
     }else{
       sqlite3_stmt *pS2;
-      int rc2;
       char *zTitle = sqlite3_mprintf("Table %s and all its indexes", zUpper);
       char *zWhere = sqlite3_mprintf("tblname=%Q", zName);
       rc = analysisSubreport(&s, zTitle, zWhere, pgsz, nPage);
@@ -704,9 +705,7 @@ static void analyzeFunc(
         sqlite3_free(zWhere);
         if( rc ) break;
       }
-      if( rc==SQLITE_DONE ) rc = SQLITE_OK;
-      rc2 = sqlite3_finalize(pS2);
-      if( rc==SQLITE_OK && rc2!=SQLITE_OK ) rc = rc2;
+      rc = analysisStmtFinish(&s, rc, pS2);
       if( rc ) break;
     }
   }

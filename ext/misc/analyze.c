@@ -358,16 +358,23 @@ static int analysisSubreport(
     analysisLine(p, "Bytes of storage consumed", "%lld\n", storage);
     analysisLine(p, "Bytes of payload", "%-11lld", payload);
     analysisPercent(p, 0, payload*100.0/(double)storage);
+    if( ovfl_cnt>0 ){
+      analysisLine(p, "Bytes of payload in overflow", "%-11lld", ovfl_payload);
+      analysisPercent(p, 0, ovfl_payload*100.0/(double)payload);
+    }
     total_unused = leaf_unused + int_unused + ovfl_unused;
     total_meta = storage - payload - total_unused;
-    analysisLine(p, "Bytes of metadata", "%lld", total_meta);
+    analysisLine(p, "Bytes of metadata", "%-11lld", total_meta);
     analysisPercent(p, 0, total_meta*100.0/(double)storage);
+    if( cnt==1 ){
+      analysisLine(p, "B-tree depth", "%lld\n", depth);
+    }
     if( nentry>0 ){
-      analysisLine(p, "Average payload per entry", "%g\n",
+      analysisLine(p, "Average payload per entry", "%.1f\n",
                    (double)payload/(double)nentry);
-      analysisLine(p, "Average unused bytes per entry", "%g\n",
+      analysisLine(p, "Average unused bytes per entry", "%.1f\n",
                    (double)total_unused/(double)nentry);
-      analysisLine(p, "Average metadata per entry", "%g\n",
+      analysisLine(p, "Average metadata per entry", "%.1f\n",
                    (double)total_meta/(double)nentry);
     }
     analysisLine(p, "Maximum single-entry payload", "%lld\n", mx_payload);
@@ -379,10 +386,19 @@ static int analysisSubreport(
       analysisLine(p, "Index pages used", "%lld\n", int_pages);
     }
     analysisLine(p, "Primary pages used", "%lld\n", leaf_pages);
-    analysisLine(p, "Overflow pages used", "%lld\n", ovfl_pages);
+    if( ovfl_cnt ){
+      analysisLine(p, "Overflow pages used", "%lld\n", ovfl_pages);
+    }
     analysisLine(p, "Total pages used", "%lld\n", total_pages);
-     
-
+    if( int_pages>0 ){
+      analysisLine(p, "Unused bytes on index pages", "%lld\n", int_unused);
+    }
+    analysisLine(p, "Unused bytes on primary pages", "%lld\n", leaf_unused);
+    if( ovfl_cnt ){
+      analysisLine(p, "Unused bytes on overflow pages", "%lld\n", ovfl_unused);
+    }
+    analysisLine(p, "Unused bytes on all pages", "%-11lld", total_unused);
+    analysisPercent(p, 0, total_unused*100.0/(double)storage);
   }
   if( analysisStmtFinish(p, rc, pStmt) ){
     return rc;
@@ -615,7 +631,6 @@ static void analyzeFunc(
     analysisPercent(&s, 0, (n*100.0)/(double)nPage);
   }
   if( analysisStmtFinish(&s, rc, pStmt) ) return;
-  sqlite3_str_append(s.pOut, "\n", 1);
 
   rc = analysisSubreport(&s, "All tables and indexes", "1", pgsz, nPage);
   if( rc ) return;
@@ -649,6 +664,8 @@ static void analyzeFunc(
       sqlite3_free(zWhere);
       if( rc ) break;
     }else{
+      sqlite3_stmt *pS2;
+      int rc2;
       char *zTitle = sqlite3_mprintf("Table %s and all its indexes", zUpper);
       char *zWhere = sqlite3_mprintf("tblname=%Q", zName);
       rc = analysisSubreport(&s, zTitle, zWhere, pgsz, nPage);
@@ -661,11 +678,35 @@ static void analyzeFunc(
       sqlite3_free(zTitle);
       sqlite3_free(zWhere);
       if( rc ) break;
-      zTitle = sqlite3_mprintf("All index of table %s", zUpper);
-      zWhere = sqlite3_mprintf("tblname=%Q AND is_index", zName);
-      rc = analysisSubreport(&s, zTitle, zWhere, pgsz, nPage);
-      sqlite3_free(zTitle);
-      sqlite3_free(zWhere);
+      if( nIndex>1 ){
+        zTitle = sqlite3_mprintf("All indexes of table %s", zUpper);
+        zWhere = sqlite3_mprintf("tblname=%Q AND is_index", zName);
+        rc = analysisSubreport(&s, zTitle, zWhere, pgsz, nPage);
+        sqlite3_free(zTitle);
+        sqlite3_free(zWhere);
+        if( rc ) break;
+      }
+      pS2 = analysisPrepare(&s,
+              "SELECT name, upper(name) FROM temp.%s"
+              " WHERE is_index AND tblname=%Q",
+              s.zSU, zName);
+      if( pS2==0 ){
+        rc = SQLITE_NOMEM;
+        break;
+      }
+      while( (rc = sqlite3_step(pS2))==SQLITE_ROW ){
+        const char *zU = (const char*)sqlite3_column_text(pS2, 1);
+        const char *zN = (const char*)sqlite3_column_text(pS2, 0);
+        zTitle = sqlite3_mprintf("Index %s", zU);
+        zWhere = sqlite3_mprintf("name=%Q", zN);
+        rc = analysisSubreport(&s, zTitle, zWhere, pgsz, nPage);
+        sqlite3_free(zTitle);
+        sqlite3_free(zWhere);
+        if( rc ) break;
+      }
+      if( rc==SQLITE_DONE ) rc = SQLITE_OK;
+      rc2 = sqlite3_finalize(pS2);
+      if( rc==SQLITE_OK && rc2!=SQLITE_OK ) rc = rc2;
       if( rc ) break;
     }
   }
@@ -744,7 +785,7 @@ static void analyzeFunc(
     sqlite3_finalize(pStmt);
     return;
   }
-  sqlite3_str_appendf(s.pOut,"\nCOMMIT;\n");
+  sqlite3_str_appendf(s.pOut,";\nCOMMIT;\n");
   sqlite3_finalize(pStmt);
 
   if( sqlite3_str_length(s.pOut) ){

@@ -1317,7 +1317,7 @@ proc add_c_jobs {buildname} {
 
   # One job for each C file.
   #
-  foreach f [glob $dir/*.c] {
+  foreach f [glob -nocomplain $dir/*.c] {
     set prg [string range [file tail $f] 0 end-2]
 
     set cmd ""
@@ -1331,7 +1331,7 @@ proc add_c_jobs {buildname} {
       append cmd ".\\$prg\n"
     } else {
       set cmd "set -e\n"
-      foreach cp {sqlite3.c sqlite3.o .target_source src-verify} {
+      foreach cp {sqlite3.c sqlite3.h sqlite3.o .target_source src-verify} {
         append cmd "cp [file join $blddir $cp] .\n"
       }
       append cmd "AUXTEST=$prg $TRG(makecmd) $prg\n"

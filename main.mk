@@ -1687,7 +1687,8 @@ CFLAGS.tclextension = $(CFLAGS.intree_includes) $(CFLAGS.env) \
 #
 tclextension: tclsqlite3.c
 	$(TCLSH_CMD) $(TOP)/tool/buildtclext.tcl --build-only \
-		--tclConfig.sh $(TCL_CONFIG_SH) --cc "$(T.cc)" $(CFLAGS.tclextension)
+		--tclConfig.sh $(TCL_CONFIG_SH) --cc "$(T.cc)" \
+		--extlibs "$(LDFLAGS.icu)" $(CFLAGS.tclextension)
 
 #
 # Install the SQLite TCL extension in a way that is appropriate for $TCLSH_CMD

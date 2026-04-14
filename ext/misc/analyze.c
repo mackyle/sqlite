@@ -17,6 +17,8 @@
 SQLITE_EXTENSION_INIT1
 #include <assert.h>
 #include <string.h>
+#include <ctype.h>
+#include <math.h>
 
 /*
 ** State information for the analysis
@@ -104,6 +106,27 @@ static sqlite3_stmt *analysisPrepare(Analysis *p, const char *zFormat, ...){
 }
 
 /*
+** If rc is something other than SQLITE_DONE or SQLITE_OK, then report
+** an error and return true.
+**
+** If rc is SQLITE_DONE or SQLITE_OK, then return false.
+**
+** The prepared statement is closed in either case.
+*/
+static int analysisStmtFinish(Analysis *p, int rc, sqlite3_stmt *pStmt){
+  if( rc==SQLITE_DONE ){
+    rc = SQLITE_OK;
+  }
+  if( rc!=SQLITE_OK ){
+    analysisError(p, "SQL parse error: %s\nOriginal SQL: %s",
+                  sqlite3_errmsg(p->db), sqlite3_sql(pStmt));
+    analysisReset(p);
+  }
+  sqlite3_finalize(pStmt);
+  return rc;
+}
+
+/*
 ** Run SQL.  Return the number of errors. 
 */
 static int analysisSql(Analysis *p, const char *zFormat, ...){
@@ -127,6 +150,248 @@ static int analysisSql(Analysis *p, const char *zFormat, ...){
 }
 
 /*
+** Run an SQL query that returns an integer.  Write that integer
+** into *piRes.  Return the number of errors. 
+*/
+static int analysisSqlInt(
+  Analysis *p,
+  sqlite3_int64 *piRes,
+  const char *zFormat, ...
+){
+  va_list ap;
+  int rc;
+  sqlite3_stmt *pStmt = 0;
+  va_start(ap, zFormat);
+  pStmt = analysisVPrep(p,zFormat,ap);
+  va_end(ap);
+  if( pStmt==0 ) return 1;
+  rc = sqlite3_step(pStmt);
+  if( rc==SQLITE_ROW ){
+    *piRes = sqlite3_column_int64(pStmt, 0);
+    rc = SQLITE_OK;
+  }else if( rc==SQLITE_DONE ){
+    rc = SQLITE_OK;
+  }else{
+    analysisError(p, "SQL run-time error: %s\nOriginal SQL: %s",
+                  sqlite3_errmsg(p->db), sqlite3_sql(pStmt));
+    analysisReset(p);
+  }
+  sqlite3_finalize(pStmt);
+  return rc;
+}
+
+/*
+** Add to the output a title line that contains the text determined
+** by the format string.  If the output is initially empty, begin
+** the title line with "/" so that it forms the beginning of a C-style
+** comment.
+*/
+static void analysisTitle(Analysis *p, const char *zFormat, ...){
+  char cFirst;
+  char *zTitle;
+  size_t nTitle;
+  va_list ap;
+  va_start(ap, zFormat);
+  zTitle = sqlite3_vmprintf(zFormat, ap);
+  va_end(ap);
+  if( zTitle==0 ){
+    analysisError(p, 0);
+    return;
+  }
+  cFirst = sqlite3_str_length(p->pOut)==0 ? '/' : '*';
+  nTitle = strlen(zTitle);
+  if( nTitle>=75 ){
+    sqlite3_str_appendf(p->pOut, "%c** %z\n", cFirst, zTitle);
+  }else{
+    int nExtra = 74 - (int)nTitle;
+    sqlite3_str_appendf(p->pOut, "%c** %z %.*c\n", cFirst, zTitle, nExtra, '*');
+  }
+}
+
+/*
+** Add an output line that begins with the zDesc text extended out to
+** 50 columns with "." characters, and followed by whatever text is
+** described by zFormat.
+*/
+static void analysisLine(
+  Analysis *p,             /* Analysis context */
+  const char *zDesc,       /* Description */
+  const char *zFormat,     /* Argument to the description */
+  ...
+){
+  char *zTxt;
+  size_t nDesc;
+  va_list ap;
+  va_start(ap, zFormat);
+  zTxt = sqlite3_vmprintf(zFormat, ap);
+  va_end(ap);
+  if( zTxt==0 ){
+    analysisError(p, 0);
+    return;
+  }
+  nDesc = strlen(zDesc);
+  if( nDesc>=50 ){
+    sqlite3_str_appendf(p->pOut, "%s %z", zDesc, zTxt);
+  }else{
+    int nExtra = 50 - (int)nDesc;
+    sqlite3_str_appendf(p->pOut, "%s%.*c %z", zDesc, nExtra, '.', zTxt);
+  }
+}
+
+/*
+** Write a percentage into the output.  The number written should show
+** three significant digits, with the decimal point being the fourth
+** character.  Leading and trailing zeros are spaces.  Except if nWidth
+** is positive, the output is padded with spaces to that width.
+*/
+static void analysisPercent(Analysis *p, int nWidth, double r){
+  char zNum[100];
+  char *zDP;
+  int nLeadingDigit;
+  int sz;
+  int addNL = nWidth<=0;
+  sqlite3_snprintf(sizeof(zNum)-5, zNum, r>=10.0 ? "%.3g" :"%.2g", r);
+  sz = (int)strlen(zNum);
+  zDP = strchr(zNum, '.');
+  if( zDP==0 ){
+    memcpy(zNum+sz,".0",3);
+    nLeadingDigit = sz;
+    sz += 2;
+  }else{
+    nLeadingDigit = (int)(zDP - zNum);
+  }
+  if( nLeadingDigit<3 ){
+    sqlite3_str_appendchar(p->pOut, 3-nLeadingDigit, ' ');
+    nWidth -= nLeadingDigit;
+  }
+  sqlite3_str_append(p->pOut, zNum, sz);
+  nWidth -= sz;
+  sqlite3_str_append(p->pOut, "%", 1);
+  if( nWidth>1 ){
+    sqlite3_str_appendchar(p->pOut, nWidth-1, ' ');
+  }
+  if( addNL ) sqlite3_str_append(p->pOut, "\n", 1);
+}
+
+/*
+** Create a subreport on a subset of tables and/or indexes.
+**
+** The title if the subreport is given by zTitle.  zWhere is
+** a boolean expression that can go in the WHERE clause to select
+** the relevant rows of the s.zSU table.
+*/
+static int analysisSubreport(
+  Analysis *p,                  /* Analysis context */
+  char *zTitle,                 /* Title for this subreport */
+  char *zWhere,                 /* WHERE clause for this subreport */
+  sqlite3_int64 pgsz,           /* Database page size */
+  sqlite3_int64 nPage           /* Number of pages in entire database */
+){
+  sqlite3_stmt *pStmt;          /* Statement to query p->zSU */
+  sqlite3_int64 nentry;         /* Number of btree entires */
+  sqlite3_int64 payload;        /* Payload in bytes */
+  sqlite3_int64 ovfl_payload;   /* overflow payload in bytes */
+  sqlite3_int64 mx_payload;     /* largest individual payload */
+  sqlite3_int64 ovfl_cnt;       /* Number entries using overflow */
+  sqlite3_int64 leaf_pages;     /* Leaf pages */
+  sqlite3_int64 int_pages;      /* internal pages */
+  sqlite3_int64 ovfl_pages;     /* overflow pages */
+  sqlite3_int64 leaf_unused;    /* unused bytes on leaf pages */
+  sqlite3_int64 int_unused;     /* unused bytes on internal pages */
+  sqlite3_int64 ovfl_unused;    /* unused bytes on overflow pages */
+  sqlite3_int64 depth;          /* btree depth */
+  sqlite3_int64 cnt;            /* Number of s.zSU entries that match */
+  sqlite3_int64 storage;        /* Total bytes */
+  sqlite3_int64 total_pages;    /* Total page count */
+  sqlite3_int64 total_unused;   /* Total unused bytes */
+  sqlite3_int64 total_meta;     /* Total metadata */
+  int rc;
+
+  if( zTitle==0 || zWhere==0 ){
+    analysisError(p, 0);
+    return SQLITE_NOMEM;
+  }
+  pStmt = analysisPrepare(p,
+    "SELECT\n"
+    "  sum(if(is_without_rowid OR is_index,nentry,leaf_entries)),\n" /* 0 */
+    "  sum(payload),\n"            /* 1 */
+    "  sum(ovfl_payload),\n"       /* 2 */
+    "  max(mx_payload),\n"         /* 3 */
+    "  sum(ovfl_cnt),\n"           /* 4 */
+    "  sum(leaf_pages),\n"         /* 5 */
+    "  sum(int_pages),\n"          /* 6 */
+    "  sum(ovfl_pages),\n"         /* 7 */
+    "  sum(leaf_unused),\n"        /* 8 */
+    "  sum(int_unused),\n"         /* 9 */
+    "  sum(ovfl_unused),\n"        /* 10 */
+    "  max(depth),\n"              /* 11 */
+    "  count(*)\n"                 /* 12 */
+    " FROM temp.%s WHERE %s",
+    p->zSU, zWhere);
+  if( pStmt==0 ) return 1;
+  rc = sqlite3_step(pStmt);
+  if( rc==SQLITE_ROW ){
+    sqlite3_str_append(p->pOut, "\n", 1);
+    analysisTitle(p, zTitle);
+    sqlite3_str_append(p->pOut, "\n", 1);
+
+    nentry = sqlite3_column_int64(pStmt, 0);
+    payload = sqlite3_column_int64(pStmt, 1);
+    ovfl_payload = sqlite3_column_int64(pStmt, 2);
+    mx_payload = sqlite3_column_int64(pStmt, 3);
+    ovfl_cnt = sqlite3_column_int64(pStmt, 4);
+    leaf_pages = sqlite3_column_int64(pStmt, 5);
+    int_pages = sqlite3_column_int64(pStmt, 6);
+    ovfl_pages = sqlite3_column_int64(pStmt, 7);
+    leaf_unused = sqlite3_column_int64(pStmt, 8);
+    int_unused = sqlite3_column_int64(pStmt, 9);
+    ovfl_unused = sqlite3_column_int64(pStmt, 10);
+    depth = sqlite3_column_int64(pStmt, 11);
+    cnt = sqlite3_column_int64(pStmt, 12);
+    rc = SQLITE_DONE;
+
+    total_pages = leaf_pages + int_pages + ovfl_pages;
+    analysisLine(p, "Percentage of total database", "");
+    analysisPercent(p, 0, (total_pages*100.0)/(double)nPage);
+    analysisLine(p, "Number of entries", "%lld\n", nentry);
+    storage = total_pages*pgsz;
+    analysisLine(p, "Bytes of storage consumed", "%lld\n", storage);
+    analysisLine(p, "Bytes of payload", "%-11lld", payload);
+    analysisPercent(p, 0, payload*100.0/(double)storage);
+    total_unused = leaf_unused + int_unused + ovfl_unused;
+    total_meta = storage - payload - total_unused;
+    analysisLine(p, "Bytes of metadata", "%lld", total_meta);
+    analysisPercent(p, 0, total_meta*100.0/(double)storage);
+    if( nentry>0 ){
+      analysisLine(p, "Average payload per entry", "%g\n",
+                   (double)payload/(double)nentry);
+      analysisLine(p, "Average unused bytes per entry", "%g\n",
+                   (double)total_unused/(double)nentry);
+      analysisLine(p, "Average metadata per entry", "%g\n",
+                   (double)total_meta/(double)nentry);
+    }
+    analysisLine(p, "Maximum single-entry payload", "%lld\n", mx_payload);
+    if( nentry>0 ){
+      analysisLine(p, "Entries that use overflow", "%-11lld", ovfl_cnt);
+      analysisPercent(p, 0, ovfl_cnt*100.0/(double)nentry);
+    }
+    if( int_pages>0 ){
+      analysisLine(p, "Index pages used", "%lld\n", int_pages);
+    }
+    analysisLine(p, "Primary pages used", "%lld\n", leaf_pages);
+    analysisLine(p, "Overflow pages used", "%lld\n", ovfl_pages);
+    analysisLine(p, "Total pages used", "%lld\n", total_pages);
+     
+
+  }
+  if( analysisStmtFinish(p, rc, pStmt) ){
+    return rc;
+  }else{
+    return SQLITE_OK;
+  }
+}
+
+/*
 ** SQL Function:   analyze(SCHEMA)
 **
 ** Analyze the database schema named in the argument.  Return text
@@ -140,6 +405,13 @@ static void analyzeFunc(
   int rc;
   sqlite3_stmt *pStmt;
   int n;
+  sqlite3_int64 i64;
+  sqlite3_int64 pgsz;
+  sqlite3_int64 nPage;
+  sqlite3_int64 nPageInUse;
+  sqlite3_int64 nFreeList;
+  sqlite3_int64 nIndex;
+  sqlite3_int64 nWORowid;
   Analysis s;
   sqlite3_uint64 r[2];
 
@@ -234,11 +506,182 @@ static void analyzeFunc(
   );
   if( rc ) return;
 
-  /* TBD: Generate report text here */
+  /* Begin generating the report */
+  analysisTitle(&s, "Database file space utilization report");
+  sqlite3_str_append(s.pOut, "\n", 1);
+  pgsz = 0;
+  rc = analysisSqlInt(&s, &pgsz, "PRAGMA \"%w\".page_size", s.zSchema);
+  if( rc ) return;
+  analysisLine(&s, "Page size in bytes","%lld\n",pgsz);
+
+  nPage = 0;
+  rc = analysisSqlInt(&s, &nPage, "PRAGMA \"%w\".page_count", s.zSchema);
+  if( rc ) return;
+  analysisLine(&s, "Pages in the database", "%lld\n", nPage);
+  if( nPage<=0 ) nPage = 1;
+
+  nPageInUse = 0;
+  rc = analysisSqlInt(&s, &nPageInUse, 
+       "SELECT sum(leaf_pages+int_pages+ovfl_pages) FROM temp.%s", s.zSU);
+  if( rc ) return;
+  analysisLine(&s, "Pages that store data", "%-11lld ", nPageInUse);
+  analysisPercent(&s, 0, (nPageInUse*100.0)/(double)nPage);
+
+  nFreeList = 0;
+  rc = analysisSqlInt(&s, &nFreeList, "PRAGMA \"%w\".freelist_count",s.zSchema);
+  if( rc ) return;
+  analysisLine(&s, "Pages on the freelist", "%-11lld ", nFreeList);
+  analysisPercent(&s, 0, (nFreeList*100.0)/(double)nPage);
+
+  i64 = 0;
+  rc = analysisSqlInt(&s, &i64, "PRAGMA \"%w\".auto_vacuum", s.zSchema);
+  if( rc ) return;
+  if( i64==0 || nPage<=1 ){
+    i64 = 0;
+  }else{
+    double rPtrsPerPage = pgsz/5;
+    double rAvPage = (nPage-1.0)/(rPtrsPerPage+1.0);
+    i64 = (sqlite3_int64)ceil(rAvPage);
+  }
+  analysisLine(&s, "Pages of auto-vacuum overhead", "%-11lld ", i64);
+  analysisPercent(&s, 0, (i64*100.0)/(double)nPage);
+
+  i64 = 0;
+  rc = analysisSqlInt(&s, &i64, 
+       "SELECT count(*)+1 FROM \"%w\".sqlite_schema WHERE type='table'",
+       s.zSchema);
+  if( rc ) return;
+  analysisLine(&s, "Number of tables", "%lld\n", i64);
+  nWORowid = 0;
+  rc = analysisSqlInt(&s, &nWORowid,
+       "SELECT count(*) FROM \"%w\".pragma_table_list WHERE wr",
+       s.zSchema);
+  if( rc ) return;
+  analysisLine(&s, "Number of WITHOUT ROWID tables", "%lld\n", nWORowid);
+  nIndex = 0;
+  rc = analysisSqlInt(&s, &nIndex, 
+       "SELECT count(*) FROM \"%w\".sqlite_schema WHERE type='index'",
+       s.zSchema);
+  if( rc ) return;
+  analysisLine(&s, "Number of indexes", "%lld\n", nIndex);
+  i64 = 0;
+  rc = analysisSqlInt(&s, &i64, 
+       "SELECT count(*) FROM \"%w\".sqlite_schema"
+       " WHERE name GLOB 'sqlite_autoindex_*' AND type='index'",
+       s.zSchema);
+  if( rc ) return;
+  analysisLine(&s, "Number of defined indexes", "%lld\n", nIndex - i64);
+  analysisLine(&s, "Number of implied indexes", "%lld\n", i64);
+  analysisLine(&s, "Size of the database in bytes", "%lld\n", pgsz*nPage);
+  i64 = 0;
+  rc = analysisSqlInt(&s, &i64, 
+       "SELECT sum(payload) FROM temp.%s"
+       " WHERE NOT is_index AND name NOT LIKE 'sqlite_schema'",
+       s.zSU);
+  if( rc ) return;
+  analysisLine(&s, "Bytes of payload", "%lld\n\n", i64);
+
+  analysisTitle(&s, "Page counts for all tables with their indexes");
+  sqlite3_str_append(s.pOut, "\n", 1);
+  pStmt = analysisPrepare(&s,
+    "SELECT upper(tblname),\n"
+    "       sum(int_pages+leaf_pages+ovfl_pages)\n"
+    "  FROM temp.%s\n"
+    " GROUP BY 1\n"
+    " ORDER BY 2 DESC, 1;",
+    s.zSU);
+  if( pStmt==0 ) return;
+  while( (rc = sqlite3_step(pStmt))==SQLITE_ROW ){
+    sqlite3_int64 n = sqlite3_column_int64(pStmt,1);
+    analysisLine(&s, (const char*)sqlite3_column_text(pStmt,0), "%-11lld", n);
+    analysisPercent(&s, 0, (n*100.0)/(double)nPage);
+  }
+  if( analysisStmtFinish(&s, rc, pStmt) ) return;
+  sqlite3_str_append(s.pOut, "\n", 1);
+
+  analysisTitle(&s, "Page counts for all tables and indexes separately");
+  sqlite3_str_append(s.pOut, "\n", 1);
+  pStmt = analysisPrepare(&s,
+    "SELECT upper(name),\n"
+    "       sum(int_pages+leaf_pages+ovfl_pages)\n"
+    "  FROM temp.%s\n"
+    " GROUP BY 1\n"
+    " ORDER BY 2 DESC, 1;",
+    s.zSU);
+  if( pStmt==0 ) return;
+  while( (rc = sqlite3_step(pStmt))==SQLITE_ROW ){
+    sqlite3_int64 n = sqlite3_column_int64(pStmt,1);
+    analysisLine(&s, (const char*)sqlite3_column_text(pStmt,0), "%-11lld", n);
+    analysisPercent(&s, 0, (n*100.0)/(double)nPage);
+  }
+  if( analysisStmtFinish(&s, rc, pStmt) ) return;
+  sqlite3_str_append(s.pOut, "\n", 1);
+
+  rc = analysisSubreport(&s, "All tables and indexes", "1", pgsz, nPage);
+  if( rc ) return;
+  rc = analysisSubreport(&s, "All tables", "NOT is_index", pgsz, nPage);
+  if( rc ) return;
+  if( nWORowid>0 ){
+    rc = analysisSubreport(&s, "All WITHOUT ROWID tables", "is_without_rowid",
+                           pgsz, nPage);
+    if( rc ) return;
+    rc = analysisSubreport(&s, "All rowid tables",
+                           "NOT is_without_rowid AND NOT is_index",
+                           pgsz, nPage);
+    if( rc ) return;
+  }
+  rc = analysisSubreport(&s, "All indexes", "is_index", pgsz, nPage);
+  if( rc ) return;
+
+  pStmt = analysisPrepare(&s,
+    "SELECT upper(tblname), tblname, sum(is_index) FROM temp.%s"
+    " GROUP BY 1 ORDER BY 1",
+    s.zSU);
+  while( (rc = sqlite3_step(pStmt))==SQLITE_ROW ){
+    const char *zUpper = (const char*)sqlite3_column_text(pStmt, 0);
+    const char *zName = (const char*)sqlite3_column_text(pStmt, 1);
+    int nIndex = sqlite3_column_int(pStmt, 2);
+    if( nIndex==0 ){
+      char *zTitle = sqlite3_mprintf("Table %s", zUpper);
+      char *zWhere = sqlite3_mprintf("name=%Q", zName);
+      rc = analysisSubreport(&s, zTitle, zWhere, pgsz, nPage);
+      sqlite3_free(zTitle);
+      sqlite3_free(zWhere);
+      if( rc ) break;
+    }else{
+      char *zTitle = sqlite3_mprintf("Table %s and all its indexes", zUpper);
+      char *zWhere = sqlite3_mprintf("tblname=%Q", zName);
+      rc = analysisSubreport(&s, zTitle, zWhere, pgsz, nPage);
+      sqlite3_free(zTitle);
+      sqlite3_free(zWhere);
+      if( rc ) break;
+      zTitle = sqlite3_mprintf("Table %s w/o any indexes", zUpper);
+      zWhere = sqlite3_mprintf("name=%Q", zName);
+      rc = analysisSubreport(&s, zTitle, zWhere, pgsz, nPage);
+      sqlite3_free(zTitle);
+      sqlite3_free(zWhere);
+      if( rc ) break;
+      zTitle = sqlite3_mprintf("All index of table %s", zUpper);
+      zWhere = sqlite3_mprintf("tblname=%Q AND is_index", zName);
+      rc = analysisSubreport(&s, zTitle, zWhere, pgsz, nPage);
+      sqlite3_free(zTitle);
+      sqlite3_free(zWhere);
+      if( rc ) break;
+    }
+  }
+  if( analysisStmtFinish(&s, rc, pStmt) ) return;
 
   /* Append SQL statements that will recreate the raw data used for
   ** the analysis.
   */
+  sqlite3_str_append(s.pOut, "\n", 1);
+  analysisTitle(&s, "Raw data used to generate this report");
+  sqlite3_str_appendf(s.pOut,
+    "\n"
+    "The following SQL will create a table named \"space_used\" which\n"
+    "contains (most) of the information used to generate the report above.\n"
+    "*/\n"
+  );
   sqlite3_str_appendf(s.pOut,
     "BEGIN;\n"
     "CREATE TABLE space_used(\n"

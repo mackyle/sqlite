@@ -31,9 +31,14 @@ struct Analysis {
 };
 
 /*
-** Free all memory associated with the Analysis objecct
+** Free all resources that the Analysis object references and
+** reset the Analysis object.
+**
+** Call this routine multiple times on the same Analysis object
+** is a harmless no-op, as long as the memory for the object itself
+** has not been freed.
 */
-static void analysisFree(Analysis *p){
+static void analysisReset(Analysis *p){
   if( p->zSU ){
     char *zSql = sqlite3_mprintf("DROP TABLE temp.%s;", p->zSU);
     if( zSql ){
@@ -66,7 +71,7 @@ static void analysisError(Analysis *p, const char *zFormat, ...){
     sqlite3_result_error(p->context, zErr, -1);
     sqlite3_free(zErr);
   }
-  analysisFree(p);
+  analysisReset(p);
 }
 
 /*
@@ -83,7 +88,7 @@ static sqlite3_stmt *analysisVPrep(Analysis *p, const char *zFmt, va_list ap){
     analysisError(p, "SQL parse error: %s\nOriginal SQL: %s",
                                  sqlite3_errmsg(p->db), zSql);
     sqlite3_finalize(pStmt);
-    analysisFree(p);
+    analysisReset(p);
     pStmt = 0;
   }
   sqlite3_free(zSql);
@@ -115,7 +120,7 @@ static int analysisSql(Analysis *p, const char *zFormat, ...){
   }else{
     analysisError(p, "SQL run-time error: %s\nOriginal SQL: %s",
                   sqlite3_errmsg(p->db), sqlite3_sql(pStmt));
-    analysisFree(p);
+    analysisReset(p);
   }
   sqlite3_finalize(pStmt);
   return rc;
@@ -182,7 +187,7 @@ static void analyzeFunc(
   rc = analysisSql(&s,
     "WITH\n"
     "  allidx(idxname) AS (\n"
-    "    SELECT name FROM main.sqlite_schema WHERE type='index'\n"
+    "    SELECT name FROM \"%w\".sqlite_schema WHERE type='index'\n"
     "  ),\n"
     "  allobj(allname,tblname,isidx,isworowid) AS (\n"
     "    SELECT 'sqlite_schema',\n"
@@ -221,6 +226,7 @@ static void analyzeFunc(
     "  FROM allobj CROSS JOIN dbstat(%Q) \n"
     "  WHERE dbstat.name=allobj.allname\n"
     "  GROUP BY allname;\n",
+    s.zSchema,   /* %w.sqlite_schema -- in allidx */
     s.zSchema,   /* pragma_index_list(...,%Q) */
     s.zSchema,   /* %w.sqlite_schema */
     s.zSU,       /* INTO temp.%s */
@@ -266,7 +272,7 @@ static void analyzeFunc(
      s.zSU);
   if( pStmt==0 ) return;
   n = 0;
-  while( sqlite3_step(pStmt)==SQLITE_ROW ){
+  while( (rc = sqlite3_step(pStmt))==SQLITE_ROW ){
     if( n++ ) sqlite3_str_appendf(s.pOut,",\n");
     sqlite3_str_appendf(s.pOut,
       " (%s,%s,%lld,%lld,%lld,%lld,%lld,%lld,%lld,"
@@ -303,7 +309,7 @@ static void analyzeFunc(
                         sqlite3_free);
     s.pOut = 0;
   }
-  analysisFree(&s);
+  analysisReset(&s);
 }
 
 
@@ -319,7 +325,7 @@ int sqlite3_analyze_init(
   SQLITE_EXTENSION_INIT2(pApi);
   (void)pzErrMsg;  /* Unused parameter */
   rc = sqlite3_create_function(db, "analyze", 1,
-                   SQLITE_UTF8|SQLITE_INNOCUOUS|SQLITE_DETERMINISTIC,
+                   SQLITE_UTF8|SQLITE_INNOCUOUS,
                    0, analyzeFunc, 0, 0);
   return rc;
 }

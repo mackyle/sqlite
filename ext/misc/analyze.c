@@ -184,10 +184,11 @@ static int analysisSqlInt(
 ** Add to the output a title line that contains the text determined
 ** by the format string.  If the output is initially empty, begin
 ** the title line with "/" so that it forms the beginning of a C-style
-** comment.
+** comment.  Otherwise begin with a new-line.  Always finish with a
+** newline.
 */
 static void analysisTitle(Analysis *p, const char *zFormat, ...){
-  char cFirst;
+  char *zFirst;
   char *zTitle;
   size_t nTitle;
   va_list ap;
@@ -198,13 +199,14 @@ static void analysisTitle(Analysis *p, const char *zFormat, ...){
     analysisError(p, 0);
     return;
   }
-  cFirst = sqlite3_str_length(p->pOut)==0 ? '/' : '*';
+  zFirst = sqlite3_str_length(p->pOut)==0 ? "/" : "\n*";
   nTitle = strlen(zTitle);
   if( nTitle>=75 ){
-    sqlite3_str_appendf(p->pOut, "%c** %z\n", cFirst, zTitle);
+    sqlite3_str_appendf(p->pOut, "%s** %z\n\n", zFirst, zTitle);
   }else{
     int nExtra = 74 - (int)nTitle;
-    sqlite3_str_appendf(p->pOut, "%c** %z %.*c\n", cFirst, zTitle, nExtra, '*');
+    sqlite3_str_appendf(p->pOut, "%s** %z %.*c\n\n", zFirst, zTitle,
+                        nExtra, '*');
   }
 }
 
@@ -240,16 +242,14 @@ static void analysisLine(
 
 /*
 ** Write a percentage into the output.  The number written should show
-** three significant digits, with the decimal point being the fourth
-** character.  Leading and trailing zeros are spaces.  Except if nWidth
-** is positive, the output is padded with spaces to that width.
+** two or three significant digits, with the decimal point being the fourth
+** character.  
 */
-static void analysisPercent(Analysis *p, int nWidth, double r){
+static void analysisPercent(Analysis *p, double r){
   char zNum[100];
   char *zDP;
   int nLeadingDigit;
   int sz;
-  int addNL = nWidth<=0;
   sqlite3_snprintf(sizeof(zNum)-5, zNum, r>=10.0 ? "%.3g" :"%.2g", r);
   sz = (int)strlen(zNum);
   zDP = strchr(zNum, '.');
@@ -262,15 +262,9 @@ static void analysisPercent(Analysis *p, int nWidth, double r){
   }
   if( nLeadingDigit<3 ){
     sqlite3_str_appendchar(p->pOut, 3-nLeadingDigit, ' ');
-    nWidth -= nLeadingDigit;
   }
   sqlite3_str_append(p->pOut, zNum, sz);
-  nWidth -= sz;
-  sqlite3_str_append(p->pOut, "%", 1);
-  if( nWidth>1 ){
-    sqlite3_str_appendchar(p->pOut, nWidth-1, ' ');
-  }
-  if( addNL ) sqlite3_str_append(p->pOut, "\n", 1);
+  sqlite3_str_append(p->pOut, "%\n", 2);
 }
 
 /*
@@ -331,9 +325,7 @@ static int analysisSubreport(
   if( pStmt==0 ) return 1;
   rc = sqlite3_step(pStmt);
   if( rc==SQLITE_ROW ){
-    sqlite3_str_append(p->pOut, "\n", 1);
     analysisTitle(p, zTitle);
-    sqlite3_str_append(p->pOut, "\n", 1);
 
     nentry = sqlite3_column_int64(pStmt, 0);
     payload = sqlite3_column_int64(pStmt, 1);
@@ -357,15 +349,15 @@ static int analysisSubreport(
     storage = total_pages*pgsz;
     analysisLine(p, "Bytes of storage consumed", "%lld\n", storage);
     analysisLine(p, "Bytes of payload", "%-11lld ", payload);
-    analysisPercent(p, 0, payload*100.0/(double)storage);
+    analysisPercent(p, payload*100.0/(double)storage);
     if( ovfl_cnt>0 ){
       analysisLine(p, "Bytes of payload in overflow","%-11lld ",ovfl_payload);
-      analysisPercent(p, 0, ovfl_payload*100.0/(double)payload);
+      analysisPercent(p, ovfl_payload*100.0/(double)payload);
     }
     total_unused = leaf_unused + int_unused + ovfl_unused;
     total_meta = storage - payload - total_unused;
     analysisLine(p, "Bytes of metadata","%-11lld ", total_meta);
-    analysisPercent(p, 0, total_meta*100.0/(double)storage);
+    analysisPercent(p, total_meta*100.0/(double)storage);
     if( cnt==1 ){
       analysisLine(p, "B-tree depth", "%lld\n", depth);
     }
@@ -380,7 +372,7 @@ static int analysisSubreport(
     analysisLine(p, "Maximum single-entry payload", "%lld\n", mx_payload);
     if( nentry>0 ){
       analysisLine(p, "Entries that use overflow", "%-11lld ", ovfl_cnt);
-      analysisPercent(p, 0, ovfl_cnt*100.0/(double)nentry);
+      analysisPercent(p, ovfl_cnt*100.0/(double)nentry);
     }
     if( int_pages>0 ){
       analysisLine(p, "Index pages used", "%lld\n", int_pages);
@@ -398,7 +390,7 @@ static int analysisSubreport(
       analysisLine(p, "Unused bytes on overflow pages", "%lld\n", ovfl_unused);
     }
     analysisLine(p, "Unused bytes on all pages", "%-11lld ", total_unused);
-    analysisPercent(p, 0, total_unused*100.0/(double)storage);
+    analysisPercent(p, total_unused*100.0/(double)storage);
   }
   return analysisStmtFinish(p, rc, pStmt);
 }
@@ -433,7 +425,19 @@ static void analyzeFunc(
   s.pOut = sqlite3_str_new(0);
   if( s.pOut==0 ){ analysisError(&s, 0); return; }
   s.zSchema = (const char*)sqlite3_value_text(argv[0]);
-  if( s.zSchema==0 ) s.zSchema = "main";
+  if( s.zSchema==0 ){
+    s.zSchema = "main";
+  }else if( sqlite3_strlike("temp",s.zSchema,0)==0 ){
+    /* Attempt to analyze "temp" returns NULL */
+    return;
+  }
+  i64 = 0;
+  rc = analysisSqlInt(&s,&i64,"SELECT 1 FROM pragma_database_list"
+                             " WHERE name=%Q COLLATE nocase",s.zSchema);
+  if( rc || i64==0 ){
+    /* Return NULL the named schema does not exist */
+    return;
+  }
   sqlite3_randomness(sizeof(r), &r);
   s.zSU = sqlite3_mprintf("analysis%016llx%016llx", r[0], r[1]);
   if( s.zSU==0 ){ analysisError(&s, 0); return; }
@@ -519,8 +523,7 @@ static void analyzeFunc(
   if( rc ) return;
 
   /* Begin generating the report */
-  analysisTitle(&s, "Database file space utilization report");
-  sqlite3_str_append(s.pOut, "\n", 1);
+  analysisTitle(&s, "Database storage utilization report");
   pgsz = 0;
   rc = analysisSqlInt(&s, &pgsz, "PRAGMA \"%w\".page_size", s.zSchema);
   if( rc ) return;
@@ -537,13 +540,13 @@ static void analyzeFunc(
        "SELECT sum(leaf_pages+int_pages+ovfl_pages) FROM temp.%s", s.zSU);
   if( rc ) return;
   analysisLine(&s, "Pages that store data", "%-11lld ", nPageInUse);
-  analysisPercent(&s, 0, (nPageInUse*100.0)/(double)nPage);
+  analysisPercent(&s, (nPageInUse*100.0)/(double)nPage);
 
   nFreeList = 0;
   rc = analysisSqlInt(&s, &nFreeList, "PRAGMA \"%w\".freelist_count",s.zSchema);
   if( rc ) return;
   analysisLine(&s, "Pages on the freelist", "%-11lld ", nFreeList);
-  analysisPercent(&s, 0, (nFreeList*100.0)/(double)nPage);
+  analysisPercent(&s, (nFreeList*100.0)/(double)nPage);
 
   i64 = 0;
   rc = analysisSqlInt(&s, &i64, "PRAGMA \"%w\".auto_vacuum", s.zSchema);
@@ -556,7 +559,7 @@ static void analyzeFunc(
     i64 = (sqlite3_int64)ceil(rAvPage);
   }
   analysisLine(&s, "Pages of auto-vacuum overhead", "%-11lld ", i64);
-  analysisPercent(&s, 0, (i64*100.0)/(double)nPage);
+  analysisPercent(&s, (i64*100.0)/(double)nPage);
 
   i64 = 0;
   rc = analysisSqlInt(&s, &i64, 
@@ -595,11 +598,9 @@ static void analyzeFunc(
        s.zSU);
   if( rc ) return;
   analysisLine(&s, "Bytes of payload", "%-11lld ", i64);
-  analysisPercent(&s, 0, i64*100.0/(double)(pgsz*nPage));
-  sqlite3_str_append(s.pOut, "\n", 1);
+  analysisPercent(&s, i64*100.0/(double)(pgsz*nPage));
 
   analysisTitle(&s, "Page counts for all tables with their indexes");
-  sqlite3_str_append(s.pOut, "\n", 1);
   pStmt = analysisPrepare(&s,
     "SELECT upper(tblname),\n"
     "       sum(int_pages+leaf_pages+ovfl_pages)\n"
@@ -611,13 +612,11 @@ static void analyzeFunc(
   while( (rc = sqlite3_step(pStmt))==SQLITE_ROW ){
     sqlite3_int64 n = sqlite3_column_int64(pStmt,1);
     analysisLine(&s, (const char*)sqlite3_column_text(pStmt,0), "%-11lld ", n);
-    analysisPercent(&s, 0, (n*100.0)/(double)nPage);
+    analysisPercent(&s, (n*100.0)/(double)nPage);
   }
   if( analysisStmtFinish(&s, rc, pStmt) ) return;
-  sqlite3_str_append(s.pOut, "\n", 1);
 
   analysisTitle(&s, "Page counts for all tables and indexes separately");
-  sqlite3_str_append(s.pOut, "\n", 1);
   pStmt = analysisPrepare(&s,
     "SELECT upper(name),\n"
     "       sum(int_pages+leaf_pages+ovfl_pages)\n"
@@ -629,7 +628,7 @@ static void analyzeFunc(
   while( (rc = sqlite3_step(pStmt))==SQLITE_ROW ){
     sqlite3_int64 n = sqlite3_column_int64(pStmt,1);
     analysisLine(&s, (const char*)sqlite3_column_text(pStmt,0), "%-11lld ", n);
-    analysisPercent(&s, 0, (n*100.0)/(double)nPage);
+    analysisPercent(&s, (n*100.0)/(double)nPage);
   }
   if( analysisStmtFinish(&s, rc, pStmt) ) return;
 
@@ -714,12 +713,10 @@ static void analyzeFunc(
   /* Append SQL statements that will recreate the raw data used for
   ** the analysis.
   */
-  sqlite3_str_append(s.pOut, "\n", 1);
   analysisTitle(&s, "Raw data used to generate this report");
   sqlite3_str_appendf(s.pOut,
-    "\n"
     "The following SQL will create a table named \"space_used\" which\n"
-    "contains (most) of the information used to generate the report above.\n"
+    "contains most of the information used to generate the report above.\n"
     "*/\n"
   );
   sqlite3_str_appendf(s.pOut,
@@ -784,7 +781,7 @@ static void analyzeFunc(
     sqlite3_finalize(pStmt);
     return;
   }
-  sqlite3_str_appendf(s.pOut,";\nCOMMIT;\n");
+  sqlite3_str_appendf(s.pOut,";\nCOMMIT;");
   sqlite3_finalize(pStmt);
 
   if( sqlite3_str_length(s.pOut) ){

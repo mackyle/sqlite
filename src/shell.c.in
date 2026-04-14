@@ -10681,8 +10681,13 @@ static int do_meta_command(const char *zLine, ShellState *p){
       if( z[0]=='-' && !noOpt ){
         if( z[1]=='-' ) z++;
         if( strcmp(z,"-hard-reset")==0 ){
+#ifdef _WIN32
+          _putenv("SQLITE_PS1=");
+          _putenv("SQLITE_PS2=");
+#else
           unsetenv("SQLITE_PS1");
           unsetenv("SQLITE_PS2");
+#endif
           z += 5;
         }
         if( strcmp(z,"-reset")==0 ){

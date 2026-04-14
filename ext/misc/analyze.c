@@ -47,10 +47,25 @@ static void analysisFree(Analysis *p){
 }
 
 /*
-** Report an OOM
+** Report an error using formatted text.  If zFormat==NULL then report
+** an OOM error.
 */
-static void analysisOom(Analysis *p){
-  sqlite3_result_error_nomem(p->context);
+static void analysisError(Analysis *p, const char *zFormat, ...){
+  char *zErr;
+  if( zFormat ){
+    va_list ap;
+    va_start(ap, zFormat);
+    zErr = sqlite3_vmprintf(zFormat, ap);
+    va_end(ap);
+  }else{
+    zErr = 0;
+  }
+  if( zErr==0 ){
+    sqlite3_result_error_nomem(p->context);
+  }else{
+    sqlite3_result_error(p->context, zErr, -1);
+    sqlite3_free(zErr);
+  }
   analysisFree(p);
 }
 
@@ -62,13 +77,11 @@ static sqlite3_stmt *analysisVPrep(Analysis *p, const char *zFmt, va_list ap){
   int rc;
   sqlite3_stmt *pStmt = 0;
   zSql = sqlite3_vmprintf(zFmt, ap);
-  if( zSql==0 ){ analysisOom(p); return 0; }
+  if( zSql==0 ){ analysisError(p,0); return 0; }
   rc = sqlite3_prepare_v2(p->db, zSql, -1, &pStmt, 0);
   if( rc ){
-    char *zErr = sqlite3_mprintf("SQL parse error: %s\nOriginal SQL: %s",
+    analysisError(p, "SQL parse error: %s\nOriginal SQL: %s",
                                  sqlite3_errmsg(p->db), zSql);
-    sqlite3_result_error(p->context, zErr, -1);
-    sqlite3_free(zErr);
     sqlite3_finalize(pStmt);
     analysisFree(p);
     pStmt = 0;
@@ -100,10 +113,8 @@ static int analysisSql(Analysis *p, const char *zFormat, ...){
   if( rc==SQLITE_DONE ){
     rc = SQLITE_OK;
   }else{
-    char *zErr = sqlite3_mprintf("SQL run-time error: %s\nOriginal SQL: %s",
-                                 sqlite3_errmsg(p->db), sqlite3_sql(pStmt));
-    sqlite3_result_error(p->context, zErr, -1);
-    sqlite3_free(zErr);
+    analysisError(p, "SQL run-time error: %s\nOriginal SQL: %s",
+                  sqlite3_errmsg(p->db), sqlite3_sql(pStmt));
     analysisFree(p);
   }
   sqlite3_finalize(pStmt);
@@ -131,11 +142,12 @@ static void analyzeFunc(
   s.db = sqlite3_context_db_handle(context);
   s.context = context;
   s.pOut = sqlite3_str_new(0);
-  if( s.pOut==0 ){ analysisOom(&s); return; }
+  if( s.pOut==0 ){ analysisError(&s, 0); return; }
   s.zSchema = (const char*)sqlite3_value_text(argv[0]);
+  if( s.zSchema==0 ) s.zSchema = "main";
   sqlite3_randomness(sizeof(r), &r);
   s.zSU = sqlite3_mprintf("analysis%016x%016x", r[0], r[1]);
-  if( s.zSU==0 ){ analysisOom(&s); return; }
+  if( s.zSU==0 ){ analysisError(&s, 0); return; }
 
   /* The s.zSU table contains the data used for the analysis.
   ** The table name contains 128-bits of randomness to avoid
@@ -276,6 +288,12 @@ static void analyzeFunc(
       sqlite3_column_int64(pStmt, 14),
       sqlite3_column_int64(pStmt, 15),
       sqlite3_column_int64(pStmt, 16));
+  }
+  if( rc!=SQLITE_DONE ){
+    analysisError(&s, "SQL run-time error: %s\nSQL: %s",
+                  sqlite3_errmsg(s.db), sqlite3_sql(pStmt));
+    sqlite3_finalize(pStmt);
+    return;
   }
   sqlite3_str_appendf(s.pOut,"\nCOMMIT;\n");
   sqlite3_finalize(pStmt);

@@ -3703,9 +3703,11 @@ static int sessionChangesetBufferRecord(
         rc = sessionInputBuffer(pIn, nByte);
       }else if( eType==SQLITE_INTEGER || eType==SQLITE_FLOAT ){
         nByte += 8;
+      }else if( eType!=0 && eType!=SQLITE_NULL ){
+        rc = SQLITE_CORRUPT_BKPT;
       }
     }
-    if( (pIn->iNext+nByte)>pIn->nData ){
+    if( rc==SQLITE_OK && (pIn->iNext+nByte)>pIn->nData ){
       rc = SQLITE_CORRUPT_BKPT;
     }
   }

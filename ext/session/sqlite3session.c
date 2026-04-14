@@ -638,10 +638,11 @@ static int sessionSerialLen(const u8 *a){
   int n;
   assert( a!=0 );
   e = *a;
-  if( e==0 || e==0xFF ) return 1;
-  if( e==SQLITE_NULL ) return 1;
   if( e==SQLITE_INTEGER || e==SQLITE_FLOAT ) return 9;
-  return sessionVarintGet(&a[1], &n) + 1 + n;
+  if( e==SQLITE_TEXT || e==SQLITE_BLOB ){
+    return sessionVarintGet(&a[1], &n) + 1 + n;
+  }
+  return 1;
 }
 
 /*
@@ -3702,9 +3703,11 @@ static int sessionChangesetBufferRecord(
         rc = sessionInputBuffer(pIn, nByte);
       }else if( eType==SQLITE_INTEGER || eType==SQLITE_FLOAT ){
         nByte += 8;
+      }else if( eType!=0 && eType!=SQLITE_NULL ){
+        rc = SQLITE_CORRUPT_BKPT;
       }
     }
-    if( (pIn->iNext+nByte)>pIn->nData ){
+    if( rc==SQLITE_OK && (pIn->iNext+nByte)>pIn->nData ){
       rc = SQLITE_CORRUPT_BKPT;
     }
   }

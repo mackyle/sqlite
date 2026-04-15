@@ -1322,7 +1322,7 @@ void sqlite3_str_reset(StrAccum *p){
 ** of its content, all in one call.
 */
 void sqlite3_str_free(sqlite3_str *p){
-  if( p ){
+  if( p!=0 && p!=&sqlite3OomStr ){
     sqlite3_str_reset(p);
     sqlite3_free(p);
   }

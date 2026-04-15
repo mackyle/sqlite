@@ -2798,6 +2798,7 @@ void sqlite3AlterDropConstraint(
   if( !pTab ) return;
 
   if( pCons ){
+    sqlite3DequoteToken(pCons); 
     zArg = sqlite3MPrintf(db, "%.*Q", pCons->n, pCons->z);
   }else{
     int iCol;

@@ -1766,6 +1766,7 @@ FUZZCHECK_SRC = $(FUZZCHECK_SRC) $(TOP)\test\fuzzinvariants.c
 FUZZCHECK_SRC = $(FUZZCHECK_SRC) $(TOP)\test\vt02.c
 FUZZCHECK_SRC = $(FUZZCHECK_SRC) $(TOP)\ext\recover\dbdata.c
 FUZZCHECK_SRC = $(FUZZCHECK_SRC) $(TOP)\ext\recover\sqlite3recover.c
+FUZZCHECK_SRC = $(FUZZCHECK_SRC) $(TOP)\ext\misc\analyze.c
 FUZZCHECK_SRC = $(FUZZCHECK_SRC) $(TOP)\ext\misc\base64.c
 FUZZCHECK_SRC = $(FUZZCHECK_SRC) $(TOP)\ext\misc\base85.c
 FUZZCHECK_SRC = $(FUZZCHECK_SRC) $(TOP)\ext\misc\completion.c

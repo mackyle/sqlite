@@ -982,6 +982,7 @@ FUZZCHECK_SRC = sqlite3.c \
    $(TOP)/ext/recover/dbdata.c \
    $(TOP)/ext/recover/sqlite3recover.c \
    $(TOP)/test/vt02.c \
+   $(TOP)/ext/misc/analyze.c \
    $(TOP)/ext/misc/base64.c \
    $(TOP)/ext/misc/base85.c \
    $(TOP)/ext/misc/completion.c \

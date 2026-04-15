@@ -2344,6 +2344,7 @@ SHELL_DEP = \
     $(TOP)/ext/expert/sqlite3expert.h \
     $(TOP)/ext/intck/sqlite3intck.c \
     $(TOP)/ext/intck/sqlite3intck.h \
+    $(TOP)/ext/misc/analyze.c \
     $(TOP)/ext/misc/appendvfs.c \
     $(TOP)/ext/misc/base64.c \
     $(TOP)/ext/misc/base85.c \

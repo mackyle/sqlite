@@ -624,9 +624,9 @@ static void analyzeFunc(
     s.zSU);
   if( pStmt==0 ) return;
   while( (rc = sqlite3_step(pStmt))==SQLITE_ROW ){
-    sqlite3_int64 n = sqlite3_column_int64(pStmt,1);
-    analysisLine(&s, (const char*)sqlite3_column_text(pStmt,0), "%-11lld ", n);
-    analysisPercent(&s, (n*100.0)/(double)nPage);
+    sqlite3_int64 nn = sqlite3_column_int64(pStmt,1);
+    analysisLine(&s, (const char*)sqlite3_column_text(pStmt,0), "%-11lld ", nn);
+    analysisPercent(&s, (nn*100.0)/(double)nPage);
   }
   if( analysisStmtFinish(&s, rc, pStmt) ) return;
 
@@ -640,9 +640,9 @@ static void analyzeFunc(
     s.zSU);
   if( pStmt==0 ) return;
   while( (rc = sqlite3_step(pStmt))==SQLITE_ROW ){
-    sqlite3_int64 n = sqlite3_column_int64(pStmt,1);
-    analysisLine(&s, (const char*)sqlite3_column_text(pStmt,0), "%-11lld ", n);
-    analysisPercent(&s, (n*100.0)/(double)nPage);
+    sqlite3_int64 nn = sqlite3_column_int64(pStmt,1);
+    analysisLine(&s, (const char*)sqlite3_column_text(pStmt,0), "%-11lld ", nn);
+    analysisPercent(&s, (nn*100.0)/(double)nPage);
   }
   if( analysisStmtFinish(&s, rc, pStmt) ) return;
 

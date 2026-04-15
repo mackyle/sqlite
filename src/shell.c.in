@@ -9580,6 +9580,7 @@ static int do_meta_command(const char *zLine, ShellState *p){
     const char *zSchema = 0;
     int ii;
     char *zSql;
+    open_db(p, 0);
     for(ii=1; ii<nArg; ii++){
       const char *z = azArg[ii];
       if( z[0]=='-' ){

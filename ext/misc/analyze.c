@@ -438,16 +438,16 @@ static void analyzeFunc(
   if( s.zSchema==0 ){
     s.zSchema = "main";
   }else if( sqlite3_strlike("temp",s.zSchema,0)==0 ){
-    /* Attempt to analyze "temp" returns NULL */
     analysisReset(&s);
+    sqlite3_result_text(context, "cannot analyze \"temp\"",-1,SQLITE_STATIC);
     return;
   }
   i64 = 0;
   rc = analysisSqlInt(&s,&i64,"SELECT 1 FROM pragma_database_list"
                              " WHERE name=%Q COLLATE nocase",s.zSchema);
   if( rc || i64==0 ){
-    /* Return NULL the named schema does not exist */
     analysisReset(&s);
+    sqlite3_result_text(context,"no such database",-1,SQLITE_STATIC);
     return;
   }
   sqlite3_randomness(sizeof(r), &r);
@@ -536,18 +536,23 @@ static void analyzeFunc(
   );
   if( rc ) return;
 
+  nPage = 0;
+  rc = analysisSqlInt(&s, &nPage, "PRAGMA \"%w\".page_count", s.zSchema);
+  if( rc ) return;
+  if( nPage<=0 ){
+    /* Very brief reply for an empty database */
+    analysisReset(&s);
+    sqlite3_result_text(context, "empty database", -1, SQLITE_STATIC);
+    return;
+  }
+
   /* Begin generating the report */
   analysisTitle(&s, "Database storage utilization report");
   pgsz = 0;
   rc = analysisSqlInt(&s, &pgsz, "PRAGMA \"%w\".page_size", s.zSchema);
   if( rc ) return;
   analysisLine(&s, "Page size in bytes","%lld\n",pgsz);
-
-  nPage = 0;
-  rc = analysisSqlInt(&s, &nPage, "PRAGMA \"%w\".page_count", s.zSchema);
-  if( rc ) return;
   analysisLine(&s, "Pages in the database", "%lld\n", nPage);
-  if( nPage<=0 ) nPage = 1;
 
   nPageInUse = 0;
   rc = analysisSqlInt(&s, &nPageInUse, 

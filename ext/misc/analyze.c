@@ -293,6 +293,7 @@ static int analysisSubreport(
   sqlite3_int64 leaf_unused;    /* unused bytes on leaf pages */
   sqlite3_int64 int_unused;     /* unused bytes on internal pages */
   sqlite3_int64 ovfl_unused;    /* unused bytes on overflow pages */
+  sqlite3_int64 int_cell;       /* B-tree entries on internal pages */
   sqlite3_int64 depth;          /* btree depth */
   sqlite3_int64 cnt;            /* Number of s.zSU entries that match */
   sqlite3_int64 storage;        /* Total bytes */
@@ -319,7 +320,8 @@ static int analysisSubreport(
     "  sum(int_unused),\n"         /* 9 */
     "  sum(ovfl_unused),\n"        /* 10 */
     "  max(depth),\n"              /* 11 */
-    "  count(*)\n"                 /* 12 */
+    "  count(*),\n"                /* 12 */
+    "  sum(int_entries)\n"         /* 13 */
     " FROM temp.%s WHERE %s",
     p->zSU, zWhere);
   if( pStmt==0 ) return 1;
@@ -340,6 +342,7 @@ static int analysisSubreport(
     ovfl_unused = sqlite3_column_int64(pStmt, 10);
     depth = sqlite3_column_int64(pStmt, 11);
     cnt = sqlite3_column_int64(pStmt, 12);
+    int_cell = sqlite3_column_int64(pStmt, 13);
     rc = SQLITE_DONE;
 
     total_pages = leaf_pages + int_pages + ovfl_pages;
@@ -360,6 +363,10 @@ static int analysisSubreport(
     analysisPercent(p, total_meta*100.0/(double)storage);
     if( cnt==1 ){
       analysisLine(p, "B-tree depth", "%lld\n", depth);
+      if( int_cell>1 ){
+        analysisLine(p, "Average fanout", "%.1f\n",
+                     (double)(int_cell+1)/(double)int_pages);
+      }
     }
     if( nentry>0 ){
       analysisLine(p, "Average payload per entry", "%.1f\n",
@@ -464,7 +471,8 @@ static void analyzeFunc(
     "   ovfl_pages int,           -- Overflow pages used\n"
     "   int_unused int,           -- Unused bytes on interior pages\n"
     "   leaf_unused int,          -- Unused bytes on primary pages\n"
-    "   ovfl_unused int           -- Unused bytes on overflow pages\n"
+    "   ovfl_unused int,          -- Unused bytes on overflow pages\n"
+    "   int_entries int           -- Btree cells on internal pages\n"
     ");",
     s.zSU
   );
@@ -510,7 +518,8 @@ static void analyzeFunc(
     "    sum(pagetype='overflow'),\n"
     "    sum((pagetype='internal')*unused),\n"
     "    sum((pagetype='leaf')*unused),\n"
-    "    sum((pagetype='overflow')*unused)\n"
+    "    sum((pagetype='overflow')*unused),\n"
+    "    sum(if(pagetype='internal',ncell))\n"
     "  FROM allobj CROSS JOIN dbstat(%Q) \n"
     "  WHERE dbstat.name=allobj.allname\n"
     "  GROUP BY allname;\n",
@@ -738,7 +747,8 @@ static void analyzeFunc(
     "   ovfl_pages int,           -- Overflow pages used\n"             /* 13 */
     "   int_unused int,           -- Unused bytes on interior pages\n"  /* 14 */
     "   leaf_unused int,          -- Unused bytes on primary pages\n"   /* 15 */
-    "   ovfl_unused int           -- Unused bytes on overflow pages\n"  /* 16 */
+    "   ovfl_unused int,          -- Unused bytes on overflow pages\n"  /* 16 */
+    "   int_entries int           -- B-tree entries on internal pages\n"/* 17 */
     ");\n"
     "INSERT INTO space_used VALUES\n"
   );
@@ -747,7 +757,7 @@ static void analyzeFunc(
      "       is_index, is_without_rowid, nentry, leaf_entries,\n"   /* 2..5 */
      "       depth, payload, ovfl_payload, ovfl_cnt, mx_payload,\n" /* 6..10 */
      "       int_pages, leaf_pages, ovfl_pages, int_unused,\n"      /* 11..14 */
-     "       leaf_unused, ovfl_unused\n"                            /* 15..16 */
+     "       leaf_unused, ovfl_unused, int_entries\n"               /* 15..17 */
      "  FROM temp.%s;",
      s.zSU);
   if( pStmt==0 ) return;
@@ -756,7 +766,7 @@ static void analyzeFunc(
     if( n++ ) sqlite3_str_appendf(s.pOut,",\n");
     sqlite3_str_appendf(s.pOut,
       " (%s,%s,%lld,%lld,%lld,%lld,%lld,%lld,%lld,"
-      "%lld,%lld,%lld,%lld,%lld,%lld,%lld,%lld)",
+      "%lld,%lld,%lld,%lld,%lld,%lld,%lld,%lld,%lld)",
       sqlite3_column_text(pStmt, 0),
       sqlite3_column_text(pStmt, 1),
       sqlite3_column_int64(pStmt, 2),
@@ -773,7 +783,8 @@ static void analyzeFunc(
       sqlite3_column_int64(pStmt, 13),
       sqlite3_column_int64(pStmt, 14),
       sqlite3_column_int64(pStmt, 15),
-      sqlite3_column_int64(pStmt, 16));
+      sqlite3_column_int64(pStmt, 16),
+      sqlite3_column_int64(pStmt, 17));
   }
   if( rc!=SQLITE_DONE ){
     analysisError(&s, "SQL run-time error: %s\nSQL: %s",

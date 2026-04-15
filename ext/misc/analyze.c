@@ -172,8 +172,11 @@ static int analysisSqlInt(
   }else if( rc==SQLITE_DONE ){
     rc = SQLITE_OK;
   }else{
-    analysisError(p, "SQL run-time error: %s\nOriginal SQL: %s",
-                  sqlite3_errmsg(p->db), sqlite3_sql(pStmt));
+    if( p->db ){
+      /* p->db is NULL if there was some prior error */
+      analysisError(p, "SQL run-time error: %s\nOriginal SQL: %s",
+                    sqlite3_errmsg(p->db), sqlite3_sql(pStmt));
+    }
     analysisReset(p);
   }
   sqlite3_finalize(pStmt);
@@ -365,7 +368,7 @@ static int analysisSubreport(
       analysisLine(p, "B-tree depth", "%lld\n", depth);
       if( int_cell>1 ){
         analysisLine(p, "Average fanout", "%.1f\n",
-                     (double)(int_cell+1)/(double)int_pages);
+                     (double)(int_cell+int_pages)/(double)int_pages);
       }
     }
     if( nentry>0 ){
@@ -436,6 +439,7 @@ static void analyzeFunc(
     s.zSchema = "main";
   }else if( sqlite3_strlike("temp",s.zSchema,0)==0 ){
     /* Attempt to analyze "temp" returns NULL */
+    analysisReset(&s);
     return;
   }
   i64 = 0;
@@ -443,6 +447,7 @@ static void analyzeFunc(
                              " WHERE name=%Q COLLATE nocase",s.zSchema);
   if( rc || i64==0 ){
     /* Return NULL the named schema does not exist */
+    analysisReset(&s);
     return;
   }
   sqlite3_randomness(sizeof(r), &r);
@@ -665,8 +670,8 @@ static void analyzeFunc(
   while( (rc = sqlite3_step(pStmt))==SQLITE_ROW ){
     const char *zUpper = (const char*)sqlite3_column_text(pStmt, 0);
     const char *zName = (const char*)sqlite3_column_text(pStmt, 1);
-    int nIndex = sqlite3_column_int(pStmt, 2);
-    if( nIndex==0 ){
+    int nSubIndex = sqlite3_column_int(pStmt, 2);
+    if( nSubIndex==0 ){
       char *zTitle = sqlite3_mprintf("Table %s", zUpper);
       char *zWhere = sqlite3_mprintf("name=%Q", zName);
       rc = analysisSubreport(&s, zTitle, zWhere, pgsz, nPage);
@@ -687,7 +692,7 @@ static void analyzeFunc(
       sqlite3_free(zTitle);
       sqlite3_free(zWhere);
       if( rc ) break;
-      if( nIndex>1 ){
+      if( nSubIndex>1 ){
         zTitle = sqlite3_mprintf("All indexes of table %s", zUpper);
         zWhere = sqlite3_mprintf("tblname=%Q AND is_index", zName);
         rc = analysisSubreport(&s, zTitle, zWhere, pgsz, nPage);

@@ -3106,7 +3106,7 @@ static void filestatFunc(
     assert( pPager!=0 );
     fd = sqlite3PagerFile(pPager);
     pStr = sqlite3_str_new(db);
-    if( pStr==0 ){
+    if( sqlite3_str_errcode(pStr) ){
       sqlite3_result_error_nomem(context);
     }else{
       sqlite3_str_append(pStr, "{\"db\":", 6);
@@ -3209,7 +3209,7 @@ static void parseuriFunc(
   flgs = (unsigned int)sqlite3_value_int(argv[1]);
   rc = sqlite3ParseUri(zVfs, zUri, &flgs, &pVfs, &zFile, &zErr);
   pResult = sqlite3_str_new(0);
-  if( pResult ){
+  if( !sqlite3_str_errcode(pResult) ){
     int i;
     sqlite3_str_appendf(pResult, "rc=%d", rc);
     sqlite3_str_appendf(pResult, ", flags=0x%x", flgs);

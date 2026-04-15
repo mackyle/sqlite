@@ -433,7 +433,10 @@ static void analyzeFunc(
   s.db = sqlite3_context_db_handle(context);
   s.context = context;
   s.pOut = sqlite3_str_new(0);
-  if( s.pOut==0 ){ analysisError(&s, 0); return; }
+  if( sqlite3_str_errcode(s.pOut) ){
+    analysisError(&s, 0);
+    return;
+  }
   s.zSchema = (const char*)sqlite3_value_text(argv[0]);
   if( s.zSchema==0 ){
     s.zSchema = "main";

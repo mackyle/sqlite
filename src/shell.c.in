@@ -3956,7 +3956,6 @@ static const char *(azHelp[]) = {
 #if SQLITE_SHELL_HAVE_RECOVER
   ".dbinfo ?DB?             Show status information about the database",
 #endif
-  ".dbstat ?SCHEMA?         Report database space and size stats",
   ".dbtotxt                 Hex dump of the database file",
   ".dump ?OBJECTS?          Render database content as SQL",
   "   Options:",
@@ -4001,6 +4000,7 @@ static const char *(azHelp[]) = {
   "   -a|--all                Also show system-generated indexes",
   "   --expr                  Show only expression indexes",
   "   --sys                   Show only system-generated indexes",
+  ".inspect ?SCHEMA?        Report database space and size stats",
   ".intck ?STEPS_PER_UNLOCK?  Run an incremental integrity check on the db",
 #ifdef SQLITE_ENABLE_IOTRACE
   ",iotrace FILE            Enable I/O diagnostic logging to FILE",
@@ -9576,37 +9576,6 @@ static int do_meta_command(const char *zLine, ShellState *p){
   }else
 #endif /* SQLITE_SHELL_HAVE_RECOVER */
 
-  if( c=='d' && n==6 && cli_strncmp(azArg[0], "dbstat", n)==0 ){
-    const char *zSchema = 0;
-    int ii;
-    char *zSql;
-    open_db(p, 0);
-    for(ii=1; ii<nArg; ii++){
-      const char *z = azArg[ii];
-      if( z[0]=='-' ){
-        dotCmdError(p, ii, "unknown option", 0);
-        rc = 1;
-        goto meta_command_exit;
-      }
-      if( zSchema ){
-        dotCmdError(p, ii, "unknown argument", 0);
-        rc = 1;
-        goto meta_command_exit;
-      }
-      zSchema = z;
-    }
-    zSql = sqlite3_mprintf("SELECT analyze(%Q)", zSchema);
-    shell_check_oom(zSql);
-    modePush(p);
-    modeChange(p, MODE_BATCH);
-    p->mode.spec.nLineLimit = 0;
-    p->mode.spec.nCharLimit = 0;
-    p->mode.spec.nTitleLimit = 0;
-    shell_exec(p, zSql, 0);
-    modePop(p);
-    sqlite3_free(zSql);
-  }else
-
   if( c=='d' && n>=3 && cli_strncmp(azArg[0], "dbtotxt", n)==0 ){
     open_db(p, 0);
     rc = shell_dbtotxt_command(p, nArg, azArg);
@@ -10225,6 +10194,37 @@ static int do_meta_command(const char *zLine, ShellState *p){
       modePop(p);
     }
     sqlite3_str_free(pSql);
+  }else
+
+  if( c=='i' && n>=4 && cli_strncmp(azArg[0], "inspect", n)==0 ){
+    const char *zSchema = 0;
+    int ii;
+    char *zSql;
+    open_db(p, 0);
+    for(ii=1; ii<nArg; ii++){
+      const char *z = azArg[ii];
+      if( z[0]=='-' ){
+        dotCmdError(p, ii, "unknown option", 0);
+        rc = 1;
+        goto meta_command_exit;
+      }
+      if( zSchema ){
+        dotCmdError(p, ii, "unknown argument", 0);
+        rc = 1;
+        goto meta_command_exit;
+      }
+      zSchema = z;
+    }
+    zSql = sqlite3_mprintf("SELECT analyze(%Q)", zSchema);
+    shell_check_oom(zSql);
+    modePush(p);
+    modeChange(p, MODE_BATCH);
+    p->mode.spec.nLineLimit = 0;
+    p->mode.spec.nCharLimit = 0;
+    p->mode.spec.nTitleLimit = 0;
+    shell_exec(p, zSql, 0);
+    modePop(p);
+    sqlite3_free(zSql);
   }else
 
   if( c=='i' && cli_strncmp(azArg[0], "intck", n)==0 ){

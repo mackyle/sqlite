@@ -1280,6 +1280,7 @@ proc add_build_job {buildname target {postcmd ""} {depid ""}} {
 
   set dirname "[string tolower [string map {- _} $buildname]]_$target"
   regsub {\.exe$} $dirname {} dirname
+  regsub {\.l?o$} $dirname {obj} dirname
   set dirname "testrun_$dirname"
 
   set cmd "$TRG(makecmd) $target"

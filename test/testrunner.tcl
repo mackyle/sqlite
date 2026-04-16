@@ -34,7 +34,15 @@ proc find_interpreter {} {
   set rc [catch { package require sqlite3 }]
   if {$rc} {
     if {[file readable pkgIndex.tcl] && [catch {source pkgIndex.tcl}]==0} {
+      # Since $dir is defined to be the [pwd], if the "source pkgIndex.tcl"
+      # worked, that should have enabled us to use the locally built 
+      # copy of the TCL extension.
       set rc [catch { package require sqlite3 }]
+      if {!$rc} {
+        puts "Using the locally built copy of the \"sqlite3\" tcl extension"
+      } else {
+        puts "The locally built copy of the \"sqlite3\" tcl extension does work..."
+      }
     }
   }
   if {$rc} {
@@ -49,7 +57,7 @@ proc find_interpreter {} {
     }
   }
   if {$rc} {
-    puts "Cannot find tcl package sqlite3: Trying to build it now..."
+    puts "Cannot find tcl package \"sqlite3\": Trying to build it now..."
     if {$::tcl_platform(platform) eq "windows"} {
       set bat [open make-tcl-extension.bat w]
       puts $bat "nmake /f Makefile.msc tclextension"

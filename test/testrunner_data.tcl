@@ -143,6 +143,7 @@ namespace eval trd {
     -DSQLITE_ENABLE_UNLOCK_NOTIFY
     -DSQLITE_THREADSAFE
     -DSQLITE_TCL_DEFAULT_FULLMUTEX=1
+    -DSQLITE_OMIT_AUTOINIT=1
   }
   set build(Secure-Delete) {
     -O2

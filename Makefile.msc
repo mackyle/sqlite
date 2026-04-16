@@ -2743,6 +2743,9 @@ rbu.exe:	$(TOP)\ext\rbu\rbu.c $(TOP)\ext\rbu\sqlite3rbu.c $(SQLITE3C) $(SQLITE3H
 	$(LTLINK) $(NO_WARN) -DSQLITE_ENABLE_RBU \
 		$(TOP)\ext\rbu\rbu.c $(SQLITE3C) /link $(LDFLAGS) $(LTLINKOPTS)
 
+$(AUXTEST).exe:	$(TOP)\test\c\$(AUXTEST).c
+	$(LTLINK) $(NO_WARN) $(TOP)\test\c\$(AUXTEST).c sqlite3.lo /link $(LDFLAGS) $(LTLINKOPTS)
+
 THREADTEST3_SRC = \
   $(TOP)\test\threadtest3.c \
   $(TOP)\test\tt3_checkpoint.c \

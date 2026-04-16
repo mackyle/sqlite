@@ -142,25 +142,20 @@ are run. Otherwise, each pattern is interpreted as a glob pattern. Only
 those tcl tests for which the final component of the filename matches at
 least one specified pattern are run.  The glob wildcard '*' is prepended
 to the pattern if it does not start with '^' and appended to every
-pattern that does not end with '$'.  If PATTERN begins with "~", then it
-is an anti-pattern that only matches tests that do not match PATTERN.
-Tests or only run if they match one or more patterns and match no
-anti-patterns.
-
-If no PATTERN arguments are present, then various fuzztest, threadtest
-and other tests are run as part of the "release" permutation. These are
-omitted if any PATTERN arguments are specified on the command line.
+pattern that does not end with '$'.  If any PATTERN argument begins with "~",
+then it is an anti-pattern.  When PATTERN arguments are present, tests are
+only run if they match one or more patterns and match no anti-patterns.
 
 If a PERMUTATION is specified and is followed by the path to a Tcl script
 instead of a list of patterns, then that single Tcl test script is run
 with the specified permutation.
 
 The "status" and "njob" commands are designed to be run from the same
-directory as a running testrunner.tcl script that is running tests. The
-"status" command prints a report describing the current state and progress 
-of the tests.  Use the "-d N" option to have the status display clear the
-screen and repeat every N seconds.  The "njob" command may be used to query
-or modify the number of sub-processes the test script uses to run tests.
+directory as a running testrunner.tcl script.  The "status" command prints
+a report describing the current state and progress of the tests.  Use
+the "-d N" option to have the status display clear the screen and repeat
+every N seconds.  The "njob" command may be used to query or modify the
+number of sub-processes the test script uses to run tests.
 
 The "halt" command modifies the database so that all tasks are marked
 as complete.  Testing will halt when all tests currently running complete.
@@ -180,7 +175,7 @@ shows the jobs that failed.  If PATTERN are provided, the error information
 is only provided for jobs that match PATTERN.
 
 The "retest" command reruns tests that failed or were never completed
-by a prior invocation of testrunner.tcl.
+by the previous invocation of testrunner.tcl.
 
 Full documentation here: https://sqlite.org/src/doc/trunk/doc/testrunner.md
   }]]

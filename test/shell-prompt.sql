@@ -73,11 +73,11 @@ END
 .prompt --reset
 .help prompt
 .check <<END
-.prompt MAIN CONTINUE        Replace the standard prompts
-   --hard-reset                 Unset SQLITE_PS1/2 and then --reset
-   --reset                      Revert to default prompts
-   --show                       Show the current prompt strings
-   --                           No more options. Subsequent args are prompts
+.prompt MAIN CONTINUE    Replace the standard prompts
+   --hard-reset              Unset SQLITE_PS1/2 and then --reset
+   --reset                   Revert to default prompts
+   --show                    Show the current prompt strings
+   --                        No more options. Subsequent args are prompts
 END
 
 .testcase 140 --error-prefix ERROR:

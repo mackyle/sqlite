@@ -4001,7 +4001,7 @@ static const char *(azHelp[]) = {
   "   -a|--all                Also show system-generated indexes",
   "   --expr                  Show only expression indexes",
   "   --sys                   Show only system-generated indexes",
-  ".intck ?STEPS_PER_UNLOCK?  Run an incremental integrity check on the db",
+  ".intck ?STEPS?           Run an incremental integrity check on the db",
 #ifdef SQLITE_ENABLE_IOTRACE
   ",iotrace FILE            Enable I/O diagnostic logging to FILE",
 #endif
@@ -4066,11 +4066,11 @@ static const char *(azHelp[]) = {
   "   --reset                   Reset the count for each input and interrupt",
   "   --timeout S               Halt after running for S seconds",
 #endif
-  ".prompt MAIN CONTINUE        Replace the standard prompts",
-  "   --hard-reset                 Unset SQLITE_PS1/2 and then --reset",
-  "   --reset                      Revert to default prompts",
-  "   --show                       Show the current prompt strings",
-  "   --                           No more options. Subsequent args are prompts",
+  ".prompt MAIN CONTINUE    Replace the standard prompts",
+  "   --hard-reset              Unset SQLITE_PS1/2 and then --reset",
+  "   --reset                   Revert to default prompts",
+  "   --show                    Show the current prompt strings",
+  "   --                        No more options. Subsequent args are prompts",
 #ifndef SQLITE_SHELL_FIDDLE
   ".quit                    Stop interpreting input stream, exit if primary.",
   ".read FILE               Read input from FILE or command output",
@@ -5660,7 +5660,7 @@ static void output_reset(ShellState *p){
         cli_printf(stderr,"Failed: [%s]\n", zCmd);
       }else{
         /* Give the start/open/xdg-open command some time to get
-        ** going before we continue, and potential delete the
+        ** going before we continue and potentially delete the
         ** p->zTempFile data file out from under it */
         sqlite3_sleep(2000);
       }
@@ -9099,7 +9099,7 @@ static int dotCmdCheck(ShellState *p){
 **
 ** Start a new test case identified by NAME.  All output
 ** through the next ".check" command is captured for comparison. See the
-** ".check" commandn for additional informatioon.
+** ".check" command for additional informatioon.
 **
 ** Options:
 **   --error-prefix TEXT       Change error message prefix text to TEXT

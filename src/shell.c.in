@@ -13834,6 +13834,7 @@ int SQLITE_CDECL main(int argc, char **argv){
       linenoiseSetCompletionCallback(linenoise_completion, NULL);
 #endif
       data.in = 0;
+      open_db(&data, 0);
       rc = process_input(&data, "<stdin>");
       if( zHistory ){
         shell_stifle_history(2000);

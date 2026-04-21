@@ -5601,9 +5601,9 @@ static LogEst whereSortingCost(
 ** with a central "fact" table that is joined against multiple
 ** "dimension" tables, subject to the following constraints:
 **
-**   (aa)  Only a five-way or larger join is considered for this
+**   (aa)  Only a four-way or larger join is considered for this
 **         optimization.  If there are fewer than four terms in the FROM
-**         clause, this heuristic does not apply.
+**         clause, this heuristic does not apply. (Was 5 prior to 2026-02-10.)
 **
 **   (bb)  The join between the fact table and the dimension tables must
 **         be an INNER join.  CROSS and OUTER JOINs do not qualify.
@@ -5678,16 +5678,17 @@ static int computeMxChoice(WhereInfo *pWInfo){
     pWInfo->bStarDone = 1; /* Only do this computation once */
 
     /* Look for fact tables with three or more dimensions where the
-    ** dimension tables are not separately from the fact tables by an outer
+    ** dimension tables are not separated from the fact tables by an outer
     ** or cross join.  Adjust cost weights if found.
     */
     assert( !pWInfo->bStarUsed );
     aFromTabs = pWInfo->pTabList->a;
     pStart = pWInfo->pLoops;
     for(iFromIdx=0, m=1; iFromIdx<nLoop; iFromIdx++, m<<=1){
-      int nDep = 0;             /* Number of dimension tables */
+      int nDep = 0;             /* Number of joins against pFactTab */
       LogEst mxRun;             /* Maximum SCAN cost of a fact table */
-      Bitmask mSeen = 0;        /* Mask of dimension tables */
+      Bitmask mSeen = 0;        /* Mask of tabls joined to pFactTab */
+      Bitmask mDimen = 0;       /* Mask of dimension tables */
       SrcItem *pFactTab;        /* The candidate fact table */
 
       pFactTab = aFromTabs + iFromIdx;
@@ -5710,15 +5711,21 @@ static int computeMxChoice(WhereInfo *pWInfo){
          && (pWLoop->maskSelf & mSeen)==0  /* pWInfo not already a dependency */
          && (pWLoop->maskSelf & mSelfJoin)==0 /* Not a self-join */
         ){
-          if( aFromTabs[pWLoop->iTab].pSTab==pFactTab->pSTab ){
+          Table *pDim = aFromTabs[pWLoop->iTab].pSTab;
+          if( pDim==pFactTab->pSTab ){
             mSelfJoin |= m;
           }else{
             nDep++;
             mSeen |= pWLoop->maskSelf;
+            if( (pWLoop->wsFlags & WHERE_ONEROW)!=0
+             && pDim->nRowLogEst+33<=pFactTab->pSTab->nRowLogEst
+            ){
+              mDimen |= pWLoop->maskSelf;
+            }
           }
         }
       }
-      if( nDep<=2 ){
+      if( /*nDep<=2 ||*/ mDimen==0 ){
         continue; /* Constraint (cc) */
       }
 
@@ -5736,10 +5743,23 @@ static int computeMxChoice(WhereInfo *pWInfo){
 #endif
 #ifdef WHERETRACE_ENABLED /* 0x80000 */
       if( sqlite3WhereTrace & 0x80000 ){
+        const char *zSep = ", joins: ";
         Bitmask mShow = mSeen;
-        sqlite3DebugPrintf("Fact table %s(%d), dimensions:",
+        sqlite3DebugPrintf("Fact table %s(%d)",
             pFactTab->zAlias ? pFactTab->zAlias : pFactTab->pSTab->zName,
             iFromIdx);
+        for(pWLoop=pStart; pWLoop; pWLoop=pWLoop->pNextLoop){
+          if( mDimen & pWLoop->maskSelf ) continue;
+          if( mShow & pWLoop->maskSelf ){
+            SrcItem *pDim = aFromTabs + pWLoop->iTab;
+            mShow &= ~pWLoop->maskSelf;
+            sqlite3DebugPrintf("%s%s(%d)%s", zSep,
+              pDim->zAlias ? pDim->zAlias: pDim->pSTab->zName, pWLoop->iTab);
+            zSep = " ";
+          }
+        }
+        mShow = mDimen;
+        sqlite3DebugPrintf(", dimensions:");
         for(pWLoop=pStart; pWLoop; pWLoop=pWLoop->pNextLoop){
           if( mShow & pWLoop->maskSelf ){
             SrcItem *pDim = aFromTabs + pWLoop->iTab;
@@ -5766,7 +5786,7 @@ static int computeMxChoice(WhereInfo *pWInfo){
       /* Increase the cost of table scans for dimension tables to be
       ** slightly more than the maximum cost of the fact table */
       for(pWLoop=pStart; pWLoop; pWLoop=pWLoop->pNextLoop){
-        if( (pWLoop->maskSelf & mSeen)==0 ) continue;
+        if( (pWLoop->maskSelf & mDimen)==0 ) continue;
         if( pWLoop->nLTerm ) continue;
         if( pWLoop->rRun<mxRun ){
 #ifdef WHERETRACE_ENABLED /* 0x80000 */
@@ -5780,6 +5800,17 @@ static int computeMxChoice(WhereInfo *pWInfo){
           pWLoop->rStarDelta = mxRun - pWLoop->rRun;
 #endif /* WHERETRACE_ENABLED */
           pWLoop->rRun = mxRun;
+        }else{
+#ifdef WHERETRACE_ENABLED /* 0x80000 */
+          if( sqlite3WhereTrace & 0x80000 ){
+            SrcItem *pDim = aFromTabs + pWLoop->iTab;
+            sqlite3DebugPrintf(
+              "SCAN cost of %s is already %d, higher than %d\n",
+              pDim->zAlias ? pDim->zAlias: pDim->pSTab->zName,
+              pWLoop->rRun, mxRun
+            );
+          }
+#endif /* WHERETRACE_ENABLED */
         }
       }
     }

@@ -283,5 +283,13 @@ do_execsql_test 12.5 {
       "IsActive" INTEGER)}
 }
 
+do_execsql_test 12.6 {
+  CREATE TABLE t1(a, b CONSTRAINT "a""b" CHECK (b IS NOT NULL));
+}
+
+do_execsql_test 12.7 {
+  ALTER TABLE t1 DROP CONSTRAINT "a""b"
+}
+
 finish_test
 

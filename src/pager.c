@@ -1993,7 +1993,7 @@ static int pagerFlushOnCommit(Pager *pPager, int bCommit){
 ** database transaction.
 **
 ** This routine is never called in PAGER_ERROR state. If it is called
-** in PAGER_NONE or PAGER_SHARED state and the lock held is less
+** in PAGER_OPEN or PAGER_READER state and the lock held is less
 ** exclusive than a RESERVED lock, it is a no-op.
 **
 ** Otherwise, any active savepoints are released.
@@ -3754,7 +3754,7 @@ void sqlite3PagerSetBusyHandler(
 **
 ** then the pager object page size is set to *pPageSize.
 **
-** If the page size is changed, then this function uses sqlite3PagerMalloc()
+** If the page size is changed, then this function uses sqlite3PageMalloc()
 ** to obtain a new Pager.pTmpSpace buffer. If this allocation attempt
 ** fails, SQLITE_NOMEM is returned and the page size remains unchanged.
 ** In all other cases, SQLITE_OK is returned.
@@ -5210,8 +5210,8 @@ static int checkHotJournal(Pager *pPager, int *pbHot){
 }
 
 /*
-** This function is called after transitioning from PAGER_UNLOCK to
-** PAGER_SHARED state. It tests if there is a hot journal present in
+** This function is called while transitioning from PAGER_OPEN to a
+** higher state. It tests if there is a hot journal present in
 ** the file-system for the given pager. A hot journal is one that
 ** needs to be played back. According to this function, a hot-journal
 ** file exists if the following criteria are met:

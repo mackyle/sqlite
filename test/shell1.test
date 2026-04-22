@@ -548,7 +548,8 @@ do_test shell1-3.17.3 {
 do_test shell1-3.17.4 {
   # too many arguments
   catchcmd "test.db" ".prompt FOO BAR BAD"
-} {0 {}}
+} {1 {line 1: .prompt FOO BAR BAD
+line 1:                 ^--- extra argument}}
 
 # .quit                  Exit this program
 do_test shell1-3.18.1 {

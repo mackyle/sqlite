@@ -985,6 +985,7 @@ FUZZCHECK_SRC = sqlite3.c \
    $(TOP)/ext/recover/dbdata.c \
    $(TOP)/ext/recover/sqlite3recover.c \
    $(TOP)/test/vt02.c \
+   $(TOP)/ext/misc/analyze.c \
    $(TOP)/ext/misc/base64.c \
    $(TOP)/ext/misc/base85.c \
    $(TOP)/ext/misc/completion.c \
@@ -1681,7 +1682,8 @@ tclsqlite3.c:	sqlite3.c tclsqlite-ex.c
 #
 # $(CFLAGS.tclextension) = CFLAGS for the tclextension* targets.
 #
-CFLAGS.tclextension = $(CFLAGS.intree_includes) $(CFLAGS.env) $(OPT_FEATURE_FLAGS) $(OPTS)
+CFLAGS.tclextension = $(CFLAGS.intree_includes) $(CFLAGS.env) \
+  $(OPT_FEATURE_FLAGS) $(OPTS) $(CFLAGS.icu)
 #
 # Build the SQLite TCL extension in a way that make it compatible
 # with whatever version of TCL is running as $TCLSH_CMD, possibly defined
@@ -1689,7 +1691,8 @@ CFLAGS.tclextension = $(CFLAGS.intree_includes) $(CFLAGS.env) $(OPT_FEATURE_FLAG
 #
 tclextension: tclsqlite3.c
 	$(TCLSH_CMD) $(TOP)/tool/buildtclext.tcl --build-only \
-		--tclConfig.sh $(TCL_CONFIG_SH) --cc "$(T.cc)" $(CFLAGS.tclextension)
+		--tclConfig.sh $(TCL_CONFIG_SH) --cc "$(T.cc)" \
+		--extlibs "$(LDFLAGS.icu)" $(CFLAGS.tclextension)
 
 #
 # Install the SQLite TCL extension in a way that is appropriate for $TCLSH_CMD
@@ -1697,7 +1700,8 @@ tclextension: tclsqlite3.c
 #
 tclextension-install: tclsqlite3.c
 	$(TCLSH_CMD) $(TOP)/tool/buildtclext.tcl --destdir "$(DESTDIR)" \
-		--tclConfig.sh $(TCL_CONFIG_SH) --cc "$(T.cc)" $(CFLAGS.tclextension)
+		--tclConfig.sh $(TCL_CONFIG_SH) --cc "$(T.cc)" \
+		--extlibs "$(LDFLAGS.icu)" $(CFLAGS.tclextension)
 
 #
 # Uninstall the SQLite TCL extension that is used by $TCLSH_CMD.
@@ -2344,6 +2348,7 @@ SHELL_DEP = \
     $(TOP)/ext/expert/sqlite3expert.h \
     $(TOP)/ext/intck/sqlite3intck.c \
     $(TOP)/ext/intck/sqlite3intck.h \
+    $(TOP)/ext/misc/analyze.c \
     $(TOP)/ext/misc/appendvfs.c \
     $(TOP)/ext/misc/base64.c \
     $(TOP)/ext/misc/base85.c \
@@ -2424,6 +2429,10 @@ sqlite3session.o:	$(TOP)/ext/session/sqlite3session.c $(DEPS_EXT_COMMON)
 
 stmt.o:	$(TOP)/ext/misc/stmt.c $(DEPS_EXT_COMMON)
 	$(T.cc.extension) -c $(TOP)/ext/misc/stmt.c
+
+$(AUXTEST): $(TOP)/test/c/$(AUXTEST).c
+	$(T.cc.sqlite) -o $@ $(TOP)/test/c/$(AUXTEST).c sqlite3.o $(LDFLAGS.libsqlite3)
+
 
 #
 # Windows section
@@ -2508,7 +2517,7 @@ tidy:
 # Removes build products and test logs.  Retains ./configure outputs.
 #
 clean:	tidy
-	rm -rf omittest* testrunner* testdir*
+	rm -rf omittest* testrunner* testrun_* testdir*
 
 #
 # Clean up everything.  No exceptions. From an out-of-tree build which

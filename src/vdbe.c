@@ -820,7 +820,7 @@ static SQLITE_NOINLINE int vdbeIndexKeyCompare(
     Mem m;
     memset(&m, 0, sizeof(m));
     *pRc = sqlite3VdbeMemFromBtreeZeroOffset(pCsr, nKey, &m);
-    ret = (NEVER(*pRc!=SQLITE_OK) || 0==memcmp(pMem->z, m.z, nKey));
+    ret = (*pRc!=SQLITE_OK || 0==memcmp(pMem->z, m.z, nKey));
     sqlite3VdbeMemReleaseMalloc(&m);
   }
 
@@ -6709,7 +6709,7 @@ case OP_IdxDelete: {
   }
 
   if( pOp->p3 && vdbeIndexKeyCompare(pCrsr, &aMem[pOp->p3], &rc) ){
-    if( NEVER(rc) ) goto abort_due_to_error;
+    if( rc ) goto abort_due_to_error;
     sqlite3VdbeMemSetNull(&aMem[pOp->p3]);
     break;
   }

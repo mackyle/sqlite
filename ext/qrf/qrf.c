@@ -736,7 +736,7 @@ static void qrfEscape(
   sqlite3_int64 i, j;     /* Loop counters */
   sqlite3_int64 nCtrl = 0;/* Number of control characters to escape */
   unsigned char *zIn;     /* Text to be escaped */
-  unsigned char nIn;      /* Bytes of text to be escaped */
+  unsigned int nIn;       /* Bytes of text to be escaped */
   unsigned char c;        /* A single character of the text */
   unsigned char *zOut;    /* Where to write the results */
 

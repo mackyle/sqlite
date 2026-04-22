@@ -6610,7 +6610,6 @@ case OP_IdxInsert: {        /* in2 */
   assert( pC!=0 );
   assert( !isSorter(pC) );
   pIn2 = &aMem[pOp->p2];
-  if( (pIn2->flags & MEM_Null) && (pOp->p5 & OPFLAG_PREFORMAT)==0 ) break;
   assert( (pIn2->flags & MEM_Blob) || (pOp->p5 & OPFLAG_PREFORMAT) );
   if( pOp->p5 & OPFLAG_NCHANGE ) p->nChange++;
   assert( pC->eCurType==CURTYPE_BTREE );

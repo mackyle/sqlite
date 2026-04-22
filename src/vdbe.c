@@ -811,7 +811,7 @@ static SQLITE_NOINLINE int vdbeIndexKeyCompare(
 
   assert( pMem->flags & (MEM_Blob|MEM_Null) );
   nKey = sqlite3BtreePayloadSize(pCsr);
-  if( nKey==pMem->n && (pMem->flags & MEM_Blob) ){
+  if( nKey==pMem->n && ALWAYS((pMem->flags & MEM_Blob)!=0) ){
     /* This code could just use sqlite3BtreePayloadFetch(). But calling that
     ** function here apparently prevents compilers from inlining it in other,
     ** more performance critical, places. So this code uses
@@ -820,7 +820,7 @@ static SQLITE_NOINLINE int vdbeIndexKeyCompare(
     Mem m;
     memset(&m, 0, sizeof(m));
     *pRc = sqlite3VdbeMemFromBtreeZeroOffset(pCsr, nKey, &m);
-    ret = (*pRc!=SQLITE_OK || 0==memcmp(pMem->z, m.z, nKey));
+    ret = (NEVER(*pRc!=SQLITE_OK) || 0==memcmp(pMem->z, m.z, nKey));
     sqlite3VdbeMemReleaseMalloc(&m);
   }
 
@@ -6709,7 +6709,7 @@ case OP_IdxDelete: {
   }
 
   if( pOp->p3 && vdbeIndexKeyCompare(pCrsr, &aMem[pOp->p3], &rc) ){
-    if( rc ) goto abort_due_to_error;
+    if( NEVER(rc) ) goto abort_due_to_error;
     sqlite3VdbeMemSetNull(&aMem[pOp->p3]);
     break;
   }

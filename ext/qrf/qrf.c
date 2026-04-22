@@ -717,19 +717,16 @@ static int qrfDisplayWidth(const char *zIn, sqlite3_int64 nByte, int *pnNL){
 }
 
 /*
-** Escape the input string if it is needed and in accordance with
-** eEsc, which is either QRF_ESC_Ascii or QRF_ESC_Symbol.
+** Escape the text starting at byte iStart of pStr, if needed, using the
+** escape encoding of eEsc, which is either QRF_ESC_Ascii or QRF_ESC_Symbol.
+** The pStr string is modified appropriately.
 **
 ** Escaping is needed if the string contains any control characters
 ** other than \t, \n, and \r\n
 **
-** If no escaping is needed (the common case) then set *ppOut to NULL
-** and return 0.  If escaping is needed, write the escaped string into
-** memory obtained from sqlite3_malloc64() and make *ppOut point to that
-** memory and return 0.  If an error occurs, return non-zero.
-**
-** The caller is responsible for freeing *ppFree if it is non-NULL in order
-** to reclaim memory.
+** If no escaping is needed (the common case) then pStr is unchanged.
+** If escaping is required, then pStr is expanded and modified to hold
+** an escaped representation of the text.
 */
 static void qrfEscape(
   int eEsc,            /* QRF_ESC_Ascii or QRF_ESC_Symbol */
@@ -737,20 +734,22 @@ static void qrfEscape(
   int iStart              /* Begin escapding on this byte of pStr */
 ){
   sqlite3_int64 i, j;     /* Loop counters */
-  sqlite3_int64 sz;       /* Size of the string prior to escaping */
   sqlite3_int64 nCtrl = 0;/* Number of control characters to escape */
   unsigned char *zIn;     /* Text to be escaped */
+  unsigned char nIn;      /* Bytes of text to be escaped */
   unsigned char c;        /* A single character of the text */
   unsigned char *zOut;    /* Where to write the results */
 
   /* Find the text to be escaped */
   zIn = (unsigned char*)sqlite3_str_value(pStr);
+  nIn = sqlite3_str_length(pStr);
   if( zIn==0 ) return;
   zIn += iStart;
+  nIn -= iStart;
 
   /* Count the control characters */
-  for(i=0; (c = zIn[i])!=0; i++){
-    if( c<=0x1f
+  for(i=0; i<nIn; i++){
+    if( (c = zIn[i])<=0x1f
      && c!='\t'
      && c!='\n'
      && (c!='\r' || zIn[i+1]!='\n')
@@ -762,18 +761,17 @@ static void qrfEscape(
 
   /* Make space to hold the escapes.  Copy the original text to the end
   ** of the available space. */
-  sz = sqlite3_str_length(pStr) - iStart;
   if( eEsc==QRF_ESC_Symbol ) nCtrl *= 2;
   sqlite3_str_appendchar(pStr, nCtrl, ' ');
   zOut = (unsigned char*)sqlite3_str_value(pStr);
   if( zOut==0 ) return;
   zOut += iStart;
   zIn = zOut + nCtrl;
-  memmove(zIn,zOut,sz);
+  memmove(zIn,zOut,nIn);
 
   /* Convert the control characters */
-  for(i=j=0; (c = zIn[i])!=0; i++){
-    if( c>0x1f
+  for(i=j=0; i<nIn; i++){
+    if( (c = zIn[i])>0x1f
      || c=='\t'
      || c=='\n'
      || (c=='\r' && zIn[i+1]=='\n')
@@ -785,6 +783,7 @@ static void qrfEscape(
       j += i;
     }
     zIn += i+1;
+    nIn -= i+1;
     i = -1;
     if( eEsc==QRF_ESC_Symbol ){
       zOut[j++] = 0xe2;
@@ -1187,8 +1186,22 @@ static void qrfRenderValue(Qrf *p, sqlite3_str *pOut, int iCol){
           break;
         }
         default: {
-          const char *zTxt = (const char*)sqlite3_column_text(p->pStmt,iCol);
-          qrfEncodeText(p, pOut, zTxt);
+          const void *pBlob = sqlite3_column_blob(p->pStmt,iCol);
+          int nBlob = sqlite3_column_bytes(p->pStmt,iCol);
+          int rc;
+          qrfWrite(p);
+          if( nBlob==0 ){
+            /* no-op */
+          }else if( p->spec.eEsc==QRF_ESC_Off ){
+            rc = p->spec.xWrite(p->spec.pWriteArg,pBlob,nBlob);
+            if( rc ){
+              qrfError(p, rc, "Failed to write %d bytes of BLOB output", nBlob);
+            }
+          }else{
+            sqlite3_str_append(pOut, pBlob, nBlob);
+            qrfEscape(p->spec.eEsc, pOut, 0);
+            qrfWrite(p);
+          }
         }
       }
       break;

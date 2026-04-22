@@ -689,6 +689,7 @@ static FILE *iotrace = 0;
 **                                                Works like.
 **                                                --------------
 **   cli_printf(FILE*, const char*, ...);         fprintf()
+**   cli_write(FILE*, const char*, int);          write()
 **   cli_puts(const char*, FILE*);                fputs()
 **   cli_vprintf(FILE*, const char*, va_list);    vfprintf()
 **
@@ -714,6 +715,14 @@ static int cli_printf(FILE *out, const char *zFormat, ...){
   }
   va_end(ap);
   return rc;
+}
+static int cli_write(FILE *out, const char *zData, int nData){
+  if( cli_output_capture && (out==stdout || out==stderr) ){
+    sqlite3_str_append(cli_output_capture, zData, nData);
+  }else{
+    nData = (int)fwrite(zData, 1, nData, out);
+  }
+  return nData;
 }
 static int cli_puts(const char *zText, FILE *out){
   if( cli_output_capture && (out==stdout || out==stderr) ){
@@ -3414,7 +3423,7 @@ static int expertDotCommand(
 */
 static int shellWriteQR(void *pX, const char *z, sqlite3_int64 n){
   ShellState *pArg = (ShellState*)pX;
-  cli_printf(pArg->out, "%.*s", (int)n, z);
+  cli_write(pArg->out, z, (int)n);
   return SQLITE_OK;
 }
 

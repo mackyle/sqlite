@@ -19,7 +19,14 @@
 #include <stdarg.h>
 #ifndef SQLITE_OMIT_FLOATING_POINT
 #include <math.h>
+
+/* Work around a bug in older Microsoft compilers
+** Forum post 2026-04-10T06:33:11z */
+#if !defined(INFINITY) && defined(_MSC_VER)
+# define INFINITY HUGE_VAL
 #endif
+
+#endif /* SQLITE_OMIT_FLOATING_POINT */
 
 /*
 ** Calls to sqlite3FaultSim() are used to simulate a failure during testing,

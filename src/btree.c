@@ -6437,12 +6437,12 @@ moveto_table_finish:
 ** zero if the cell is less than or equal pIdxKey.  Return positive
 ** if unknown.
 **
-**    Return value negative:     Cell at pCur[idx] less than pIdxKey
+**    Return value negative:     Cell at pPage[idx] less than pIdxKey
 **
-**    Return value is zero:      Cell at pCur[idx] equals pIdxKey
+**    Return value is zero:      Cell at pPage[idx] equals pIdxKey
 **
 **    Return value positive:     Nothing is known about the relationship
-**                               of the cell at pCur[idx] and pIdxKey.
+**                               of the cell at pPage[idx] and pIdxKey.
 **
 ** This routine is part of an optimization.  It is always safe to return
 ** a positive value as that will cause the optimization to be skipped.

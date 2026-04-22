@@ -34,7 +34,15 @@ proc find_interpreter {} {
   set rc [catch { package require sqlite3 }]
   if {$rc} {
     if {[file readable pkgIndex.tcl] && [catch {source pkgIndex.tcl}]==0} {
+      # Since $dir is defined to be the [pwd], if the "source pkgIndex.tcl"
+      # worked, that should have enabled us to use the locally built 
+      # copy of the TCL extension.
       set rc [catch { package require sqlite3 }]
+      if {!$rc} {
+        puts "Using the locally built copy of the \"sqlite3\" tcl extension"
+      } else {
+        puts "The locally built copy of the \"sqlite3\" tcl extension does work..."
+      }
     }
   }
   if {$rc} {
@@ -49,7 +57,7 @@ proc find_interpreter {} {
     }
   }
   if {$rc} {
-    puts "Cannot find tcl package sqlite3: Trying to build it now..."
+    puts "Cannot find tcl package \"sqlite3\": Trying to build it now..."
     if {$::tcl_platform(platform) eq "windows"} {
       set bat [open make-tcl-extension.bat w]
       puts $bat "nmake /f Makefile.msc tclextension"
@@ -97,15 +105,16 @@ proc usage {} {
 Usage: 
     $a0 ?SWITCHES? ?PERMUTATION? ?PATTERNS?
     $a0 PERMUTATION FILE
+    $a0 clean
     $a0 errors ?-v|--verbose? ?-s|--summary? ?PATTERN?
+    $a0 estwork
+    $a0 halt
     $a0 help
     $a0 joblist ?PATTERN?
     $a0 njob ?NJOB?
     $a0 retest
     $a0 script ?-msvc? CONFIG
     $a0 status ?-d SECS? ?--cls?
-    $a0 halt
-    $a0 estwork
 
   where SWITCHES are:
     --buildonly              Build test exes but do not run tests
@@ -141,25 +150,26 @@ are run. Otherwise, each pattern is interpreted as a glob pattern. Only
 those tcl tests for which the final component of the filename matches at
 least one specified pattern are run.  The glob wildcard '*' is prepended
 to the pattern if it does not start with '^' and appended to every
-pattern that does not end with '$'.  If PATTERN begins with "~", then it
-is an anti-pattern that only matches tests that do not match PATTERN.
-Tests or only run if they match one or more patterns and match no
-anti-patterns.
-
-If no PATTERN arguments are present, then various fuzztest, threadtest
-and other tests are run as part of the "release" permutation. These are
-omitted if any PATTERN arguments are specified on the command line.
+pattern that does not end with '$'.  If any PATTERN argument begins with "~",
+then it is an anti-pattern.  When PATTERN arguments are present, tests are
+only run if they match one or more patterns and match no anti-patterns.
 
 If a PERMUTATION is specified and is followed by the path to a Tcl script
 instead of a list of patterns, then that single Tcl test script is run
 with the specified permutation.
 
 The "status" and "njob" commands are designed to be run from the same
-directory as a running testrunner.tcl script that is running tests. The
-"status" command prints a report describing the current state and progress 
-of the tests.  Use the "-d N" option to have the status display clear the
-screen and repeat every N seconds.  The "njob" command may be used to query
-or modify the number of sub-processes the test script uses to run tests.
+directory as a running testrunner.tcl script.  The "status" command prints
+a report describing the current state and progress of the tests.  Use
+the "-d N" option to have the status display clear the screen and repeat
+every N seconds.  The "njob" command may be used to query or modify the
+number of sub-processes the test script uses to run tests.
+
+The "halt" command modifies the database so that all tasks are marked
+as complete.  Testing will halt when all tests currently running complete.
+
+The "clean" command removes files and directories created by a prior
+invocation of testrunner.tcl.
 
 The "script" command outputs the script used to build a configuration.
 Add the "-msvc" option for a Windows-compatible script. For a list of
@@ -173,7 +183,7 @@ shows the jobs that failed.  If PATTERN are provided, the error information
 is only provided for jobs that match PATTERN.
 
 The "retest" command reruns tests that failed or were never completed
-by a prior invocation of testrunner.tcl.
+by the previous invocation of testrunner.tcl.
 
 Full documentation here: https://sqlite.org/src/doc/trunk/doc/testrunner.md
   }]]
@@ -458,6 +468,32 @@ if {([llength $argv]==2 || [llength $argv]==1)
   puts "$res"
   exit
 }
+#--------------------------------------------------------------------------
+
+#--------------------------------------------------------------------------
+# Check if this is the "clean" command:
+#
+if {([llength $argv]==2 || [llength $argv]==1) 
+ && [string compare -nocase clean [lindex $argv 0]]==0
+} {
+  set pattern {_(fuzzcheck|sessionfuzz|sqlite3|testfixture)}
+  foreach f [glob testrun_*] {
+    if {[file isdir $f] && [regexp $pattern $f]} {
+      file delete -force $f
+    }
+  }
+  foreach f [glob testdir*] {
+    if {[file isdir $f] && [regexp {^testdir[0-9]+$} $f]} {
+      file delete -force $f
+    }
+  }
+  foreach f [glob testrunner.db*] {
+    file delete -force $f
+  }
+  file delete -force testrunner.log
+  exit
+}
+
 #--------------------------------------------------------------------------
 
 #--------------------------------------------------------------------------
@@ -1177,7 +1213,7 @@ proc job_matches_any_pattern {patternlist jobcmd} {
 # 
 # e.g    
 #
-#    {1 /home/user/sqlite/test/testrunner_bld_xyz All-Debug}
+#    {1 /home/user/sqlite/test/testrun_xyz All-Debug}
 # 
 proc add_tcl_jobs {build config patternlist {shelldepid ""}} {
   global TRG
@@ -1243,7 +1279,9 @@ proc add_build_job {buildname target {postcmd ""} {depid ""}} {
   global TRG
 
   set dirname "[string tolower [string map {- _} $buildname]]_$target"
-  set dirname "testrunner_bld_$dirname"
+  regsub {\.exe$} $dirname {} dirname
+  regsub {\.l?o$} $dirname {obj} dirname
+  set dirname "testrun_$dirname"
 
   set cmd "$TRG(makecmd) $target"
   if {$postcmd!=""} {
@@ -1262,6 +1300,57 @@ proc add_build_job {buildname target {postcmd ""} {depid ""}} {
   ]
 
   list $id [file normalize $dirname] $buildname
+}
+
+# Add jobs to build and run all the *.c files in $testdir/c/ for build
+# configuration $buildname.
+# 
+proc add_c_jobs {buildname} {
+  global TRG
+
+  set dir [file join $::testdir c]
+
+  # One job to build the sqlite3.o file for this configuration. Each
+  # individual "c" job will copy this sqlite3.o into its working directory
+  # so that it doesn't have to build it separately every time. 
+  #
+  set obj sqlite3.o
+  if {$TRG(platform)=="win"} { set obj sqlite3.lo }
+  set B [add_build_job $buildname $obj]
+  foreach {bldid blddir dummy} $B {}
+
+  # One job for each C file.
+  #
+  foreach f [glob -nocomplain $dir/*.c] {
+    set prg [string range [file tail $f] 0 end-2]
+
+    set cmd ""
+    if {$TRG(platform)=="win"} {
+      foreach cp {sqlite3.lo *.h *.c} {
+        append cmd "copy [file nativename [file join $blddir $cp]] .\n"
+      }
+      append cmd "SET AUXTEST=$prg\n"
+      set prg "${prg}.exe"
+      append cmd "$TRG(makecmd) $prg\n"
+      append cmd ".\\$prg\n"
+    } else {
+      set cmd "set -e\n"
+      foreach cp {sqlite3.c sqlite3.h sqlite3.o .target_source src-verify} {
+        append cmd "cp [file join $blddir $cp] .\n"
+      }
+      append cmd "AUXTEST=$prg $TRG(makecmd) $prg\n"
+      append cmd "./$prg\n"
+    }
+    
+    set id [add_job                                \
+      -displaytype tcl                             \
+      -displayname "$prg ($buildname)"             \
+      -build $buildname                            \
+      -cmd  $cmd                                   \
+      -depid $bldid                                \
+      -priority 3
+    ]
+  }
 }
 
 proc add_shell_build_job {buildname dirname depid} {
@@ -1511,6 +1600,8 @@ proc add_jobs_from_cmdline {patternlist} {
             UPDATE jobs SET depid=$sbldid WHERE depid='SHELL'
           }
         }
+
+        add_c_jobs $b
       }
     }
 

@@ -4640,6 +4640,57 @@ Window *sqlite3WindowAssemble(Parse*, Window*, ExprList*, ExprList*, Token*);
 /*
 ** Assuming zIn points to the first byte of a UTF-8 character,
 ** advance zIn to point to the first byte of the next UTF-8 character.
+**
+** # Dividing malformed UTF-8 into characters (tag-20260418-01)
+**
+** If a text input is malformed UTF-8, SQLite does not make any guarantees
+** about how the bytes are divided up into characters.  The system promises
+** to not overflow an array or cause other memory errors when presented
+** with malformed UTF-8.  And it promises to preserve the specific
+** sequence of bytes as long as no conversion occur.  But beyond that,
+** there are no guarantees.  Results can vary from one version to the
+** next.
+**
+** The SQLITE_SKIP_UTF8 macro below is one technique for dividing UTF-8
+** into characters.  The length() and substr() SQL functions use a
+** different technique when searching across multiple characters, a
+** technique that exchanges a subtraction for comparison of z and results
+** in faster machine code on some compilers and architectures.  The code
+** in substr() to skip over p1 characters goes something like this:
+**
+**    for( ; p1>0; p1--){
+**                     // vvvv--- tag-20260418-01
+**      if( (u8)(z[0]-1)<(0x80-1) ){
+**        z++;
+**      }else if( z[0]==0 ){
+**        break;
+**      }else{
+**        do{ z++; }while( (z[0]&0xc0)==0x80 );
+**      }
+**    }
+**
+** In valid UTF-8, multibyte characters always begin with a byte with the
+** two most significant bits set and that is followed by one or more bytes
+** for which the two most significant bits are 10.  In other words:
+**
+**     First byte:        (BYTE & 0xc0)==0xc0
+**     Following bytes:   (BYTE & 0xc0)==0x80
+**
+** What to do if the input byte sequence contain a "following byte" that
+** is not preceded by a "first byte"?  How many characters are in the
+** byte sequence:  0x61 0x81 0x82 0x7a?  3 or 4 or something else?
+** 
+** If you use the macro below, the answer will be 4.  If you use the code
+** snippet demonstrated at tag-20260418-01, then answer is 3.  If you
+** use a variant of tag-20260418-01 where the constant of comparison is
+** 0xc0-1 instead of 0x80-1 then the answer is again 4.  The key point is
+** that because the input is malformed UTF-8, so is no "correct" answer.
+** SQLite is free to use either value.
+**
+** It turns out that GCC 13.3.0 is able to generate faster code (at least
+** on x86-64) if the constant at tag-20260418-01 is (0x80-1).  If you make
+** that constant (0xc0-1) instead, gcc 13.3.0 generates code that runs slower.
+** So the (0x80-1) constant is used for substr() and length().
 */
 #define SQLITE_SKIP_UTF8(zIn) {                        \
   if( (*(zIn++))>=0xc0 ){                              \

@@ -2650,7 +2650,7 @@ int sqlite3ExprIsConstant(Parse *pParse, Expr *p){
 ** Walk an expression tree.  Return non-zero if
 **
 **   (1) the expression is constant, and
-**   (2) the expression does originate in the ON or USING clause
+**   (2) the expression does not originate in the ON or USING clause
 **       of a LEFT JOIN, and
 **   (3) the expression does not contain any EP_FixedCol TK_COLUMN
 **       operands created by the constant propagation optimization.

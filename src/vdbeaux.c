@@ -1900,7 +1900,6 @@ static void displayP4Expr(StrAccum *p, Expr *pExpr){
 #if VDBE_DISPLAY_P4
 /*
 ** Compute a string that describes the P4 parameter for an opcode.
-** Use zTemp for any required temporary buffer space.
 */
 char *sqlite3VdbeDisplayP4(sqlite3 *db, Op *pOp){
   char *zP4 = 0;
@@ -5470,12 +5469,12 @@ static int vdbeIsMatchingIndexKey(
 ){
   u8 *aRec = 0;
   u32 nRec = 0;
-  Mem mem;
+  Mem m;
   int rc = SQLITE_OK;
 
-  memset(&mem, 0, sizeof(mem));
-  mem.enc = p->pKeyInfo->enc;
-  mem.db = p->pKeyInfo->db;
+  memset(&m, 0, sizeof(m));
+  m.enc = p->pKeyInfo->enc;
+  m.db = p->pKeyInfo->db;
   nRec = sqlite3BtreePayloadSize(pCur);
   if( nRec>0x7fffffff ){
     return SQLITE_CORRUPT_BKPT;
@@ -5517,9 +5516,9 @@ static int vdbeIsMatchingIndexKey(
         if( (idxRec+nSerial)>nRec ){
           rc = SQLITE_CORRUPT_BKPT;
         }else{
-          sqlite3VdbeSerialGet(&aRec[idxRec], iSerial, &mem);
-          if( vdbeSkipField(mask, ii, &p->aMem[ii], &mem, bInt)==0 ){
-            res = sqlite3MemCompare(&mem, &p->aMem[ii], p->pKeyInfo->aColl[ii]);
+          sqlite3VdbeSerialGet(&aRec[idxRec], iSerial, &m);
+          if( vdbeSkipField(mask, ii, &p->aMem[ii], &m, bInt)==0 ){
+            res = sqlite3MemCompare(&m, &p->aMem[ii], p->pKeyInfo->aColl[ii]);
             if( res!=0 ) break;
           }
         }

@@ -712,9 +712,9 @@ static int fts5Porter_Ostar(char *zStem, int nStem){
     for(i=0; i<nStem; i++){
       bCons = !fts5PorterIsVowel(zStem[i], bCons);
       assert( bCons==0 || bCons==1 );
-      mask = (mask << 1) + bCons;
+      mask = ((mask << 1) + bCons) & 0x0007;
     }
-    return ((mask & 0x0007)==0x0005);
+    return (mask==0x0005);
   }
 }
 

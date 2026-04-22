@@ -1136,7 +1136,8 @@ void sqlite3_set_last_insert_rowid(sqlite3 *db, sqlite3_int64 iRowid){
 }
 
 /*
-** Return the number of changes in the most recent call to sqlite3_exec().
+** Return the number of changes in the most recently executed DML
+** statement.
 */
 sqlite3_int64 sqlite3_changes64(sqlite3 *db){
 #ifdef SQLITE_ENABLE_API_ARMOR

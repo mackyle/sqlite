@@ -1767,6 +1767,7 @@ FUZZCHECK_SRC = $(FUZZCHECK_SRC) $(TOP)\test\fuzzinvariants.c
 FUZZCHECK_SRC = $(FUZZCHECK_SRC) $(TOP)\test\vt02.c
 FUZZCHECK_SRC = $(FUZZCHECK_SRC) $(TOP)\ext\recover\dbdata.c
 FUZZCHECK_SRC = $(FUZZCHECK_SRC) $(TOP)\ext\recover\sqlite3recover.c
+FUZZCHECK_SRC = $(FUZZCHECK_SRC) $(TOP)\ext\misc\analyze.c
 FUZZCHECK_SRC = $(FUZZCHECK_SRC) $(TOP)\ext\misc\base64.c
 FUZZCHECK_SRC = $(FUZZCHECK_SRC) $(TOP)\ext\misc\base85.c
 FUZZCHECK_SRC = $(FUZZCHECK_SRC) $(TOP)\ext\misc\completion.c
@@ -2343,6 +2344,7 @@ SHELL_DEP = \
     $(TOP)\ext\expert\sqlite3expert.h \
     $(TOP)\ext\intck\sqlite3intck.c \
     $(TOP)\ext\intck\sqlite3intck.h \
+    $(TOP)\ext\misc\analyze.c \
     $(TOP)\ext\misc\appendvfs.c \
     $(TOP)\ext\misc\base64.c \
     $(TOP)\ext\misc\base85.c \
@@ -2742,6 +2744,9 @@ rbu.exe:	$(TOP)\ext\rbu\rbu.c $(TOP)\ext\rbu\sqlite3rbu.c $(SQLITE3C) $(SQLITE3H
 	$(LTLINK) $(NO_WARN) -DSQLITE_ENABLE_RBU \
 		$(TOP)\ext\rbu\rbu.c $(SQLITE3C) /link $(LDFLAGS) $(LTLINKOPTS)
 
+$(AUXTEST).exe:	$(TOP)\test\c\$(AUXTEST).c
+	$(LTLINK) $(NO_WARN) $(TOP)\test\c\$(AUXTEST).c sqlite3.lo /link $(LDFLAGS) $(LTLINKOPTS)
+
 THREADTEST3_SRC = \
   $(TOP)\test\threadtest3.c \
   $(TOP)\test\tt3_checkpoint.c \
@@ -2938,4 +2943,5 @@ clean:
 	del /Q fts5.* fts5parse.* 2>NUL
 	del /q src-verify.exe 2>NUL
 	del /q jimsh.exe jimsh0.exe 2>NUL
+	-$(TCLSH_CMD) test/testrunner.tcl clean
 # <</mark>>

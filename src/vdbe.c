@@ -6659,7 +6659,7 @@ case OP_SorterInsert: {     /* in2 */
 /* Opcode: IdxDelete P1 P2 P3 P4 P5
 ** Synopsis: key=r[P2@P5]
 **
-** The content of P3 registers starting at register P2 form
+** The content of P5 registers starting at register P2 form
 ** an unpacked index key. This opcode removes that entry from the
 ** index opened by cursor P1.
 **

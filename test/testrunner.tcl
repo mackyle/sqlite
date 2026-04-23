@@ -1969,6 +1969,7 @@ proc run_testset {} {
      SELECT DISTINCT substr(svers,1,79) as v1 FROM jobs WHERE svers IS NOT NULL
   } {puts $v1}
 
+  return [expr {$nErr>0}]
 }
 
 # If the argument is "retest", simply rerun all tests from the previous
@@ -2028,6 +2029,7 @@ proc explain_tests {} {
   explain_layer "" ""
 }
 
+set exit_status 0
 sqlite3 trdb $TRG(dbname)
 trdb timeout $TRG(timeout)
 if {[llength $TRG(patternlist)]==1 && $TRG(patternlist) eq "retest"} {
@@ -2046,6 +2048,10 @@ if {$TRG(explain)} {
     puts "built testset in [expr $tm/1000]ms.."
   }
   handle_buildonly
-  run_testset
+  set exit_status [run_testset]
 }
 trdb close
+exit $exit_status
+
+
+

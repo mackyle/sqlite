@@ -811,7 +811,7 @@ static SQLITE_NOINLINE int vdbeIndexKeyCompare(
 
   assert( pMem->flags & (MEM_Blob|MEM_Null) );
   nKey = sqlite3BtreePayloadSize(pCsr);
-  if( nKey==pMem->n && ALWAYS((pMem->flags & MEM_Blob)!=0) ){
+  if( nKey==(u32)pMem->n && ALWAYS((pMem->flags & MEM_Blob)!=0) ){
     /* This code could just use sqlite3BtreePayloadFetch(). But calling that
     ** function here apparently prevents compilers from inlining it in other,
     ** more performance critical, places. So this code uses

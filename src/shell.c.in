@@ -1175,7 +1175,11 @@ static char *expand_prompt(
       }
     }
   }
-  
+
+  if( 0==sqlite3_str_length(pOut) ){
+    /* Avoid a bogus OOM */
+    sqlite3_str_appendchar(pOut, 1, '\0');
+  }
   return sqlite3_str_finish(pOut);
 }
 

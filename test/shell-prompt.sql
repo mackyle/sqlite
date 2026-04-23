@@ -29,7 +29,7 @@
 .testcase 110
 .prompt --show
 .check <<END
-Main prompt:  'SQLite /f> '
+Main prompt:  '/A /f> '
 Continuation: '/B.../H> '
 END
 .testcase 111
@@ -48,7 +48,7 @@ END
 .testcase 113
 .prompt --reset --show
 .check <<END
-Main prompt:  'SQLite /f> '
+Main prompt:  '/A /f> '
 Continuation: '/B.../H> '
 END
 
@@ -137,4 +137,12 @@ SELECT shell_prompt_test(NULL);
 SELECT shell_prompt_test(NULL);
 .check 'SQLite test.db> ';
 
-.testcase
+.testcase 3000
+SELECT shell_prompt_test('(/A-/V)');
+.check --glob '(SQLite-3.#.#)'
+.testcase 3001
+SELECT shell_prompt_test('(/A-/v)');
+.check --glob '(SQLite-3.#)'
+.testcase 3002
+SELECT shell_prompt_test('(/A-/D%Y-%m-%dT%H:%M:%S/D)');
+.check --glob '(SQLite-20#-#-#T#:#:#)'

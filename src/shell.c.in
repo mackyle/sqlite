@@ -719,6 +719,10 @@ static int cli_printf(FILE *out, const char *zFormat, ...){
 static int cli_write(FILE *out, const char *zData, int nData){
   if( cli_output_capture && (out==stdout || out==stderr) ){
     sqlite3_str_append(cli_output_capture, zData, nData);
+#ifdef _WIN32
+  }else if( out==stdout || out==stderr ){
+    nData = sqlite3_fprintf(out, "%.*s", nData, zData);
+#endif
   }else{
     nData = (int)fwrite(zData, 1, nData, out);
   }

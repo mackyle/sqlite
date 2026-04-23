@@ -921,10 +921,23 @@ static char *local_getline(char *zLine, FILE *in){
 ** The default prompts.
 */
 #ifndef SQLITE_PS1
-# define SQLITE_PS1 "SQLite /f> "
+# define SQLITE_PS1 "/A /f> "
 #endif
 #ifndef SQLITE_PS2
 # define SQLITE_PS2 "/B.../H> "
+#endif
+
+/*
+** Redefinable escape value for the prompt string.
+*/
+#ifndef SQLITE_PS_APP
+# define SQLITE_PS_APP "SQLite"                      /* Expansion for /A */
+#endif
+#ifndef SQLITE_PS_RELEASE
+# define SQLITE_PS_VERSION_RELEASE shellRelease()    /* Expansion for /v */
+#endif
+#ifndef SQLITE_PS_PATCH
+# define SQLITE_PS_VERSION_PATCH   shellPatch()      /* Expansion for /V */
 #endif
 
 /*
@@ -977,6 +990,20 @@ static const char *prompt_filename(ShellState *p){
 }
 
 /*
+** Return strings appropriate to substitute for /V and /v
+*/
+static const char *shellPatch(void){ return sqlite3_libversion(); }
+static const char *shellRelease(void){
+  static char zRel[16];
+  const char *zF = shellPatch();
+  const char *zD = strrchr(zF,'.');
+  int i = (int)(zD - zF);
+  memcpy(zRel,zF,i);
+  zRel[i] = 0;
+  return zRel;
+}
+
+/*
 ** Expand escapes in the given input prompt string.  Return the
 ** expanded prompt in memory obtained from sqlite3_malloc().  The
 ** caller is responsible for freeing the memory.
@@ -997,12 +1024,13 @@ static char *expand_prompt(
   sqlite3_str *pOut = sqlite3_str_new(0);
   int i;
   char c;
-  int onoff = 1;
+  unsigned int mOff = 0;    /* Bitmask of FALSE for if/then/else */
   int idxSpace = -1;
+  int iDate = -1;
   for(i=0; zPrompt[i]; i++){
     if( zPrompt[i]!='/' ) continue;
     if( i>0 ){
-      if( onoff ) sqlite3_str_append(pOut, zPrompt, i);
+      if( !mOff ) sqlite3_str_append(pOut, zPrompt, i);
       zPrompt += i;
       i = 0;
     }
@@ -1025,14 +1053,36 @@ static char *expand_prompt(
       while( i<=2 && zPrompt[i+1]>='0' && zPrompt[i+1]<='7' ){
         v = v*8 + zPrompt[++i] - '0';
       }
-      if( onoff ) sqlite3_str_appendchar(pOut, 1, v);
+      if( !mOff ) sqlite3_str_appendchar(pOut, 1, v);
       zPrompt += i+1;
       i = -1;
       continue;
     }
     if( c=='e' ){
       /* /e is shorthand for /033 which is U+001B "Escape" */
-      if( onoff ) sqlite3_str_append(pOut, "\033", 1);
+      if( !mOff ) sqlite3_str_append(pOut, "\033", 1);
+      zPrompt += 2;
+      i = -1;
+      continue;
+    }
+    if( c=='A' ){
+      /* /A expands to the application name */
+      if( !mOff ) sqlite3_str_appendall(pOut, SQLITE_PS_APP);
+      zPrompt += 2;
+      i = -1;
+      continue;
+    }
+    if( c=='V' ){
+      /* /V expands to the version number with patch level */
+      if( !mOff ) sqlite3_str_appendall(pOut, SQLITE_PS_VERSION_PATCH);
+      zPrompt += 2;
+      i = -1;
+      continue;
+    }
+    if( c=='v' ){
+      /* /v expands to the version number without the patch level */
+      /* /V expands to the version number with patch level */
+      if( !mOff ) sqlite3_str_appendall(pOut, SQLITE_PS_VERSION_RELEASE);
       zPrompt += 2;
       i = -1;
       continue;
@@ -1052,22 +1102,29 @@ static char *expand_prompt(
     **         .prompt '/e[1;/x31/:34/;m~f>/e[0m '
     */
     if( c==':' ){
-      /* toggle display on/off */
-      onoff = !onoff;
+      /* ELSE: toggle display on/off */
+      mOff ^= 1;
       zPrompt += 2;
       i = -1;
       continue;
     }
     if( c==';' ){
-      /* Turn display on */
-      onoff = 1;
+      /* ENDIF: Turn display on */
+      mOff >>= 1;
       zPrompt += 2;
       i = -1;
       continue;
     }
     if( c=='x' ){
       /* /x turns display off not in a transaction, on if in txn */
-      onoff = p->db && !sqlite3_get_autocommit(p->db);
+      mOff = (mOff<<1) | (p->db==0 || sqlite3_get_autocommit(p->db)!=0);
+      zPrompt += 2;
+      i = -1;
+      continue;
+    }
+    if( c=='r' ){
+      /* /r turns display off if database is read/write, on if read-only */
+      mOff = (mOff<<1) | (p->db==0 || sqlite3_db_readonly(p->db,0)==0);
       zPrompt += 2;
       i = -1;
       continue;
@@ -1077,7 +1134,7 @@ static char *expand_prompt(
       /* /f becomes the tail of the database filename */
       /* /F becomes the full pathname */
       /* /~ becomes the full pathname relative to $HOME */
-      if( onoff ){
+      if( !mOff ){
         const char *zFN = prompt_filename(p);
         if( c=='f' ){
 #ifdef _WIN32
@@ -1106,7 +1163,7 @@ static char *expand_prompt(
 
     if( c=='H' ){
       /* /H becomes text needed to terminate current input */
-      if( onoff ){
+      if( !mOff ){
         sqlite3_int64 R = zPrior ? sqlite3_incomplete(zPrior) : 0;
         int cc = (R>>16)&0xff;
         int nParen = R>>32;
@@ -1140,18 +1197,44 @@ static char *expand_prompt(
       /* /B is a no-op for the main prompt.  For the continuation prompt,
       ** /B expands to zero or more spaces to make the continuation prompt
       ** at least as wide as the main prompt. */
-      if( onoff ) idxSpace = sqlite3_str_length(pOut);
+      if( !mOff ) idxSpace = sqlite3_str_length(pOut);
       zPrompt += 2;
       i = -1;
       continue;
     }
 
-    /* No match to a known escape.  Generate an error. */
-    if( onoff ) sqlite3_str_appendf(pOut,"UNKNOWN(\"/%c\")",c);
+    if( c=='D' ){
+      /* /D.../D replaces all of the text between the two /D escapes with
+      ** the result from strftime(). */
+      if( iDate<0 ){
+        iDate = sqlite3_str_length(pOut);
+      }else{
+        if( !mOff ){
+          time_t now;
+          char zBuf[200];
+          zBuf[0] = 0;
+          time(&now);
+          strftime(zBuf, sizeof(zBuf)-1, sqlite3_str_value(pOut)+iDate, 
+                   localtime(&now));
+          zBuf[199] = 0;
+          sqlite3_str_truncate(pOut, iDate);
+          sqlite3_str_appendall(pOut, zBuf);
+        }
+        iDate = -1;
+      }
+      zPrompt += 2;
+      i = -1;
+      continue;
+    }
+
+    /* No match to a known escape.  Generate an error. The mOff flag
+    ** is ignored for this output, so that errors appear even if they
+    ** are in an unused branch. */
+    sqlite3_str_appendf(pOut,"UNKNOWN(\"/%c\")",c);
     zPrompt += 2;
     i = -1;
   }
-  if( i>0 && onoff ){
+  if( i>0 && !mOff ){
     sqlite3_str_append(pOut, zPrompt, i);
   }
 

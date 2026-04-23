@@ -928,17 +928,36 @@ static char *local_getline(char *zLine, FILE *in){
 #endif
 
 /*
-** Redefinable escape value for the prompt string.
+** Redefinable name of a function that is used to find the text for
+** some prompt expansions:  /A  /V  /v
 */
-#ifndef SQLITE_PS_APP
-# define SQLITE_PS_APP "SQLite"                      /* Expansion for /A */
+#ifndef SQLITE_PS_APPDEF
+# define SQLITE_PS_APPDEF shellPromptAppDef
+#else
+extern const char *SQLITE_PS_APPDEF(int);
 #endif
-#ifndef SQLITE_PS_RELEASE
-# define SQLITE_PS_VERSION_RELEASE shellRelease()    /* Expansion for /v */
-#endif
-#ifndef SQLITE_PS_PATCH
-# define SQLITE_PS_VERSION_PATCH   shellPatch()      /* Expansion for /V */
-#endif
+
+/*
+** Return a string appropriate for various prompt expansion characters.
+** Return an empty string at least.  Always return a valid string pointer.
+*/
+static const char *shellPromptAppDef(int c){
+  if( c=='A' ) return "SQLite";
+  if( c=='V' ) return sqlite3_libversion();
+  if( c=='v' ){
+    static char zRel[16];
+    const char *zF = sqlite3_libversion();
+    const char *zD = strrchr(zF,'.');
+    if( zD && (size_t)(zD-zF)<sizeof(zRel)-1 ){
+      memcpy(zRel,zF,(size_t)(zD-zF));
+      zRel[(size_t)(zD-zF)] = 0;
+      return zRel;
+    }else{
+      return zF;
+    }
+  }
+  return "";
+}
 
 /*
 ** Return the raw (unexpanded) prompt string.  This will be the
@@ -987,20 +1006,6 @@ static const char *prompt_filename(ShellState *p){
     }
   }
   return zFN;
-}
-
-/*
-** Return strings appropriate to substitute for /V and /v
-*/
-static const char *shellPatch(void){ return sqlite3_libversion(); }
-static const char *shellRelease(void){
-  static char zRel[16];
-  const char *zF = shellPatch();
-  const char *zD = strrchr(zF,'.');
-  int i = (int)(zD - zF);
-  memcpy(zRel,zF,i);
-  zRel[i] = 0;
-  return zRel;
 }
 
 /*
@@ -1065,24 +1070,11 @@ static char *expand_prompt(
       i = -1;
       continue;
     }
-    if( c=='A' ){
+    if( c=='A' || c=='V' || c=='v' ){
       /* /A expands to the application name */
-      if( !mOff ) sqlite3_str_appendall(pOut, SQLITE_PS_APP);
-      zPrompt += 2;
-      i = -1;
-      continue;
-    }
-    if( c=='V' ){
       /* /V expands to the version number with patch level */
-      if( !mOff ) sqlite3_str_appendall(pOut, SQLITE_PS_VERSION_PATCH);
-      zPrompt += 2;
-      i = -1;
-      continue;
-    }
-    if( c=='v' ){
       /* /v expands to the version number without the patch level */
-      /* /V expands to the version number with patch level */
-      if( !mOff ) sqlite3_str_appendall(pOut, SQLITE_PS_VERSION_RELEASE);
+      if( !mOff ) sqlite3_str_appendall(pOut, SQLITE_PS_APPDEF(c));
       zPrompt += 2;
       i = -1;
       continue;

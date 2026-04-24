@@ -949,7 +949,7 @@ static const char *shellPromptAppDef(int c){
 #elif defined(SQLITE_PS_NOANSI)
       return "/A-/v /~> ";
 #else
-      return "/e[1;32m/A-/v /e[1;/x33/:36/;m/~>/e[0m ";
+      return "/e[1;32m/A-/v /e[1;/x33/:36/;m/f/e[0m-> ";
 #endif
 
     /* The default continuation prompt string */
@@ -959,7 +959,7 @@ static const char *shellPromptAppDef(int c){
 #elif defined(SQLITE_PS_NOANSI)
       return "/B/C> ";
 #else
-      return "/B/e[1;/x33/:36/;m/C>/e[0m ";
+      return "/B/e[1;/x33/:36/;m/C/e[0m-> ";
 #endif
 
     /* Name of environment variables that override the prompt strings

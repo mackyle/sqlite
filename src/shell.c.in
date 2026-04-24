@@ -13306,6 +13306,8 @@ static int auto_ext_leak_tester(
 int SQLITE_CDECL utf8_main(int,char**);  /* Forward declaration */  
 int SQLITE_CDECL wmain(int argc, wchar_t **wargv){
   int rc, i;
+  DWORD mode;
+  HANDLE hOut;
   char **argv = malloc( sizeof(char*) * (argc+1) );
   char **orig = argv;
   if( argv==0 ){
@@ -13330,6 +13332,9 @@ int SQLITE_CDECL wmain(int argc, wchar_t **wargv){
     }
   }
   argv[argc] = 0;
+  hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+  GetConsoleMode(hOut, &mode);
+  SetConsoleMode(hOut, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
   rc = utf8_main(argc, argv);
   for(i=0; i<argc; i++) free(orig[i]);
   free(argv);

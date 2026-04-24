@@ -29,8 +29,8 @@
 .testcase 110
 .prompt --show
 .check --glob <<END
-Main prompt:  '*/A*/~>*'
-Continuation: '/B*/C>*'
+Main prompt:  '*/A*/f*-> '
+Continuation: '/B*/C*-> '
 END
 .testcase 111
 .prompt 'abc> ' '123> ' -show
@@ -48,8 +48,8 @@ END
 .testcase 113
 .prompt --reset --show
 .check --glob <<END
-Main prompt:  '*/A*/~>*'
-Continuation: '/B*/C>*'
+Main prompt:  '*/A*/f*> '
+Continuation: '/B*/C*> '
 END
 
 .testcase 120 --error-prefix ERROR:
@@ -66,7 +66,7 @@ END
 .prompt --show
 .check --glob <<END
 Main prompt:  'show'
-Continuation: '/B*/C>*'
+Continuation: '/B*/C*> '
 END
 
 .testcase 130
@@ -90,31 +90,31 @@ END
 
 .testcase 1000
 SELECT shell_prompt_test(NULL);
-.check --glob '*SQLite-3*test.db>*';
+.check --glob '*SQLite-3*test.db*-> ';
 .testcase 1001
 SELECT shell_prompt_test(NULL,'SELECT');
-.check --glob ' *;>*';
+.check --glob ' *;*-> ';
 .testcase 1002
 SELECT shell_prompt_test(NULL,'SELECT ((("');
-.check --glob ' *[ m]")));>*';
+.check --glob ' *[ m]")));*-> ';
 .testcase 1003
 SELECT shell_prompt_test(NULL,'SELECT ((()[');
-.check --glob ' *[ m]]));>*';
+.check --glob ' *[ m]]));*-> ';
 .testcase 1004
 SELECT shell_prompt_test(NULL,'SELECT ''');
-.check --glob " *[ m]';>*";
+.check --glob " *[ m]';*-> ";
 .testcase 1005
 SELECT shell_prompt_test(NULL,'CREATE TRIGGER t1 BEGIN');
-.check --glob " *[ m];END;>*";
+.check --glob " *[ m];END;*-> ";
 .testcase 1006
 SELECT shell_prompt_test(NULL,'CREATE TRIGGER t1 BEGIN SELECT ((([');
-.check --glob " *[ m]])));END;>*";
+.check --glob " *[ m]])));END;*-> ";
 .testcase 1007
 SELECT shell_prompt_test(NULL,'CREATE TRIGGER t1 BEGIN SELECT ((/*a(((''bc');
-.check --glob " *[ m][*]/));END;>*";
+.check --glob " *[ m][*]/));END;*-> ";
 .testcase 1008
 SELECT shell_prompt_test(NULL,'CREATE TRIGGER t1 BEGIN SELECT 1;');
-.check --glob " *[ m]END;>*";
+.check --glob " *[ m]END;*-> ";
 
 .testcase 2000
 .prompt 'SQLite/x-txn$/:>/; '
@@ -135,7 +135,7 @@ SELECT shell_prompt_test(NULL);
 .testcase 2004
 .prompt --reset
 SELECT shell_prompt_test(NULL);
-.check --glob '*SQLite-3.# *[/\]test.db>*';
+.check --glob '*SQLite-3.# *test.db*-> ';
 
 .testcase 3000
 SELECT shell_prompt_test('(/A-/V)');

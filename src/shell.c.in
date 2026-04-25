@@ -2108,6 +2108,14 @@ static int modeFind(ShellState *p, const char *zName){
 /*
 ** Save or restore the current output mode
 */
+static void modeSave(ShellState *p, Mode *pSaveAt){
+  modeDup(pSaveAt, &p->mode);
+}
+static void modeRestore(ShellState *p, Mode *pSaveAt){
+  modeFree(&p->mode);
+  p->mode = *pSaveAt;
+  memset(pSaveAt, 0, sizeof(Mode));
+}
 static void modePush(ShellState *p){
   if( p->nPopMode==0 ){
     modeFree(&p->modePrior);
@@ -2116,9 +2124,7 @@ static void modePush(ShellState *p){
 }
 static void modePop(ShellState *p){
   if( p->modePrior.spec.iVersion>0 ){
-    modeFree(&p->mode);
-    p->mode = p->modePrior;
-    memset(&p->modePrior, 0, sizeof(p->modePrior));
+    modeRestore(p, &p->modePrior);
   }
 }
 
@@ -9756,6 +9762,7 @@ static int do_meta_command(const char *zLine, ShellState *p){
     const char *zSchema = 0;
     int ii;
     char *zSql;
+    Mode savedMode;
     open_db(p, 0);
     for(ii=1; ii<nArg; ii++){
       const char *z = azArg[ii];
@@ -9773,13 +9780,13 @@ static int do_meta_command(const char *zLine, ShellState *p){
     }
     zSql = sqlite3_mprintf("SELECT analyze(%Q)", zSchema);
     shell_check_oom(zSql);
-    modePush(p);
+    modeSave(p, &savedMode);
     modeChange(p, MODE_BATCH);
     p->mode.spec.nLineLimit = 0;
     p->mode.spec.nCharLimit = 0;
     p->mode.spec.nTitleLimit = 0;
     shell_exec(p, zSql, 0);
-    modePop(p);
+    modeRestore(p, &savedMode);
     sqlite3_free(zSql);
   }else
 
@@ -10395,10 +10402,11 @@ static int do_meta_command(const char *zLine, ShellState *p){
     if( debugFlag ){
       cli_printf(stdout,"%s;\n", sqlite3_str_value(pSql));
     }else{
-      modePush(p);
+      Mode savedMode;
+      modeSave(p, &savedMode);
       modeChange(p, MODE_Split);
       shell_exec(p, sqlite3_str_value(pSql), 0);
-      modePop(p);
+      modeRestore(p, &savedMode);
     }
     sqlite3_str_free(pSql);
   }else
@@ -11831,6 +11839,7 @@ static int do_meta_command(const char *zLine, ShellState *p){
     sqlite3_stmt *pStmt;
     sqlite3_str *pSql;
     const char *zPattern = nArg>1 ? azArg[1] : 0;
+    Mode savedMode;
 
     open_db(p, 0);
     rc = sqlite3_prepare_v2(p->db, "PRAGMA database_list", -1, &pStmt, 0);
@@ -11866,11 +11875,11 @@ static int do_meta_command(const char *zLine, ShellState *p){
     }
 
     /* Run the SQL statement in "split" mode. */
-    modePush(p);
+    modeSave(p, &savedMode);
     modeChange(p, MODE_Split);
     shell_exec(p, sqlite3_str_value(pSql), 0);
     sqlite3_str_free(pSql);
-    modePop(p);
+    modeRestore(p, &savedMode);
     if( rc ) return shellDatabaseError(p->db);
   }else
 

@@ -596,7 +596,7 @@ static const ModeInfo aModeInfo[] = {
        **           text encoding  |/     |    show |      \
        **      v-------------------'      |   hdrs? |       The QRF style
        **      0: n/a                blob |   v-----'
-       **      1: plain        v_---------'   0: n/a
+       **      1: plain        v----------'   0: n/a
        **      2: sql          0: auto        1: no         
        **      3: csv          1: as-text     2: yes
        **      4: html         2: sql
@@ -605,18 +605,6 @@ static const ModeInfo aModeInfo[] = {
        **                      5: json
        **                      6: size
        ******************************************************************/
-/*
-** These are the column/row/line separators used by the various
-** import/export modes.
-*/
-#define SEP_Column    "|"
-#define SEP_Row       "\n"
-#define SEP_Tab       "\t"
-#define SEP_Space     " "
-#define SEP_Comma     ","
-#define SEP_CrLf      "\r\n"
-#define SEP_Unit      "\x1F"
-#define SEP_Record    "\x1E"
 
 /*
 ** Default values for the various QRF limits
@@ -7948,8 +7936,8 @@ static int dotCmdImport(ShellState *p){
     }else if( cli_strcmp(z,"-skip")==0 && i<nArg-1 ){
       nSkip = integerValue(azArg[++i]);
     }else if( cli_strcmp(z,"-ascii")==0 ){
-      if( sCtx.cColSep==0 ) sCtx.cColSep = SEP_Unit[0];
-      if( sCtx.cRowSep==0 ) sCtx.cRowSep = SEP_Record[0];
+      if( sCtx.cColSep==0 ) sCtx.cColSep = '\037';
+      if( sCtx.cRowSep==0 ) sCtx.cRowSep = '\036';
       xRead = ascii_read_one_field;
     }else if( cli_strcmp(z,"-csv")==0 ){
       if( sCtx.cColSep==0 ) sCtx.cColSep = ',';
@@ -9065,8 +9053,8 @@ static int dotCmdOutput(ShellState *p){
       newTempFile(p, "csv");
       p->mode.mFlags &= ~MFLG_ECHO;
       p->mode.eMode = MODE_Csv;
-      modeSetStr(&p->mode.spec.zColumnSep, SEP_Comma);
-      modeSetStr(&p->mode.spec.zRowSep, SEP_CrLf);
+      modeSetStr(&p->mode.spec.zColumnSep, ",");
+      modeSetStr(&p->mode.spec.zRowSep, "\r\n");
 #ifdef _WIN32
       zBom = zBomUtf8;  /* Always include the BOM on Windows, as Excel does
                         ** not work without it. */

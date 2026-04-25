@@ -665,17 +665,17 @@ static unsigned int sessionChangeHash(
   u8 *a = aRecord;                /* Used to iterate through change record */
 
   for(i=0; i<pTab->nCol; i++){
-    int eType = *a;
     int isPK = pTab->abPK[i];
     if( bPkOnly && isPK==0 ) continue;
 
-    assert( eType==SQLITE_INTEGER || eType==SQLITE_FLOAT 
-         || eType==SQLITE_TEXT || eType==SQLITE_BLOB 
-         || eType==SQLITE_NULL || eType==0 
-    );
-
     if( isPK ){
-      a++;
+      int eType = *a++;
+
+      assert( eType==SQLITE_INTEGER || eType==SQLITE_FLOAT 
+           || eType==SQLITE_TEXT || eType==SQLITE_BLOB 
+           || eType==SQLITE_NULL || eType==0 
+      );
+
       h = sessionHashAppendType(h, eType);
       if( eType==SQLITE_INTEGER || eType==SQLITE_FLOAT ){
         h = sessionHashAppendI64(h, sessionGetI64(a));

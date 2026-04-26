@@ -664,6 +664,13 @@ static int stdout_tty_width = -1;
 static sqlite3 *globalDb = 0;
 
 /*
+** This is a global pointer to the main ShellState variable.  This
+** exists so that the atexit() callback can access the ShellState
+** object to do some cleanup.
+*/
+static struct ShellState *globalShellState = 0;
+
+/*
 ** True if an interrupt (Control-C) has been received.
 */
 static volatile int seenInterrupt = 0;
@@ -1764,6 +1771,7 @@ static void shellExpandPrompt(
   sqlite3_free(zRes);
 }
 
+
 /************************* BEGIN PERFORMANCE TIMER *****************************/
 #if !defined(_WIN32) && !defined(WIN32) && !defined(__minux)
 #include <sys/time.h>
@@ -2529,6 +2537,11 @@ static void interrupt_handler(int NotUsed){
   UNUSED_PARAMETER(NotUsed);
   if( ++seenInterrupt>1 ) cli_exit(1);
   if( globalDb ) sqlite3_interrupt(globalDb);
+}
+/* No-masking interrupts (SIGTERM or SIGHUP) */
+static void sigterm_handler(int NotUsed){
+  UNUSED_PARAMETER(NotUsed);
+  cli_exit(1);
 }
 
 /* Try to determine the screen width.  Use the default if unable.
@@ -4850,6 +4863,9 @@ static void shellModuleSchema(
 #define OPEN_DB_KEEPALIVE   0x001   /* Return after error if true */
 #define OPEN_DB_ZIPFILE     0x002   /* Open as ZIP if name matches *.zip */
 
+/* Forward reference */
+static void shellTempFilenameFunc(sqlite3_context*,int,sqlite3_value**);
+
 /*
 ** Make sure the database is open.  If it is not, then open it.  If
 ** the database fails to open, print an error message and exit.
@@ -5022,6 +5038,8 @@ static void open_db(ShellState *p, int openFlags){
                             p, shellExpandPrompt, 0, 0);
     sqlite3_create_function(p->db, "shell_prompt_test", 3, SQLITE_UTF8,
                             p, shellExpandPrompt, 0, 0);
+    sqlite3_create_function(p->db, "shell_temp_filename", 1, SQLITE_UTF8,
+                            p, shellTempFilenameFunc, 0, 0);
 
 
     if( p->openMode==SHELL_OPEN_ZIPFILE ){
@@ -6258,7 +6276,9 @@ static char *shellFilenameFromUri(const char *zFN){
 **
 ** If unsuccessful on the first attempt and if pRetry!=NULL and pRetry[0]
 ** is positive, then delay for pRetry[0] milliseconds and try again.  On
-** a retry, pRetry[0] is set to zero.
+** a retry, pRetry[0] is set to zero.  Unsuccessful unlinks usually only
+** happen on Windows.  It is possible (in theory) for unlink() to fail
+** on Unix, but it rarely happens.
 **
 ** Return 0 on success and non-zero if unable.
 */
@@ -6268,9 +6288,11 @@ int shellDeleteFile(const char *zFilename, int *pRetry){
 #ifdef _WIN32
     wchar_t *z = sqlite3_win32_utf8_to_unicode(zFilename);
     rc = _wunlink(z);
+    if( rc && _waccess(z,0)!=0 ) rc = 0;
     sqlite3_free(z);
 #else
     rc = unlink(zFilename);
+    if( rc && access(zFilename, 0)!=0 ) rc = 0;
 #endif
     if( rc && pRetry && pRetry[0] ){
       sqlite3_sleep(pRetry[0]);
@@ -6283,27 +6305,43 @@ int shellDeleteFile(const char *zFilename, int *pRetry){
 }
 
 /*
-** Try to delete the temporary file (if there is one) with the name
-** p->zTempFile and free the memory used to hold the name of the temp file.
-** If there are any entries in p->aUnlink[] that are old enough, then
-** delete those too, also reclaiming memory.
+** This routine does two things:
 **
-** If retry is non-zero and a deletion attempt is not successful,
-** wait for retry milliseconds and try again before giving up.
-** When retry is non-zero, memory is always reclaimed even if the
-** file deletion attempt fails.
+**    (1)  Delete (unlink) temporary files that are no longer needed.
+**    (2)  Free memory used to hold the names of those temporary files.
+**
+** Temp filenames are stored in p->zTempName and in the p->aUnlink[]
+** array.  The p->zTempFile is always subject to immediate deletion.  The
+** temp files named in p->aUnlink[] are usually not deleted until after
+** the timestamp stored in the p->aUnlink[].tm field, except if
+** bForce is true, the p->aUnlink[] files will be deleted even if they
+** have not reached their expiration, as long as a delay of at least
+** nDelay milliseconds occurs first.
+**
+** If nDelay is non-zero and a deletion attempt is not successful,
+** wait for nDelay milliseconds and try again before giving up.  Only
+** a single wait occurs, even if problems are encountered with multiple
+** temp files.  Only the first problem seen takes the delay.  Thus
+** the total delay never exceeds nDelay milliseconds.  When nDelay
+** is non-zero, memory used to hold the filename is reclaimed regardless
+** of whether or not the temporary files were successfully deleted.
 **
 ** If bForce is true, deletion is attempted on p->aUnlink[] files
-** even time has not expired.
+** even if their time has not expired.  However, there is a pause
+** of up to nDelay milliseconds before doing the deletion.
 **
-** When retry is zero and the deletion attempt fails,
-** memory is not reclaimed.
+** When nDelay is zero and the deletion attempt fails, memory used to
+** store temporary filesnames is not reclaimed.
+**
+** The bForce flag is used only when the process is about to exit.  When
+** bForce is set, that indicates that this is our last opportunity to
+** clean up temporary files.
 */
-static void clearTempFile(ShellState *p, int retry, int bForce){
-  int alwaysFree = retry>0;
+static void clearTempFile(ShellState *p, int nDelay, int bForce){
+  int alwaysFree = (nDelay>0) || bForce;
   int rc = 0;
-  if( p->zTempFile && !p->doXdgOpen ){
-    rc = shellDeleteFile(p->zTempFile, &retry);
+  if( p->zTempFile && (!p->doXdgOpen || bForce) ){
+    rc = shellDeleteFile(p->zTempFile, &nDelay);
     if( rc==0 || alwaysFree ){
       sqlite3_free(p->zTempFile);
       p->zTempFile = 0;
@@ -6312,11 +6350,18 @@ static void clearTempFile(ShellState *p, int retry, int bForce){
   if( p->nUnlink ){
     unsigned int i;
     for(i=0; i<p->nUnlink; i++){
-      if( p->aUnlink[i].tm<timeOfDay()
-       || (bForce && alwaysFree && sqlite3_sleep(retry)>=0)
-      ){
+      sqlite3_int64 tmToGo = p->aUnlink[i].tm - timeOfDay();
+      int doDelete =  tmToGo<=0;
+      if( !doDelete && alwaysFree ){
+        int tmSleep = nDelay;
+        if( tmSleep > tmToGo ) tmSleep = (int)tmToGo;
+        sqlite3_sleep(tmSleep);
+        nDelay -= tmSleep;
+        doDelete = 1;
+      }
+      if( doDelete ){
         char *zFN = p->aUnlink[i].zFN;
-        rc = shellDeleteFile(zFN, &retry);
+        rc = shellDeleteFile(zFN, &nDelay);
         if( rc==0 || alwaysFree ){
           sqlite3_free(p->aUnlink[i].zFN);
           p->nUnlink--;
@@ -6362,13 +6407,33 @@ static void newTempFile(ShellState *p, const char *zSuffix){
     r /= 36;
   }
   zRand[i] = 0;
-  clearTempFile(p,1000,0);
+  clearTempFile(p,10,0);
   sqlite3_free(p->zTempFile);
   p->zTempFile = 0;
   zHome = find_home_dir(0);
   p->zTempFile = sqlite3_mprintf("%s%ctemp-%s.%s",
                                  zHome,cDirSep,zRand,zSuffix);
   shell_check_oom(p->zTempFile);
+}
+
+/*
+** SQL function:  shell_temp_filename(SUFFIX)
+**
+** Return a randomly generated temporary filename.
+*/
+static void shellTempFilenameFunc(
+  sqlite3_context *pCtx,
+  int nVal,
+  sqlite3_value **apVal
+){
+  ShellState *p = (ShellState*)sqlite3_user_data(pCtx);
+  const char *zSuffix = (const char*)sqlite3_value_text(apVal[0]);
+  (void)nVal;
+  if( zSuffix==0 ) zSuffix = "";
+  newTempFile(p, zSuffix);
+  sqlite3_result_text(pCtx, p->zTempFile, -1, SQLITE_TRANSIENT);
+  sqlite3_free(p->zTempFile);
+  p->zTempFile = 0;
 }
 
 /*
@@ -13285,6 +13350,7 @@ static void main_init(ShellState *p) {
 #endif
   sqlite3_config(SQLITE_CONFIG_URI, 1);
   sqlite3_config(SQLITE_CONFIG_MULTITHREAD);
+  globalShellState = p;
 }
 
 /*
@@ -13320,8 +13386,14 @@ static char *cmdline_option_value(int argc, char **argv, int i){
   return argv[i];
 }
 
-static void sayAbnormalExit(void){
+/*
+** The callback from atexit().
+*/
+static void abnormalExit(void){
   if( seenInterrupt ) eputz("Program interrupted.\n");
+  if( globalShellState ){
+    clearTempFile(globalShellState, 1, 1);
+  }
 }
 
 /* Routine to output from vfstrace
@@ -13439,7 +13511,7 @@ int SQLITE_CDECL main(int argc, char **argv){
   stdin_is_interactive = isatty(0);
   stdout_is_console = isatty(1);
 #endif
-  atexit(sayAbnormalExit);
+  atexit(abnormalExit);
 #ifdef SQLITE_DEBUG
   mem_main_enter = sqlite3_memory_used();
 #endif
@@ -13472,6 +13544,13 @@ int SQLITE_CDECL main(int argc, char **argv){
     eputz("No ^C handler.\n");
   }
 #endif
+#ifdef SIGTERM
+  signal(SIGTERM, sigterm_handler);
+#endif
+#ifdef SIGHUP
+  signal(SIGHUP, sigterm_handler);
+#endif
+
 
 #if USE_SYSTEM_SQLITE+0!=1
   if( cli_strncmp(sqlite3_sourceid(),SQLITE_SOURCE_ID,60)!=0 ){
@@ -14111,7 +14190,8 @@ int SQLITE_CDECL main(int argc, char **argv){
   find_home_dir(1);
   output_reset(&data);
   data.doXdgOpen = 0;
-  clearTempFile(&data,1000,1);
+  clearTempFile(&data,2500,1);
+  globalShellState = 0;
   while( data.nModeStack ) modePop(&data);
   free(data.aModeStack);
   modeFree(&data.mode);

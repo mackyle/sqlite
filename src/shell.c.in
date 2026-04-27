@@ -12852,7 +12852,9 @@ static int runOneSqlLine(
   rc = shell_exec(p, zSql, &zErrMsg);
   END_TIMER(p);
   if( rc || zErrMsg ){
-    char zPrefix[100];
+    char zPrefix[2048
+                 /* must be relatively large:
+                 ** https://sqlite.org/forum/forumpost/205f73db1b2806f5 */];
     const char *zErrorTail;
     const char *zErrorType;
     if( zErrMsg==0 ){

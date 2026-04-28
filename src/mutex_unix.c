@@ -35,10 +35,23 @@
 # define SQLITE_MUTEX_NREF 0
 #endif
 
+#if GCC_VERSION>0
+# define ALIGN128 __attribute__((aligned(128)))
+#else
+# define ALIGN128
+#endif
+
 /*
-** Each recursive mutex is an instance of the following structure.
+** Each SQLite mutex is an instance of the following structure.
+**
+** The ALIGN128 macro attempts to force 128-byte alignment on mutexes,
+** so that adjacent mutex objects are always on different cache lines
+** in the CPU.  This is CPU-dependent, of course, but 128-byte alignment
+** seems to work well for all contemporary processors.  Experiments show
+** that 64 works just as well most of the time, but the internet says
+** that 128-byte alignment works better.
 */
-struct sqlite3_mutex {
+struct ALIGN128 sqlite3_mutex {
   pthread_mutex_t mutex;     /* Mutex controlling the lock */
 #if SQLITE_MUTEX_NREF || defined(SQLITE_ENABLE_API_ARMOR)
   int id;                    /* Mutex type */

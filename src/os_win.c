@@ -27,35 +27,6 @@
 #define SQLITE_WIN32_HAS_WIDE 1
 
 /*
-** Define the required Windows SDK version constants if they are not
-** already available.
-*/
-#ifndef NTDDI_WIN8
-#  define NTDDI_WIN8                        0x06020000
-#endif
-
-#ifndef NTDDI_WINBLUE
-#  define NTDDI_WINBLUE                     0x06030000
-#endif
-
-#ifndef NTDDI_WINTHRESHOLD
-#  define NTDDI_WINTHRESHOLD                0x06040000
-#endif
-
-/*
-** Check to see if the CreateFileMappingA function is supported on the
-** target system.  It is unavailable when using "mincore.lib" on Win10.
-** When compiling for Windows 10, always assume "mincore.lib" is in use.
-*/
-#ifndef SQLITE_WIN32_CREATEFILEMAPPINGA
-#  if defined(NTDDI_VERSION) && NTDDI_VERSION >= NTDDI_WINTHRESHOLD
-#    define SQLITE_WIN32_CREATEFILEMAPPINGA   0
-#  else
-#    define SQLITE_WIN32_CREATEFILEMAPPINGA   1
-#  endif
-#endif
-
-/*
 ** This constant should already be defined (in the "WinDef.h" SDK file).
 */
 #ifndef MAX_PATH
@@ -134,33 +105,7 @@
 #endif
 
 /*
-** Do we need to manually define the Win32 file mapping APIs for use with WAL
-** mode or memory mapped files (e.g. these APIs are available in the Windows
-** CE SDK; however, they are not present in the header file)?
-*/
-#if SQLITE_WIN32_FILEMAPPING_API && \
-        (!defined(SQLITE_OMIT_WAL) || SQLITE_MAX_MMAP_SIZE>0)
-
-#if defined(SQLITE_WIN32_HAS_ANSI)
-WINBASEAPI HANDLE WINAPI CreateFileMappingA(HANDLE, LPSECURITY_ATTRIBUTES, \
-        DWORD, DWORD, DWORD, LPCSTR);
-#endif /* defined(SQLITE_WIN32_HAS_ANSI) */
-
-WINBASEAPI HANDLE WINAPI CreateFileMappingW(HANDLE, LPSECURITY_ATTRIBUTES, \
-        DWORD, DWORD, DWORD, LPCWSTR);
-
-WINBASEAPI LPVOID WINAPI MapViewOfFile(HANDLE, DWORD, DWORD, DWORD, SIZE_T);
-
-/*
-** These file mapping APIs are common to both Win32 and WinRT.
-*/
-
-WINBASEAPI BOOL WINAPI FlushViewOfFile(LPCVOID, SIZE_T);
-WINBASEAPI BOOL WINAPI UnmapViewOfFile(LPCVOID);
-#endif /* SQLITE_WIN32_FILEMAPPING_API */
-
-/*
-** Some Microsoft compilers lack this definition.
+** Some older Microsoft compilers lack the following definition.
 */
 #ifndef INVALID_FILE_ATTRIBUTES
 # define INVALID_FILE_ATTRIBUTES ((DWORD)-1)
@@ -181,19 +126,6 @@ typedef struct winShmNode winShmNode;   /* A region of shared-memory */
 #endif
 
 /*
-** WinCE lacks native support for file locking so we have to fake it
-** with some code of our own.
-*/
-#if SQLITE_OS_WINCE
-typedef struct winceLock {
-  int nReaders;       /* Number of reader locks obtained */
-  BOOL bPending;      /* Indicates a pending lock has been obtained */
-  BOOL bReserved;     /* Indicates a reserved lock has been obtained */
-  BOOL bExclusive;    /* Indicates an exclusive lock has been obtained */
-} winceLock;
-#endif
-
-/*
 ** The winFile structure is a subclass of sqlite3_file* specific to the win32
 ** portability layer.
 */
@@ -211,13 +143,6 @@ struct winFile {
 #endif
   const char *zPath;      /* Full pathname of this file */
   int szChunk;            /* Chunk size configured by FCNTL_CHUNK_SIZE */
-#if SQLITE_OS_WINCE
-  LPWSTR zDeleteOnClose;  /* Name of file to delete when closing */
-  HANDLE hMutex;          /* Mutex used to control access to shared lock */
-  HANDLE hShared;         /* Shared memory segment used for locking */
-  winceLock local;        /* Locks obtained by this instance of winFile */
-  winceLock *shared;      /* Global shared lock memory for the file  */
-#endif
 #if SQLITE_MAX_MMAP_SIZE>0
   int nFetchOut;                /* Number of outstanding xFetch references */
   HANDLE hMap;                  /* Handle for accessing memory mapping */
@@ -437,14 +362,6 @@ static LONG SQLITE_WIN32_VOLATILE sqlite3_os_type = 0;
 #endif
 
 /*
-** This function is not available on Windows CE or WinRT.
- */
-
-#if SQLITE_OS_WINCE
-#  define osAreFileApisANSI()       1
-#endif
-
-/*
 ** Many system calls are accessed through pointer-to-functions so that
 ** they may be overridden at runtime to facilitate fault injection during
 ** testing and sandboxing.  The following array holds the names and pointers
@@ -455,15 +372,8 @@ static struct win_syscall {
   sqlite3_syscall_ptr pCurrent; /* Current value of the system call */
   sqlite3_syscall_ptr pDefault; /* Default value */
 } aSyscall[] = {
-#if !SQLITE_OS_WINCE
   { "AreFileApisANSI",         (SYSCALL)AreFileApisANSI,         0 },
-#else
-  { "AreFileApisANSI",         (SYSCALL)0,                       0 },
-#endif
-
-#ifndef osAreFileApisANSI
 #define osAreFileApisANSI ((BOOL(WINAPI*)(VOID))aSyscall[0].pCurrent)
-#endif
 
   { "CharLowerW",              (SYSCALL)0,                       0 }, 
 #define osCharLowerW ((LPWSTR(WINAPI*)(LPWSTR))aSyscall[1].pCurrent)
@@ -475,11 +385,8 @@ static struct win_syscall {
 
 #define osCloseHandle ((BOOL(WINAPI*)(HANDLE))aSyscall[3].pCurrent)
 
-#if defined(SQLITE_WIN32_HAS_ANSI)
-  { "CreateFileA",             (SYSCALL)CreateFileA,             0 },
-#else
   { "CreateFileA",             (SYSCALL)0,                       0 },
-#endif
+
 #define osCreateFileA ((HANDLE(WINAPI*)(LPCSTR,DWORD,DWORD, \
         LPSECURITY_ATTRIBUTES,DWORD,DWORD,HANDLE))aSyscall[4].pCurrent)
 
@@ -487,14 +394,7 @@ static struct win_syscall {
 #define osCreateFileW ((HANDLE(WINAPI*)(LPCWSTR,DWORD,DWORD, \
         LPSECURITY_ATTRIBUTES,DWORD,DWORD,HANDLE))aSyscall[5].pCurrent)
 
-#if defined(SQLITE_WIN32_HAS_ANSI) && \
-        (!defined(SQLITE_OMIT_WAL) || SQLITE_MAX_MMAP_SIZE>0) && \
-        SQLITE_WIN32_CREATEFILEMAPPINGA
-  { "CreateFileMappingA",      (SYSCALL)CreateFileMappingA,      0 },
-#else
   { "CreateFileMappingA",      (SYSCALL)0,                       0 },
-#endif
-
 #define osCreateFileMappingA ((HANDLE(WINAPI*)(HANDLE,LPSECURITY_ATTRIBUTES, \
         DWORD,DWORD,DWORD,LPCSTR))aSyscall[6].pCurrent)
 
@@ -506,32 +406,18 @@ static struct win_syscall {
 #define osCreateMutexW ((HANDLE(WINAPI*)(LPSECURITY_ATTRIBUTES,BOOL, \
         LPCWSTR))aSyscall[8].pCurrent)
 
-#if defined(SQLITE_WIN32_HAS_ANSI)
-  { "DeleteFileA",             (SYSCALL)DeleteFileA,             0 },
-#else
   { "DeleteFileA",             (SYSCALL)0,                       0 },
-#endif
 
 #define osDeleteFileA ((BOOL(WINAPI*)(LPCSTR))aSyscall[9].pCurrent)
 
   { "DeleteFileW",             (SYSCALL)DeleteFileW,             0 },
 #define osDeleteFileW ((BOOL(WINAPI*)(LPCWSTR))aSyscall[10].pCurrent)
 
-#if SQLITE_OS_WINCE
-  { "FileTimeToLocalFileTime", (SYSCALL)FileTimeToLocalFileTime, 0 },
-#else
   { "FileTimeToLocalFileTime", (SYSCALL)0,                       0 },
-#endif
-
 #define osFileTimeToLocalFileTime ((BOOL(WINAPI*)(const FILETIME*, \
         LPFILETIME))aSyscall[11].pCurrent)
 
-#if SQLITE_OS_WINCE
   { "FileTimeToSystemTime",    (SYSCALL)FileTimeToSystemTime,    0 },
-#else
-  { "FileTimeToSystemTime",    (SYSCALL)0,                       0 },
-#endif
-
 #define osFileTimeToSystemTime ((BOOL(WINAPI*)(const FILETIME*, \
         LPSYSTEMTIME))aSyscall[12].pCurrent)
 
@@ -539,11 +425,7 @@ static struct win_syscall {
 
 #define osFlushFileBuffers ((BOOL(WINAPI*)(HANDLE))aSyscall[13].pCurrent)
 
-#if defined(SQLITE_WIN32_HAS_ANSI)
   { "FormatMessageA",          (SYSCALL)FormatMessageA,          0 },
-#else
-  { "FormatMessageA",          (SYSCALL)0,                       0 },
-#endif
 
 #define osFormatMessageA ((DWORD(WINAPI*)(DWORD,LPCVOID,DWORD,DWORD,LPSTR, \
         DWORD,va_list*))aSyscall[14].pCurrent)
@@ -564,11 +446,7 @@ static struct win_syscall {
 
 #define osGetCurrentProcessId ((DWORD(WINAPI*)(VOID))aSyscall[17].pCurrent)
 
-#if !SQLITE_OS_WINCE && defined(SQLITE_WIN32_HAS_ANSI)
-  { "GetDiskFreeSpaceA",       (SYSCALL)GetDiskFreeSpaceA,       0 },
-#else
   { "GetDiskFreeSpaceA",       (SYSCALL)0,                       0 },
-#endif
 
 #define osGetDiskFreeSpaceA ((BOOL(WINAPI*)(LPCSTR,LPDWORD,LPDWORD,LPDWORD, \
         LPDWORD))aSyscall[18].pCurrent)
@@ -577,11 +455,7 @@ static struct win_syscall {
 #define osGetDiskFreeSpaceW ((BOOL(WINAPI*)(LPCWSTR,LPDWORD,LPDWORD,LPDWORD, \
         LPDWORD))aSyscall[19].pCurrent)
 
-#if defined(SQLITE_WIN32_HAS_ANSI)
-  { "GetFileAttributesA",      (SYSCALL)GetFileAttributesA,      0 },
-#else
   { "GetFileAttributesA",      (SYSCALL)0,                       0 },
-#endif
 
 #define osGetFileAttributesA ((DWORD(WINAPI*)(LPCSTR))aSyscall[20].pCurrent)
 
@@ -596,11 +470,7 @@ static struct win_syscall {
 
 #define osGetFileSize ((DWORD(WINAPI*)(HANDLE,LPDWORD))aSyscall[23].pCurrent)
 
-#if !SQLITE_OS_WINCE && defined(SQLITE_WIN32_HAS_ANSI)
-  { "GetFullPathNameA",        (SYSCALL)GetFullPathNameA,        0 },
-#else
   { "GetFullPathNameA",        (SYSCALL)0,                       0 },
-#endif
 
 #define osGetFullPathNameA ((DWORD(WINAPI*)(LPCSTR,DWORD,LPSTR, \
         LPSTR*))aSyscall[24].pCurrent)
@@ -621,14 +491,7 @@ static struct win_syscall {
 #define osGetLastError ((DWORD(WINAPI*)(VOID))aSyscall[26].pCurrent)
 
 #if !defined(SQLITE_OMIT_LOAD_EXTENSION)
-#if SQLITE_OS_WINCE
-  /* The GetProcAddressA() routine is only available on Windows CE. */
-  { "GetProcAddressA",         (SYSCALL)GetProcAddressA,         0 },
-#else
-  /* All other Windows platforms expect GetProcAddress() to take
-  ** an ANSI string regardless of the _UNICODE setting */
   { "GetProcAddressA",         (SYSCALL)GetProcAddress,          0 },
-#endif
 #else
   { "GetProcAddressA",         (SYSCALL)0,                       0 },
 #endif
@@ -642,20 +505,11 @@ static struct win_syscall {
   { "GetSystemTime",           (SYSCALL)GetSystemTime,           0 },
 #define osGetSystemTime ((VOID(WINAPI*)(LPSYSTEMTIME))aSyscall[29].pCurrent)
 
-#if !SQLITE_OS_WINCE
   { "GetSystemTimeAsFileTime", (SYSCALL)GetSystemTimeAsFileTime, 0 },
-#else
-  { "GetSystemTimeAsFileTime", (SYSCALL)0,                       0 },
-#endif
-
 #define osGetSystemTimeAsFileTime ((VOID(WINAPI*)( \
         LPFILETIME))aSyscall[30].pCurrent)
 
-#if defined(SQLITE_WIN32_HAS_ANSI)
-  { "GetTempPathA",            (SYSCALL)GetTempPathA,            0 },
-#else
   { "GetTempPathA",            (SYSCALL)0,                       0 },
-#endif
 
 #define osGetTempPathA ((DWORD(WINAPI*)(DWORD,LPSTR))aSyscall[31].pCurrent)
 
@@ -707,19 +561,11 @@ static struct win_syscall {
 #define osHeapValidate ((BOOL(WINAPI*)(HANDLE,DWORD, \
         LPCVOID))aSyscall[42].pCurrent)
 
-#if !SQLITE_OS_WINCE
   { "HeapCompact",             (SYSCALL)HeapCompact,             0 },
-#else
-  { "HeapCompact",             (SYSCALL)0,                       0 },
-#endif
 
 #define osHeapCompact ((UINT(WINAPI*)(HANDLE,DWORD))aSyscall[43].pCurrent)
 
-#if defined(SQLITE_WIN32_HAS_ANSI) && !defined(SQLITE_OMIT_LOAD_EXTENSION)
-  { "LoadLibraryA",            (SYSCALL)LoadLibraryA,            0 },
-#else
   { "LoadLibraryA",            (SYSCALL)0,                       0 },
-#endif
 
 #define osLoadLibraryA ((HMODULE(WINAPI*)(LPCSTR))aSyscall[44].pCurrent)
 
@@ -735,29 +581,17 @@ static struct win_syscall {
 
 #define osLocalFree ((HLOCAL(WINAPI*)(HLOCAL))aSyscall[46].pCurrent)
 
-#if !SQLITE_OS_WINCE
   { "LockFile",                (SYSCALL)LockFile,                0 },
-#else
-  { "LockFile",                (SYSCALL)0,                       0 },
-#endif
 
-#if !defined(osLockFile) && defined(SQLITE_WIN32_HAS_ANSI)
 #define osLockFile ((BOOL(WINAPI*)(HANDLE,DWORD,DWORD,DWORD, \
         DWORD))aSyscall[47].pCurrent)
-#endif
 
-#if !SQLITE_OS_WINCE
   { "LockFileEx",              (SYSCALL)LockFileEx,              0 },
-#else
-  { "LockFileEx",              (SYSCALL)0,                       0 },
-#endif
 
-#ifndef osLockFileEx
 #define osLockFileEx ((BOOL(WINAPI*)(HANDLE,DWORD,DWORD,DWORD,DWORD, \
         LPOVERLAPPED))aSyscall[48].pCurrent)
-#endif
 
-#if SQLITE_OS_WINCE || !defined(SQLITE_OMIT_WAL) || SQLITE_MAX_MMAP_SIZE>0
+#if !defined(SQLITE_OMIT_WAL) || SQLITE_MAX_MMAP_SIZE>0
   { "MapViewOfFile",           (SYSCALL)MapViewOfFile,           0 },
 #else
   { "MapViewOfFile",           (SYSCALL)0,                       0 },
@@ -799,27 +633,17 @@ static struct win_syscall {
 #define osSystemTimeToFileTime ((BOOL(WINAPI*)(const SYSTEMTIME*, \
         LPFILETIME))aSyscall[56].pCurrent)
 
-#if !SQLITE_OS_WINCE
   { "UnlockFile",              (SYSCALL)UnlockFile,              0 },
-#else
-  { "UnlockFile",              (SYSCALL)0,                       0 },
-#endif
 
-#if !defined(osUnlockFile) && defined(SQLITE_WIN32_HAS_ANSI)
 #define osUnlockFile ((BOOL(WINAPI*)(HANDLE,DWORD,DWORD,DWORD, \
         DWORD))aSyscall[57].pCurrent)
-#endif
 
-#if !SQLITE_OS_WINCE
   { "UnlockFileEx",            (SYSCALL)UnlockFileEx,            0 },
-#else
-  { "UnlockFileEx",            (SYSCALL)0,                       0 },
-#endif
 
 #define osUnlockFileEx ((BOOL(WINAPI*)(HANDLE,DWORD,DWORD,DWORD, \
         LPOVERLAPPED))aSyscall[58].pCurrent)
 
-#if SQLITE_OS_WINCE || !defined(SQLITE_OMIT_WAL) || SQLITE_MAX_MMAP_SIZE>0
+#if !defined(SQLITE_OMIT_WAL) || SQLITE_MAX_MMAP_SIZE>0
   { "UnmapViewOfFile",         (SYSCALL)UnmapViewOfFile,         0 },
 #else
   { "UnmapViewOfFile",         (SYSCALL)0,                       0 },
@@ -837,22 +661,12 @@ static struct win_syscall {
 #define osWriteFile ((BOOL(WINAPI*)(HANDLE,LPCVOID,DWORD,LPDWORD, \
         LPOVERLAPPED))aSyscall[61].pCurrent)
 
-/*
-** For WaitForSingleObject(), MSDN says:
-**
-** Minimum supported client: Windows XP [desktop apps | UWP apps]
-** Minimum supported server: Windows Server 2003 [desktop apps | UWP apps]
-*/
   { "WaitForSingleObject",     (SYSCALL)WaitForSingleObject,     0 },
 
 #define osWaitForSingleObject ((DWORD(WINAPI*)(HANDLE, \
         DWORD))aSyscall[62].pCurrent)
 
-#if !SQLITE_OS_WINCE
   { "WaitForSingleObjectEx",   (SYSCALL)WaitForSingleObjectEx,   0 },
-#else
-  { "WaitForSingleObjectEx",   (SYSCALL)0,                       0 },
-#endif
 
 #define osWaitForSingleObjectEx ((DWORD(WINAPI*)(HANDLE,DWORD, \
         BOOL))aSyscall[63].pCurrent)
@@ -862,11 +676,7 @@ static struct win_syscall {
 #define osGetNativeSystemInfo ((VOID(WINAPI*)( \
         LPSYSTEM_INFO))aSyscall[64].pCurrent)
 
-#if defined(SQLITE_WIN32_HAS_ANSI)
   { "OutputDebugStringA",      (SYSCALL)OutputDebugStringA,      0 },
-#else
-  { "OutputDebugStringA",      (SYSCALL)0,                       0 },
-#endif
 
 #define osOutputDebugStringA ((VOID(WINAPI*)(LPCSTR))aSyscall[65].pCurrent)
 
@@ -893,7 +703,7 @@ static struct win_syscall {
         SQLITE_WIN32_VOLATILE*, LONG,LONG))aSyscall[68].pCurrent)
 #endif /* defined(InterlockedCompareExchange) */
 
-#if !SQLITE_OS_WINCE && SQLITE_WIN32_USE_UUID
+#if SQLITE_WIN32_USE_UUID
   { "UuidCreate",               (SYSCALL)UuidCreate,             0 },
 #else
   { "UuidCreate",               (SYSCALL)0,                      0 },
@@ -901,7 +711,7 @@ static struct win_syscall {
 
 #define osUuidCreate ((RPC_STATUS(RPC_ENTRY*)(UUID*))aSyscall[69].pCurrent)
 
-#if !SQLITE_OS_WINCE && SQLITE_WIN32_USE_UUID
+#if SQLITE_WIN32_USE_UUID
   { "UuidCreateSequential",     (SYSCALL)UuidCreateSequential,   0 },
 #else
   { "UuidCreateSequential",     (SYSCALL)0,                      0 },
@@ -919,13 +729,6 @@ static struct win_syscall {
 #define osFlushViewOfFile \
         ((BOOL(WINAPI*)(LPCVOID,SIZE_T))aSyscall[71].pCurrent)
 
-/*
-** If SQLITE_ENABLE_SETLK_TIMEOUT is defined, we require CreateEvent()
-** to implement blocking locks with timeouts. MSDN says:
-**
-** Minimum supported client: Windows XP [desktop apps | UWP apps]
-** Minimum supported server: Windows Server 2003 [desktop apps | UWP apps]
-*/
 #ifdef SQLITE_ENABLE_SETLK_TIMEOUT
   { "CreateEvent",              (SYSCALL)CreateEvent,            0 },
 #else
@@ -937,14 +740,6 @@ static struct win_syscall {
     aSyscall[72].pCurrent \
 )
 
-/*
-** If SQLITE_ENABLE_SETLK_TIMEOUT is defined, we require CancelIo()
-** for the case where a timeout expires and a lock request must be 
-** cancelled.
-**
-** Minimum supported client: Windows XP [desktop apps | UWP apps]
-** Minimum supported server: Windows Server 2003 [desktop apps | UWP apps]
-*/
 #ifdef SQLITE_ENABLE_SETLK_TIMEOUT
   { "CancelIo",                 (SYSCALL)CancelIo,               0 },
 #else
@@ -1110,7 +905,6 @@ int sqlite3_win32_compact_heap(LPUINT pnLargest){
 #if defined(SQLITE_WIN32_MALLOC_VALIDATE)
   assert( osHeapValidate(hHeap, SQLITE_WIN32_HEAP_FLAGS, NULL) );
 #endif
-#if !SQLITE_OS_WINCE
   if( (nLargest=osHeapCompact(hHeap, SQLITE_WIN32_HEAP_FLAGS))==0 ){
     DWORD lastErrno = osGetLastError();
     if( lastErrno==NO_ERROR ){
@@ -1123,11 +917,6 @@ int sqlite3_win32_compact_heap(LPUINT pnLargest){
       rc = SQLITE_ERROR;
     }
   }
-#else
-  sqlite3_log(SQLITE_NOTFOUND, "failed to HeapCompact, heap=%p",
-              (void*)hHeap);
-  rc = SQLITE_NOTFOUND;
-#endif
   if( pnLargest ) *pnLargest = nLargest;
   return rc;
 }
@@ -1178,12 +967,10 @@ int sqlite3_win32_reset_heap(){
 }
 #endif /* SQLITE_WIN32_MALLOC */
 
-#ifdef _WIN32
 /*
 ** This function outputs the specified (ANSI) string to the Win32 debugger
-** (if available).
+** (if available).  Undocumented.  Might go away at any moment.
 */
-
 void sqlite3_win32_write_debug(const char *zBuf, int nBuf){
   char zDbgBuf[SQLITE_WIN32_DBG_BUF_SIZE];
   int nMin = MIN(nBuf, (SQLITE_WIN32_DBG_BUF_SIZE - 1)); /* may be negative. */
@@ -1195,7 +982,6 @@ void sqlite3_win32_write_debug(const char *zBuf, int nBuf){
     return;
   }
 #endif
-#if defined(SQLITE_WIN32_HAS_ANSI)
   if( nMin>0 ){
     memset(zDbgBuf, 0, SQLITE_WIN32_DBG_BUF_SIZE);
     memcpy(zDbgBuf, zBuf, nMin);
@@ -1203,32 +989,13 @@ void sqlite3_win32_write_debug(const char *zBuf, int nBuf){
   }else{
     osOutputDebugStringA(zBuf);
   }
-#elif defined(SQLITE_WIN32_HAS_WIDE)
-  memset(zDbgBuf, 0, SQLITE_WIN32_DBG_BUF_SIZE);
-  if ( osMultiByteToWideChar(
-          osAreFileApisANSI() ? CP_ACP : CP_OEMCP, 0, zBuf,
-          nMin, (LPWSTR)zDbgBuf, SQLITE_WIN32_DBG_BUF_SIZE/sizeof(WCHAR))<=0 ){
-    return;
-  }
-  osOutputDebugStringW((LPCWSTR)zDbgBuf);
-#else
-  if( nMin>0 ){
-    memset(zDbgBuf, 0, SQLITE_WIN32_DBG_BUF_SIZE);
-    memcpy(zDbgBuf, zBuf, nMin);
-    fprintf(stderr, "%s", zDbgBuf);
-  }else{
-    fprintf(stderr, "%s", zBuf);
-  }
-#endif
 }
-#endif /* _WIN32 */
 
 void sqlite3_win32_sleep(DWORD milliseconds){
   osSleep(milliseconds);
 }
 
-#if SQLITE_MAX_WORKER_THREADS>0 && !SQLITE_OS_WINCE && \
-        SQLITE_THREADSAFE>0
+#if SQLITE_MAX_WORKER_THREADS>0 && SQLITE_THREADSAFE>0
 DWORD sqlite3Win32Wait(HANDLE hObject){
   DWORD rc;
   while( (rc = osWaitForSingleObjectEx(hObject, INFINITE,
@@ -2312,7 +2079,7 @@ static int winWrite(
 #endif
 
     while( nRem>0 ){
-#if SQLITE_OS_WINCE || defined(SQLITE_WIN32_NO_OVERLAPPED)
+#if defined(SQLITE_WIN32_NO_OVERLAPPED)
       if( !osWriteFile(pFile->h, aRem, nRem, &nWrite, 0) ){
 #else
       if( !osWriteFile(pFile->h, aRem, nRem, &nWrite, &overlapped) ){
@@ -2325,7 +2092,7 @@ static int winWrite(
         lastErrno = osGetLastError();
         break;
       }
-#if !SQLITE_OS_WINCE && !defined(SQLITE_WIN32_NO_OVERLAPPED)
+#if !defined(SQLITE_WIN32_NO_OVERLAPPED)
       offset += nWrite;
       overlapped.Offset = (LONG)(offset & 0xffffffff);
       overlapped.OffsetHigh = (LONG)((offset>>32) & 0x7fffffff);

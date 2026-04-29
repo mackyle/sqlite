@@ -352,9 +352,9 @@ const sqlite3_mem_methods *sqlite3MemGetWin32(void);
 ** can manually set this value to 1 to emulate Win98 behavior.
 */
 #ifdef SQLITE_TEST
-LONG SQLITE_WIN32_VOLATILE sqlite3_os_type = 0;
+LONG volatile sqlite3_os_type = 0;
 #else
-static LONG SQLITE_WIN32_VOLATILE sqlite3_os_type = 0;
+static LONG volatile sqlite3_os_type = 0;
 #endif
 
 #ifndef SYSCALL
@@ -375,64 +375,27 @@ static struct win_syscall {
   { "AreFileApisANSI",         (SYSCALL)AreFileApisANSI,         0 },
 #define osAreFileApisANSI ((BOOL(WINAPI*)(VOID))aSyscall[0].pCurrent)
 
-  { "CharLowerW",              (SYSCALL)0,                       0 }, 
-#define osCharLowerW ((LPWSTR(WINAPI*)(LPWSTR))aSyscall[1].pCurrent)
-
-  { "CharUpperW",              (SYSCALL)0,                       0 },
-#define osCharUpperW ((LPWSTR(WINAPI*)(LPWSTR))aSyscall[2].pCurrent)
-
   { "CloseHandle",             (SYSCALL)CloseHandle,             0 },
+#define osCloseHandle ((BOOL(WINAPI*)(HANDLE))aSyscall[1].pCurrent)
 
-#define osCloseHandle ((BOOL(WINAPI*)(HANDLE))aSyscall[3].pCurrent)
-
-  { "CreateFileA",             (SYSCALL)0,                       0 },
-
-#define osCreateFileA ((HANDLE(WINAPI*)(LPCSTR,DWORD,DWORD, \
-        LPSECURITY_ATTRIBUTES,DWORD,DWORD,HANDLE))aSyscall[4].pCurrent)
 
   { "CreateFileW",             (SYSCALL)CreateFileW,             0 },
 #define osCreateFileW ((HANDLE(WINAPI*)(LPCWSTR,DWORD,DWORD, \
-        LPSECURITY_ATTRIBUTES,DWORD,DWORD,HANDLE))aSyscall[5].pCurrent)
-
-  { "CreateFileMappingA",      (SYSCALL)0,                       0 },
-#define osCreateFileMappingA ((HANDLE(WINAPI*)(HANDLE,LPSECURITY_ATTRIBUTES, \
-        DWORD,DWORD,DWORD,LPCSTR))aSyscall[6].pCurrent)
+        LPSECURITY_ATTRIBUTES,DWORD,DWORD,HANDLE))aSyscall[2].pCurrent)
 
   { "CreateFileMappingW",      (SYSCALL)CreateFileMappingW,      0 },
 #define osCreateFileMappingW ((HANDLE(WINAPI*)(HANDLE,LPSECURITY_ATTRIBUTES, \
-        DWORD,DWORD,DWORD,LPCWSTR))aSyscall[7].pCurrent)
-
-  { "CreateMutexW",            (SYSCALL)CreateMutexW,            0 },
-#define osCreateMutexW ((HANDLE(WINAPI*)(LPSECURITY_ATTRIBUTES,BOOL, \
-        LPCWSTR))aSyscall[8].pCurrent)
-
-  { "DeleteFileA",             (SYSCALL)0,                       0 },
-
-#define osDeleteFileA ((BOOL(WINAPI*)(LPCSTR))aSyscall[9].pCurrent)
+        DWORD,DWORD,DWORD,LPCWSTR))aSyscall[3].pCurrent)
 
   { "DeleteFileW",             (SYSCALL)DeleteFileW,             0 },
-#define osDeleteFileW ((BOOL(WINAPI*)(LPCWSTR))aSyscall[10].pCurrent)
-
-  { "FileTimeToLocalFileTime", (SYSCALL)0,                       0 },
-#define osFileTimeToLocalFileTime ((BOOL(WINAPI*)(const FILETIME*, \
-        LPFILETIME))aSyscall[11].pCurrent)
-
-  { "FileTimeToSystemTime",    (SYSCALL)FileTimeToSystemTime,    0 },
-#define osFileTimeToSystemTime ((BOOL(WINAPI*)(const FILETIME*, \
-        LPSYSTEMTIME))aSyscall[12].pCurrent)
+#define osDeleteFileW ((BOOL(WINAPI*)(LPCWSTR))aSyscall[4].pCurrent)
 
   { "FlushFileBuffers",        (SYSCALL)FlushFileBuffers,        0 },
-
-#define osFlushFileBuffers ((BOOL(WINAPI*)(HANDLE))aSyscall[13].pCurrent)
-
-  { "FormatMessageA",          (SYSCALL)FormatMessageA,          0 },
-
-#define osFormatMessageA ((DWORD(WINAPI*)(DWORD,LPCVOID,DWORD,DWORD,LPSTR, \
-        DWORD,va_list*))aSyscall[14].pCurrent)
+#define osFlushFileBuffers ((BOOL(WINAPI*)(HANDLE))aSyscall[5].pCurrent)
 
   { "FormatMessageW",          (SYSCALL)FormatMessageW,          0 },
 #define osFormatMessageW ((DWORD(WINAPI*)(DWORD,LPCVOID,DWORD,DWORD,LPWSTR, \
-        DWORD,va_list*))aSyscall[15].pCurrent)
+        DWORD,va_list*))aSyscall[6].pCurrent)
 
 #if !defined(SQLITE_OMIT_LOAD_EXTENSION)
   { "FreeLibrary",             (SYSCALL)FreeLibrary,             0 },
@@ -440,252 +403,158 @@ static struct win_syscall {
   { "FreeLibrary",             (SYSCALL)0,                       0 },
 #endif
 
-#define osFreeLibrary ((BOOL(WINAPI*)(HMODULE))aSyscall[16].pCurrent)
+#define osFreeLibrary ((BOOL(WINAPI*)(HMODULE))aSyscall[7].pCurrent)
 
   { "GetCurrentProcessId",     (SYSCALL)GetCurrentProcessId,     0 },
-
-#define osGetCurrentProcessId ((DWORD(WINAPI*)(VOID))aSyscall[17].pCurrent)
-
-  { "GetDiskFreeSpaceA",       (SYSCALL)0,                       0 },
-
-#define osGetDiskFreeSpaceA ((BOOL(WINAPI*)(LPCSTR,LPDWORD,LPDWORD,LPDWORD, \
-        LPDWORD))aSyscall[18].pCurrent)
-
-  { "GetDiskFreeSpaceW",       (SYSCALL)GetDiskFreeSpaceW,       0 },
-#define osGetDiskFreeSpaceW ((BOOL(WINAPI*)(LPCWSTR,LPDWORD,LPDWORD,LPDWORD, \
-        LPDWORD))aSyscall[19].pCurrent)
-
-  { "GetFileAttributesA",      (SYSCALL)0,                       0 },
-
-#define osGetFileAttributesA ((DWORD(WINAPI*)(LPCSTR))aSyscall[20].pCurrent)
+#define osGetCurrentProcessId ((DWORD(WINAPI*)(VOID))aSyscall[8].pCurrent)
 
   { "GetFileAttributesW",      (SYSCALL)GetFileAttributesW,      0 },
-#define osGetFileAttributesW ((DWORD(WINAPI*)(LPCWSTR))aSyscall[21].pCurrent)
+#define osGetFileAttributesW ((DWORD(WINAPI*)(LPCWSTR))aSyscall[9].pCurrent)
 
   { "GetFileAttributesExW",    (SYSCALL)GetFileAttributesExW,    0 },
 #define osGetFileAttributesExW ((BOOL(WINAPI*)(LPCWSTR,GET_FILEEX_INFO_LEVELS, \
-        LPVOID))aSyscall[22].pCurrent)
+        LPVOID))aSyscall[10].pCurrent)
 
   { "GetFileSize",             (SYSCALL)GetFileSize,             0 },
-
-#define osGetFileSize ((DWORD(WINAPI*)(HANDLE,LPDWORD))aSyscall[23].pCurrent)
-
-  { "GetFullPathNameA",        (SYSCALL)0,                       0 },
-
-#define osGetFullPathNameA ((DWORD(WINAPI*)(LPCSTR,DWORD,LPSTR, \
-        LPSTR*))aSyscall[24].pCurrent)
+#define osGetFileSize ((DWORD(WINAPI*)(HANDLE,LPDWORD))aSyscall[11].pCurrent)
 
   { "GetFullPathNameW",        (SYSCALL)GetFullPathNameW,        0 },
-
 #define osGetFullPathNameW ((DWORD(WINAPI*)(LPCWSTR,DWORD,LPWSTR, \
-        LPWSTR*))aSyscall[25].pCurrent)
+        LPWSTR*))aSyscall[12].pCurrent)
 
-/*
-** For GetLastError(), MSDN says:
-**
-** Minimum supported client: Windows XP [desktop apps | UWP apps]
-** Minimum supported server: Windows Server 2003 [desktop apps | UWP apps]
-*/
   { "GetLastError",            (SYSCALL)GetLastError,            0 },
-
-#define osGetLastError ((DWORD(WINAPI*)(VOID))aSyscall[26].pCurrent)
+#define osGetLastError ((DWORD(WINAPI*)(VOID))aSyscall[13].pCurrent)
 
 #if !defined(SQLITE_OMIT_LOAD_EXTENSION)
   { "GetProcAddressA",         (SYSCALL)GetProcAddress,          0 },
 #else
   { "GetProcAddressA",         (SYSCALL)0,                       0 },
 #endif
-
 #define osGetProcAddressA ((FARPROC(WINAPI*)(HMODULE, \
-        LPCSTR))aSyscall[27].pCurrent)
+        LPCSTR))aSyscall[14].pCurrent)
 
   { "GetSystemInfo",           (SYSCALL)GetSystemInfo,           0 },
-#define osGetSystemInfo ((VOID(WINAPI*)(LPSYSTEM_INFO))aSyscall[28].pCurrent)
+#define osGetSystemInfo ((VOID(WINAPI*)(LPSYSTEM_INFO))aSyscall[15].pCurrent)
 
   { "GetSystemTime",           (SYSCALL)GetSystemTime,           0 },
-#define osGetSystemTime ((VOID(WINAPI*)(LPSYSTEMTIME))aSyscall[29].pCurrent)
+#define osGetSystemTime ((VOID(WINAPI*)(LPSYSTEMTIME))aSyscall[16].pCurrent)
 
   { "GetSystemTimeAsFileTime", (SYSCALL)GetSystemTimeAsFileTime, 0 },
 #define osGetSystemTimeAsFileTime ((VOID(WINAPI*)( \
-        LPFILETIME))aSyscall[30].pCurrent)
-
-  { "GetTempPathA",            (SYSCALL)0,                       0 },
-
-#define osGetTempPathA ((DWORD(WINAPI*)(DWORD,LPSTR))aSyscall[31].pCurrent)
+        LPFILETIME))aSyscall[17].pCurrent)
 
   { "GetTempPathW",            (SYSCALL)GetTempPathW,            0 },
-#define osGetTempPathW ((DWORD(WINAPI*)(DWORD,LPWSTR))aSyscall[32].pCurrent)
+#define osGetTempPathW ((DWORD(WINAPI*)(DWORD,LPWSTR))aSyscall[18].pCurrent)
 
   { "GetTickCount",            (SYSCALL)GetTickCount,            0 },
-
-#define osGetTickCount ((DWORD(WINAPI*)(VOID))aSyscall[33].pCurrent)
-
-  { "GetVersionExA",           (SYSCALL)0,                       0 },
-#define osGetVersionExA ((BOOL(WINAPI*)( \
-        LPOSVERSIONINFOA))aSyscall[34].pCurrent)
-
-  { "GetVersionExW",           (SYSCALL)0,                       0 },
-#define osGetVersionExW ((BOOL(WINAPI*)( \
-        LPOSVERSIONINFOW))aSyscall[35].pCurrent)
+#define osGetTickCount ((DWORD(WINAPI*)(VOID))aSyscall[19].pCurrent)
 
   { "HeapAlloc",               (SYSCALL)HeapAlloc,               0 },
-
 #define osHeapAlloc ((LPVOID(WINAPI*)(HANDLE,DWORD, \
-        SIZE_T))aSyscall[36].pCurrent)
+        SIZE_T))aSyscall[20].pCurrent)
 
   { "HeapCreate",              (SYSCALL)HeapCreate,              0 },
-
 #define osHeapCreate ((HANDLE(WINAPI*)(DWORD,SIZE_T, \
-        SIZE_T))aSyscall[37].pCurrent)
+        SIZE_T))aSyscall[21].pCurrent)
 
   { "HeapDestroy",             (SYSCALL)HeapDestroy,             0 },
-
-#define osHeapDestroy ((BOOL(WINAPI*)(HANDLE))aSyscall[38].pCurrent)
+#define osHeapDestroy ((BOOL(WINAPI*)(HANDLE))aSyscall[22].pCurrent)
 
   { "HeapFree",                (SYSCALL)HeapFree,                0 },
-
-#define osHeapFree ((BOOL(WINAPI*)(HANDLE,DWORD,LPVOID))aSyscall[39].pCurrent)
+#define osHeapFree ((BOOL(WINAPI*)(HANDLE,DWORD,LPVOID))aSyscall[23].pCurrent)
 
   { "HeapReAlloc",             (SYSCALL)HeapReAlloc,             0 },
-
 #define osHeapReAlloc ((LPVOID(WINAPI*)(HANDLE,DWORD,LPVOID, \
-        SIZE_T))aSyscall[40].pCurrent)
+        SIZE_T))aSyscall[24].pCurrent)
 
   { "HeapSize",                (SYSCALL)HeapSize,                0 },
-
 #define osHeapSize ((SIZE_T(WINAPI*)(HANDLE,DWORD, \
-        LPCVOID))aSyscall[41].pCurrent)
+        LPCVOID))aSyscall[25].pCurrent)
 
   { "HeapValidate",            (SYSCALL)HeapValidate,            0 },
-
 #define osHeapValidate ((BOOL(WINAPI*)(HANDLE,DWORD, \
-        LPCVOID))aSyscall[42].pCurrent)
+        LPCVOID))aSyscall[26].pCurrent)
 
   { "HeapCompact",             (SYSCALL)HeapCompact,             0 },
+#define osHeapCompact ((UINT(WINAPI*)(HANDLE,DWORD))aSyscall[27].pCurrent)
 
-#define osHeapCompact ((UINT(WINAPI*)(HANDLE,DWORD))aSyscall[43].pCurrent)
-
-  { "LoadLibraryA",            (SYSCALL)0,                       0 },
-
-#define osLoadLibraryA ((HMODULE(WINAPI*)(LPCSTR))aSyscall[44].pCurrent)
 
 #if !defined(SQLITE_OMIT_LOAD_EXTENSION)
   { "LoadLibraryW",            (SYSCALL)LoadLibraryW,            0 },
 #else
   { "LoadLibraryW",            (SYSCALL)0,                       0 },
 #endif
-
-#define osLoadLibraryW ((HMODULE(WINAPI*)(LPCWSTR))aSyscall[45].pCurrent)
+#define osLoadLibraryW ((HMODULE(WINAPI*)(LPCWSTR))aSyscall[28].pCurrent)
 
   { "LocalFree",               (SYSCALL)LocalFree,               0 },
-
-#define osLocalFree ((HLOCAL(WINAPI*)(HLOCAL))aSyscall[46].pCurrent)
-
-  { "LockFile",                (SYSCALL)LockFile,                0 },
-
-#define osLockFile ((BOOL(WINAPI*)(HANDLE,DWORD,DWORD,DWORD, \
-        DWORD))aSyscall[47].pCurrent)
+#define osLocalFree ((HLOCAL(WINAPI*)(HLOCAL))aSyscall[29].pCurrent)
 
   { "LockFileEx",              (SYSCALL)LockFileEx,              0 },
-
 #define osLockFileEx ((BOOL(WINAPI*)(HANDLE,DWORD,DWORD,DWORD,DWORD, \
-        LPOVERLAPPED))aSyscall[48].pCurrent)
+        LPOVERLAPPED))aSyscall[30].pCurrent)
 
 #if !defined(SQLITE_OMIT_WAL) || SQLITE_MAX_MMAP_SIZE>0
   { "MapViewOfFile",           (SYSCALL)MapViewOfFile,           0 },
 #else
   { "MapViewOfFile",           (SYSCALL)0,                       0 },
 #endif
-
 #define osMapViewOfFile ((LPVOID(WINAPI*)(HANDLE,DWORD,DWORD,DWORD, \
-        SIZE_T))aSyscall[49].pCurrent)
+        SIZE_T))aSyscall[31].pCurrent)
 
   { "MultiByteToWideChar",     (SYSCALL)MultiByteToWideChar,     0 },
-
 #define osMultiByteToWideChar ((int(WINAPI*)(UINT,DWORD,LPCSTR,int,LPWSTR, \
-        int))aSyscall[50].pCurrent)
+        int))aSyscall[32].pCurrent)
 
   { "QueryPerformanceCounter", (SYSCALL)QueryPerformanceCounter, 0 },
-
 #define osQueryPerformanceCounter ((BOOL(WINAPI*)( \
-        LARGE_INTEGER*))aSyscall[51].pCurrent)
+        LARGE_INTEGER*))aSyscall[33].pCurrent)
 
   { "ReadFile",                (SYSCALL)ReadFile,                0 },
-
 #define osReadFile ((BOOL(WINAPI*)(HANDLE,LPVOID,DWORD,LPDWORD, \
-        LPOVERLAPPED))aSyscall[52].pCurrent)
+        LPOVERLAPPED))aSyscall[34].pCurrent)
 
   { "SetEndOfFile",            (SYSCALL)SetEndOfFile,            0 },
-
-#define osSetEndOfFile ((BOOL(WINAPI*)(HANDLE))aSyscall[53].pCurrent)
+#define osSetEndOfFile ((BOOL(WINAPI*)(HANDLE))aSyscall[35].pCurrent)
 
   { "SetFilePointer",          (SYSCALL)SetFilePointer,          0 },
-
 #define osSetFilePointer ((DWORD(WINAPI*)(HANDLE,LONG,PLONG, \
-        DWORD))aSyscall[54].pCurrent)
+        DWORD))aSyscall[36].pCurrent)
 
   { "Sleep",                   (SYSCALL)Sleep,                   0 },
-
-#define osSleep ((VOID(WINAPI*)(DWORD))aSyscall[55].pCurrent)
-
-  { "SystemTimeToFileTime",    (SYSCALL)SystemTimeToFileTime,    0 },
-
-#define osSystemTimeToFileTime ((BOOL(WINAPI*)(const SYSTEMTIME*, \
-        LPFILETIME))aSyscall[56].pCurrent)
-
-  { "UnlockFile",              (SYSCALL)UnlockFile,              0 },
-
-#define osUnlockFile ((BOOL(WINAPI*)(HANDLE,DWORD,DWORD,DWORD, \
-        DWORD))aSyscall[57].pCurrent)
+#define osSleep ((VOID(WINAPI*)(DWORD))aSyscall[37].pCurrent)
 
   { "UnlockFileEx",            (SYSCALL)UnlockFileEx,            0 },
-
 #define osUnlockFileEx ((BOOL(WINAPI*)(HANDLE,DWORD,DWORD,DWORD, \
-        LPOVERLAPPED))aSyscall[58].pCurrent)
+        LPOVERLAPPED))aSyscall[38].pCurrent)
 
 #if !defined(SQLITE_OMIT_WAL) || SQLITE_MAX_MMAP_SIZE>0
   { "UnmapViewOfFile",         (SYSCALL)UnmapViewOfFile,         0 },
 #else
   { "UnmapViewOfFile",         (SYSCALL)0,                       0 },
 #endif
-
-#define osUnmapViewOfFile ((BOOL(WINAPI*)(LPCVOID))aSyscall[59].pCurrent)
+#define osUnmapViewOfFile ((BOOL(WINAPI*)(LPCVOID))aSyscall[39].pCurrent)
 
   { "WideCharToMultiByte",     (SYSCALL)WideCharToMultiByte,     0 },
-
 #define osWideCharToMultiByte ((int(WINAPI*)(UINT,DWORD,LPCWSTR,int,LPSTR,int, \
-        LPCSTR,LPBOOL))aSyscall[60].pCurrent)
+        LPCSTR,LPBOOL))aSyscall[40].pCurrent)
 
   { "WriteFile",               (SYSCALL)WriteFile,               0 },
-
 #define osWriteFile ((BOOL(WINAPI*)(HANDLE,LPCVOID,DWORD,LPDWORD, \
-        LPOVERLAPPED))aSyscall[61].pCurrent)
+        LPOVERLAPPED))aSyscall[41].pCurrent)
 
   { "WaitForSingleObject",     (SYSCALL)WaitForSingleObject,     0 },
-
 #define osWaitForSingleObject ((DWORD(WINAPI*)(HANDLE, \
-        DWORD))aSyscall[62].pCurrent)
+        DWORD))aSyscall[42].pCurrent)
 
   { "WaitForSingleObjectEx",   (SYSCALL)WaitForSingleObjectEx,   0 },
-
 #define osWaitForSingleObjectEx ((DWORD(WINAPI*)(HANDLE,DWORD, \
-        BOOL))aSyscall[63].pCurrent)
-
-  { "GetNativeSystemInfo",     (SYSCALL)GetNativeSystemInfo,     0 },
-
-#define osGetNativeSystemInfo ((VOID(WINAPI*)( \
-        LPSYSTEM_INFO))aSyscall[64].pCurrent)
+        BOOL))aSyscall[43].pCurrent)
 
   { "OutputDebugStringA",      (SYSCALL)OutputDebugStringA,      0 },
-
-#define osOutputDebugStringA ((VOID(WINAPI*)(LPCSTR))aSyscall[65].pCurrent)
-
-  { "OutputDebugStringW",      (SYSCALL)OutputDebugStringW,      0 },
-#define osOutputDebugStringW ((VOID(WINAPI*)(LPCWSTR))aSyscall[66].pCurrent)
+#define osOutputDebugStringA ((VOID(WINAPI*)(LPCSTR))aSyscall[44].pCurrent)
 
   { "GetProcessHeap",          (SYSCALL)GetProcessHeap,          0 },
-
-#define osGetProcessHeap ((HANDLE(WINAPI*)(VOID))aSyscall[67].pCurrent)
+#define osGetProcessHeap ((HANDLE(WINAPI*)(VOID))aSyscall[45].pCurrent)
 
 /*
 ** NOTE: On some sub-platforms, the InterlockedCompareExchange "function"
@@ -694,13 +563,11 @@ static struct win_syscall {
 */
 #if defined(InterlockedCompareExchange)
   { "InterlockedCompareExchange", (SYSCALL)0,                    0 },
-
 #define osInterlockedCompareExchange InterlockedCompareExchange
 #else
   { "InterlockedCompareExchange", (SYSCALL)InterlockedCompareExchange, 0 },
-
-#define osInterlockedCompareExchange ((LONG(WINAPI*)(LONG \
-        SQLITE_WIN32_VOLATILE*, LONG,LONG))aSyscall[68].pCurrent)
+#define osInterlockedCompareExchange ((LONG(WINAPI*)(LONG volatile*,\
+        LONG,LONG))aSyscall[46].pCurrent)
 #endif /* defined(InterlockedCompareExchange) */
 
 #if SQLITE_WIN32_USE_UUID
@@ -708,36 +575,32 @@ static struct win_syscall {
 #else
   { "UuidCreate",               (SYSCALL)0,                      0 },
 #endif
-
-#define osUuidCreate ((RPC_STATUS(RPC_ENTRY*)(UUID*))aSyscall[69].pCurrent)
+#define osUuidCreate ((RPC_STATUS(RPC_ENTRY*)(UUID*))aSyscall[47].pCurrent)
 
 #if SQLITE_WIN32_USE_UUID
   { "UuidCreateSequential",     (SYSCALL)UuidCreateSequential,   0 },
 #else
   { "UuidCreateSequential",     (SYSCALL)0,                      0 },
 #endif
-
 #define osUuidCreateSequential \
-        ((RPC_STATUS(RPC_ENTRY*)(UUID*))aSyscall[70].pCurrent)
+        ((RPC_STATUS(RPC_ENTRY*)(UUID*))aSyscall[48].pCurrent)
 
 #if !defined(SQLITE_NO_SYNC) && SQLITE_MAX_MMAP_SIZE>0
   { "FlushViewOfFile",          (SYSCALL)FlushViewOfFile,        0 },
 #else
   { "FlushViewOfFile",          (SYSCALL)0,                      0 },
 #endif
-
 #define osFlushViewOfFile \
-        ((BOOL(WINAPI*)(LPCVOID,SIZE_T))aSyscall[71].pCurrent)
+        ((BOOL(WINAPI*)(LPCVOID,SIZE_T))aSyscall[49].pCurrent)
 
 #ifdef SQLITE_ENABLE_SETLK_TIMEOUT
   { "CreateEvent",              (SYSCALL)CreateEvent,            0 },
 #else
   { "CreateEvent",              (SYSCALL)0,                      0 },
 #endif
-
 #define osCreateEvent ( \
     (HANDLE(WINAPI*) (LPSECURITY_ATTRIBUTES,BOOL,BOOL,LPCSTR)) \
-    aSyscall[72].pCurrent \
+    aSyscall[50].pCurrent \
 )
 
 #ifdef SQLITE_ENABLE_SETLK_TIMEOUT
@@ -745,60 +608,50 @@ static struct win_syscall {
 #else
   { "CancelIo",                 (SYSCALL)0,                      0 },
 #endif
-
-#define osCancelIo ((BOOL(WINAPI*)(HANDLE))aSyscall[73].pCurrent)
-
-  { "GetModuleHandleW",         (SYSCALL)GetModuleHandleW,       0 },
-#define osGetModuleHandleW ((HMODULE(WINAPI*)(LPCWSTR))aSyscall[74].pCurrent)
+#define osCancelIo ((BOOL(WINAPI*)(HANDLE))aSyscall[51].pCurrent)
 
 #ifndef _WIN32
   { "getenv",                   (SYSCALL)getenv,                 0 },
 #else
   { "getenv",                   (SYSCALL)0,                      0 },
 #endif
-
-#define osGetenv ((const char *(*)(const char *))aSyscall[75].pCurrent)
+#define osGetenv ((const char *(*)(const char *))aSyscall[52].pCurrent)
 
 #ifndef _WIN32
   { "getcwd",                   (SYSCALL)getcwd,                 0 },
 #else
   { "getcwd",                   (SYSCALL)0,                      0 },
 #endif
-
-#define osGetcwd ((char*(*)(char*,size_t))aSyscall[76].pCurrent)
+#define osGetcwd ((char*(*)(char*,size_t))aSyscall[53].pCurrent)
 
 #ifndef _WIN32
   { "readlink",                 (SYSCALL)readlink,               0 },
 #else
   { "readlink",                 (SYSCALL)0,                      0 },
 #endif
-
-#define osReadlink ((ssize_t(*)(const char*,char*,size_t))aSyscall[77].pCurrent)
+#define osReadlink ((ssize_t(*)(const char*,char*,size_t))aSyscall[54].pCurrent)
 
 #ifndef _WIN32
   { "lstat",                    (SYSCALL)lstat,                  0 },
 #else
   { "lstat",                    (SYSCALL)0,                      0 },
 #endif
-
-#define osLstat ((int(*)(const char*,struct stat*))aSyscall[78].pCurrent)
+#define osLstat ((int(*)(const char*,struct stat*))aSyscall[55].pCurrent)
 
 #ifndef _WIN32
   { "__errno",                  (SYSCALL)__errno,                0 },
 #else
   { "__errno",                  (SYSCALL)0,                      0 },
 #endif
-
-#define osErrno (*((int*(*)(void))aSyscall[79].pCurrent)())
+#define osErrno (*((int*(*)(void))aSyscall[56].pCurrent)())
 
 #ifndef _WIN32
   { "cygwin_conv_path",         (SYSCALL)cygwin_conv_path,       0 },
 #else
   { "cygwin_conv_path",         (SYSCALL)0,                      0 },
 #endif
-
 #define osCygwin_conv_path ((size_t(*)(unsigned int, \
-    const void *, void *, size_t))aSyscall[80].pCurrent)
+    const void *, void *, size_t))aSyscall[57].pCurrent)
 
 }; /* End of the overrideable system calls */
 
@@ -5377,12 +5230,11 @@ int sqlite3_os_init(void){
 
   /* Double-check that the aSyscall[] array has been constructed
   ** correctly.  See ticket [bb3a86e890c8e96ab] */
-  assert( ArraySize(aSyscall)==81 );
+  assert( ArraySize(aSyscall)==58 );
   assert( strcmp(aSyscall[0].zName,"AreFileApisANSI")==0 );
-  assert( strcmp(aSyscall[20].zName,"GetFileAttributesA")==0 );
-  assert( strcmp(aSyscall[40].zName,"HeapReAlloc")==0 );
-  assert( strcmp(aSyscall[60].zName,"WideCharToMultiByte")==0 );
-  assert( strcmp(aSyscall[80].zName,"cygwin_conv_path")==0 );
+  assert( strcmp(aSyscall[20].zName,"HeapAlloc")==0 );
+  assert( strcmp(aSyscall[40].zName,"WideCharToMultiByte")==0 );
+  assert( strcmp(aSyscall[57].zName,"cygwin_conv_path")==0 );
 
   /* get memory map allocation granularity */
   memset(&winSysInfo, 0, sizeof(SYSTEM_INFO));

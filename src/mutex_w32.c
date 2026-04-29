@@ -106,7 +106,6 @@ static int winMutex_isInit = 0;
 */
 static LONG SQLITE_WIN32_VOLATILE winMutex_lock = 0;
 
-int sqlite3_win32_is_nt(void); /* os_win.c */
 void sqlite3_win32_sleep(DWORD milliseconds); /* os_win.c */
 
 static int winMutexInit(void){

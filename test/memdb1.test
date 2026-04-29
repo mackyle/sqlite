@@ -317,4 +317,27 @@ do_test 1020 {
   set res
 } {1 {unable to set MEMDB content}}
 
+#-------------------------------------------------------------------------
+# Check that things work if the destination database of a backup is
+# overwritten using sqlite3_deserialize() between sqlite3_backup_init()
+# and the first call to sqlite3_backup_step(). Forum post 15d82885e2.
+#
+reset_db
+do_execsql_test 1100 {
+  CREATE TABLE t(x); 
+  INSERT INTO t VALUES(1),(2);
+}
+
+set blob [db serialize main]
+
+forcedelete test.db2
+sqlite3 db2 test.db2
+do_test 1110 {
+  set seen 0
+  sqlite3_backup B db2 main db main
+  db2 deserialize main $blob
+  B step 2
+  B finish
+} {SQLITE_OK}
+
 finish_test

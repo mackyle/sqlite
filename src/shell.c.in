@@ -954,7 +954,7 @@ static const char *shellPromptAppDef(int c){
 #elif defined(SQLITE_PS_NOANSI)
       return "/A-/v /~> ";
 #else
-      return "/e[1;32m/A-/v /e[1;/x33/:36/;m/m/e[3mmemory/:/f/;/;/e[0m-> ";
+      return "/e[1;32m/A-/v /e[1;/x33/:36/;m/m/e[3m/;/f/;/e[0m-> ";
 #endif
 
     /* The default continuation prompt string */
@@ -1208,7 +1208,7 @@ static char *expand_prompt(
       /* /F becomes the full pathname */
       /* /~ becomes the full pathname relative to $HOME */
       if( !mOff ){
-        const char *zFN = prompt_filename(p,"");
+        const char *zFN = prompt_filename(p,"memory");
         if( c=='f' ){
 #ifdef _WIN32
           const char *zTail = strrchr(zFN,'\\');

@@ -954,7 +954,7 @@ static const char *shellPromptAppDef(int c){
 #elif defined(SQLITE_PS_NOANSI)
       return "/A-/v /~> ";
 #else
-      return "/e[1;32m/A-/v /e[1;/x33/:36/;m/f/e[0m-> ";
+      return "/e[1;32m/A-/v /e[1;/x33/:36/;m/m/e[3mmemory/:/f/;/;/e[0m-> ";
 #endif
 
     /* The default continuation prompt string */
@@ -1026,7 +1026,7 @@ static const char *prompt_string(ShellState *p, int bContinue){
 ** Return the name of the open database file, to be used for prompt
 ** expansion purposes.
 */
-static const char *prompt_filename(ShellState *p){
+static const char *prompt_filename(ShellState *p, const char *zMemoryName){
   sqlite3_filename pFN;
   const char *zFN = 0;
   if( p->pAuxDb->mFlgs & 0x01 ){
@@ -1037,7 +1037,7 @@ static const char *prompt_filename(ShellState *p){
   if( zFN==0 || zFN[0]==0 ){
     zFN = p->pAuxDb->zDbFilename;
     if( zFN==0 || zFN[0]==0 || cli_strcmp(zFN,":memory:")==0 ){
-      zFN = "in-memory";
+      zFN = zMemoryName;
     }
   }
   return zFN;
@@ -1195,13 +1195,20 @@ static char *expand_prompt(
       i = -1;
       continue;
     }
+    if( c=='m' ){
+      /* /m turns display on for an in-memory database and off for persistent */
+      mOff = (mOff<<1) | (p->db && prompt_filename(p,0)!=0);
+      zPrompt += 2;
+      i = -1;
+      continue;
+    }     
 
     if( c=='f' || c=='F' || c=='~' ){
       /* /f becomes the tail of the database filename */
       /* /F becomes the full pathname */
       /* /~ becomes the full pathname relative to $HOME */
       if( !mOff ){
-        const char *zFN = prompt_filename(p);
+        const char *zFN = prompt_filename(p,"");
         if( c=='f' ){
 #ifdef _WIN32
           const char *zTail = strrchr(zFN,'\\');

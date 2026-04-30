@@ -316,6 +316,7 @@ do_test 1020 {
   B finish
   set res
 } {1 {unable to set MEMDB content}}
+db2 close
 
 #-------------------------------------------------------------------------
 # Check that things work if the destination database of a backup is

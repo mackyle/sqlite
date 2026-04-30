@@ -13362,7 +13362,7 @@ static void main_init(ShellState *p) {
 /*
 ** Output text to the console in a font that attracts extra attention.
 */
-#if defined(_WIN32) || defined(WIN32)
+#if 0 /* Windows now handles ANSI escape codes */
 static void printBold(const char *zText){
   HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
   CONSOLE_SCREEN_BUFFER_INFO defaultScreenInfo;
@@ -13375,7 +13375,7 @@ static void printBold(const char *zText){
 }
 #else
 static void printBold(const char *zText){
-  cli_printf(stdout, "\033[1m%s\033[0m", zText);
+  cli_printf(stdout, "\033[1;36m\033[3m%s\033[0m", zText);
 }
 #endif
 

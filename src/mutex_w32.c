@@ -37,6 +37,8 @@
 # define ALIGN128
 #endif
 
+#pragma warning(push)
+#pragma warning(disable: 4324)
 /*
 ** Each SQLite mutex is an instance of the following structure.
 **
@@ -56,6 +58,7 @@ struct ALIGN128 sqlite3_mutex {
   volatile LONG trace;       /* True to trace changes */
 #endif
 };
+#pragma warning(pop)
 
 /*
 ** These are the initializer values used when declaring a "static" mutex

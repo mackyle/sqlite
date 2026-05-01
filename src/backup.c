@@ -316,12 +316,16 @@ int sqlite3_backup_step(sqlite3_backup *p, int nPage){
   int destMode;       /* Destination journal mode */
   int pgszSrc = 0;    /* Source page size */
   int pgszDest = 0;   /* Destination page size */
-  Btree *pDest = p->pDest->pBt;
-  Btree *pSrc = p->pSrc->pBt;
+  Btree *pDest;
+  Btree *pSrc;
 
 #ifdef SQLITE_ENABLE_API_ARMOR
   if( p==0 ) return SQLITE_MISUSE_BKPT;
 #endif
+  assert( p->pDest );
+  assert( p->pSrc );
+  pDest = p->pDest->pBt;
+  pSrc = p->pSrc->pBt;
   sqlite3_mutex_enter(p->pSrcDb->mutex);
   sqlite3BtreeEnter(pSrc);
   if( p->pDestDb ){

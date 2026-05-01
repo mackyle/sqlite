@@ -49,7 +49,7 @@
 ** that 64 works just as well most of the time, but the internet says
 ** that 128-byte alignment works better.
 */
-struct ALIGN128 sqlite3_mutex { 
+struct sqlite3_mutex { 
   union {
     CRITICAL_SECTION cs;     /* The CRITICAL_SECTION mutex.  id==1 */
     SRWLOCK srwl;            /* The Slim reader/writer lock.  id!=1 */
@@ -95,9 +95,19 @@ void sqlite3MemoryBarrier(void){
 }
 
 /*
-** Initialize and deinitialize the mutex subsystem.
+** Static mutexes.
+**
+** The ALIGN128 macro on the static mutex array forces 128-byte alignment
+** on the mutexes so that adjacent mutex objects are always on different
+** cache lines in the CPU.  This is CPU-dependent, of course, but 128-byte
+** alignment seems to work well for all contemporary processors.
+** Experiments show that 64 works just as well most of the time, but
+** the internet says that 128-byte alignment works better.
 */
-static sqlite3_mutex winMutex_staticMutexes[12];
+static ALIGN128 union staticMutexes {
+  sqlite3_mutex m;
+  char spacer[128];
+} aWindowsMutex[12];
 static int winMutex_isInit = 0;
 
 /* As the winMutexInit() and winMutexEnd() functions are called as part
@@ -112,8 +122,8 @@ static int winMutexInit(void){
   /* The first to increment to 1 does actual initialization */
   if( InterlockedCompareExchange(&winMutex_lock, 1, 0)==0 ){
     int i;
-    for(i=0; i<ArraySize(winMutex_staticMutexes); i++){
-      sqlite3_mutex *p = &winMutex_staticMutexes[i];
+    for(i=0; i<ArraySize(aWindowsMutex); i++){
+      sqlite3_mutex *p = &aWindowsMutex[i].m;
       p->id = i+2;
       InitializeSRWLock(&p->u.srwl);
 #ifdef SQLITE_DEBUG
@@ -216,12 +226,12 @@ static sqlite3_mutex *winMutexAlloc(int iType){
     }
     default: {
 #ifdef SQLITE_ENABLE_API_ARMOR
-      if( iType-2<0 || iType-2>=ArraySize(winMutex_staticMutexes) ){
+      if( iType-2<0 || iType-2>=ArraySize(aWindowsMutex) ){
         (void)SQLITE_MISUSE_BKPT;
         return 0;
       }
 #endif
-      p = &winMutex_staticMutexes[iType-2];
+      p = &aWindowsMutex[iType-2].m;
 #ifdef SQLITE_DEBUG
 #ifdef SQLITE_WIN32_MUTEX_TRACE_STATIC
       InterlockedCompareExchange(&p->trace, 1, 0);

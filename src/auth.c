@@ -257,4 +257,92 @@ void sqlite3AuthContextPop(AuthContext *pContext){
   }
 }
 
+/*
+** There is a single instance of this object for each nested
+** authorizer.
+*/
+typedef struct NestedAuth {
+  int (*xPriorAuth)(void*,int,const char*,const char*,const char*,const char*);
+  void *pPriorArg;
+  int (*xThisAuth)(void*,int,const char*,const char*,const char*,const char*);
+  void *pThisArg;
+  int bOvrd;
+} NestedAuth;
+
+/*
+** This is an authorizer implementation that invokes two separate
+** authorizers and returns the most restrictive answer.
+**
+** The pArg value is a pointer to an sqlite3_auth object that contains
+** the function pointer and augument for two other (real) authorizers.
+** This routine runs both of the nested authorizers.  If either returns
+** SQLITE_DENY, this routine returns SQLITE_DENY.  If neither returns
+** SQLITE_DENY but either of them return SQLITE_IGNORE, then this
+** routine returns SQLITE_IGNORE.  Only if both authorizers return
+** SQLITE_OK does this routine return SQLITE_OK.
+*/
+static int sqlite3NestedAuthorizer(
+  void *pArg,          /* Must be an sqlite3_auth object */
+  int eOp,             /* Operation to be authorized */
+  const char *z1,      /* First argument */
+  const char *z2,      /* Second argument */
+  const char *z3,      /* Third argument */
+  const char *z4       /* Fourth argument */
+){
+  NestedAuth *p = (NestedAuth*)pArg;
+  int rc1, rc2;
+  if( p->xThisAuth==0 ){
+    rc1 = SQLITE_OK;
+    /* If the top-most authorizer is a NULL, then do no perform
+    ** any other authorizations. */
+  }else{
+    rc1 = p->xThisAuth(p->pThisArg,eOp,z1,z2,z3,z4);
+    if( rc1==SQLITE_DENY || p->bOvrd ) return rc1;
+  }
+  assert( p->xPriorAuth!=0 );
+  rc2 = p->xPriorAuth(p->pPriorArg,eOp,z1,z2,z3,z4);
+  if( rc2 ) return rc2;
+  return rc1;
+}
+
+/*
+** Push a new authorizer function xAuth with pArg.  This new authorizer
+** runs first before any prior authorizer.
+*/
+int sqlite3_push_authorizer(
+  sqlite3 *db,
+  int (*xAuth)(void*,int,const char*,const char*,const char*,const char*),
+  void *pArg,
+  int bOvrd
+){
+  NestedAuth *p;
+  if( db==0 ) return SQLITE_MISUSE;
+  if( db->xAuth==0 ){
+    return sqlite3_set_authorizer(db, xAuth, pArg);
+  }
+  p = sqlite3DbMallocZero(db, sizeof(NestedAuth));
+  if( p==0 ) return SQLITE_NOMEM;
+  p->xPriorAuth = db->xAuth;
+  p->pPriorArg = db->pAuthArg;
+  p->xThisAuth = xAuth;
+  p->pThisArg = pArg;
+  p->bOvrd = bOvrd;
+  return sqlite3_set_authorizer(db, sqlite3NestedAuthorizer, p);
+}
+
+/*
+** Pop the top-most authorizer off of the authorizer stack.
+*/
+int sqlite3_pop_authorizer(sqlite3 *db){
+  if( db==0 ) return SQLITE_MISUSE;
+  if( db->xAuth==sqlite3NestedAuthorizer ){
+    NestedAuth *p = (NestedAuth*)db->pAuthArg;
+    (void)sqlite3_set_authorizer(db, p->xPriorAuth, p->pPriorArg);
+    sqlite3DbFree(db, p);
+  }else{
+    (void)sqlite3_set_authorizer(db, 0, 0);
+  }
+  return SQLITE_OK;
+}
+
 #endif /* SQLITE_OMIT_AUTHORIZATION */

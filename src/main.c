@@ -1302,6 +1302,9 @@ static int sqlite3Close(sqlite3 *db, int forceZombie){
     if( p->xDestructor ) p->xDestructor(p->pData);
     sqlite3_free(p);
   }
+  while( db->xAuth ){
+    sqlite3_pop_authorizer(db);
+  }
 
   /* Convert the connection into a zombie and then close it.
   */

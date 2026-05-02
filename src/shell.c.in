@@ -13289,7 +13289,7 @@ int SQLITE_CDECL main(int argc, char **argv){
 #ifndef SQLITE_SHELL_FIDDLE
   sqlite3_appendvfs_init(0,0,0);
 #ifdef SQLITE_DEBUG
-  sqlite3_auto_extension( (void (*)())auto_ext_leak_tester );
+  sqlite3_auto_extension( (void (*)(void))auto_ext_leak_tester );
 #endif
 #endif
   modeDefault(&data);

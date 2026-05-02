@@ -836,9 +836,7 @@ lookupname_end:
   if( cnt==1 ){
     assert( pNC!=0 );
 #ifndef SQLITE_OMIT_AUTHORIZATION
-    if( pParse->db->xAuth
-     && (pExpr->op==TK_COLUMN || pExpr->op==TK_TRIGGER)
-    ){
+    if( db->xAuth && (pExpr->op==TK_COLUMN || pExpr->op==TK_TRIGGER) ){
       sqlite3AuthRead(pParse, pExpr, pSchema, pNC->pSrcList);
     }
 #endif

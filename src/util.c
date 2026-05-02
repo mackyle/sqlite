@@ -23,7 +23,7 @@
 /* Work around a bug in older Microsoft compilers
 ** Forum post 2026-04-10T06:33:11z */
 #if !defined(INFINITY) && defined(_MSC_VER)
-# define INFINITY (double)HUGE_VAL
+# define INFINITY HUGE_VAL
 #endif
 
 #endif /* SQLITE_OMIT_FLOATING_POINT */
@@ -790,7 +790,7 @@ static double sqlite3Fp10Convert2(u64 d, int p){
   u64 pwr10h, x, hi, lo, sticky, u, m;
   double r;
   if( p<POWERSOF10_FIRST ) return 0.0;
-  if( p>POWERSOF10_LAST ) return INFINITY;
+  if( p>POWERSOF10_LAST ) return (double)INFINITY;
   b = 64 - countLeadingZeros(d);
   lp = pwr10to2(p);
   e = 53 - b - lp;
@@ -820,7 +820,7 @@ static double sqlite3Fp10Convert2(u64 d, int p){
     e -= adj;
   }
   m = (u + 1 + ((u>>2)&1)) >> 2;
-  if( e<=(-972) ) return INFINITY;
+  if( e<=(-972) ) return (double)INFINITY;
   if((m & U64_BIT(52)) != 0){
     m = (m & ~U64_BIT(52)) | ((u64)(1075-e)<<52);
   }

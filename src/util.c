@@ -23,7 +23,7 @@
 /* Work around a bug in older Microsoft compilers
 ** Forum post 2026-04-10T06:33:11z */
 #if !defined(INFINITY) && defined(_MSC_VER)
-# define INFINITY HUGE_VAL
+# define INFINITY (double)HUGE_VAL
 #endif
 
 #endif /* SQLITE_OMIT_FLOATING_POINT */

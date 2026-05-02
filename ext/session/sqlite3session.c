@@ -7053,7 +7053,7 @@ int sqlite3changegroup_change_text(
   const char *pVal, 
   int nVal
 ){
-  int nText = nVal>=0 ? nVal : strlen(pVal);
+  sqlite3_int64 nText = nVal>=0 ? nVal : strlen(pVal);
   sqlite3_int64 nByte = 1 + sessionVarintLen(nText) + nText;
   int rc = SQLITE_OK;
   SessionBuffer *pBuf = 0;

@@ -3479,6 +3479,20 @@ int sqlite3_set_authorizer(
 );
 
 /*
+** CAPI3REF: Retrieve Authorization Callbacks
+** METHOD: sqlite3
+**
+** The sqlite3_get_authorizer(D,X,P) interface reports the current authorizer
+** callback and its argument.   The callback itself is written into *X if X
+** is not NULL. The callback argument is written into *P if P is not NULL.
+*/
+int sqlite3_get_authorizer(
+  sqlite3*,
+  int (**pxAuth)(void*,int,const char*,const char*,const char*,const char*),
+  void **ppUserData
+);
+
+/*
 ** CAPI3REF: Authorizer Return Codes
 **
 ** The [sqlite3_set_authorizer | authorizer callback function] must

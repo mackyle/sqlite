@@ -83,6 +83,18 @@ int sqlite3_set_authorizer(
   return SQLITE_OK;
 }
 
+/* Report the current authorizer settings
+*/
+int sqlite3_get_authorizer(
+  sqlite3 *db,
+  int (**pxAuth)(void*,int,const char*,const char*,const char*,const char*),
+  void **ppArg
+){
+  if( pxAuth ) *pxAuth = db->xAuth;
+  if( ppArg ) *ppArg = db->pAuthArg;
+  return SQLITE_OK;
+}
+
 /*
 ** Write an error message into pParse->zErrMsg that explains that the
 ** user-supplied authorization function returned an illegal value.

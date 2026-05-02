@@ -1357,9 +1357,12 @@ static char *expand_prompt(
     sqlite3_str_appendchar(pOut, 1, '\0');
   }
 
-#if HAVE_EDITLINE
+#if HAVE_EDITLINE || HAVE_READLINE
   /* Editline does not recognize ANSI X3.64 escape sequences.  So we have
-  ** to find them all and enclose them inside '\1' delimiters.
+  ** to find them all and enclose them inside '\1'...'\2' delimiters.
+  ** Readline does not require this crutch, but it does not hurt to include
+  ** it, for the cases where editline is running in readline compatibility
+  ** mode.
   */
   if( strstr(sqlite3_str_value(pOut),"\033[")!=0 ){
     char *zOrig = sqlite3_str_finish(pOut);
@@ -1375,7 +1378,7 @@ static char *expand_prompt(
           k += 2;
         }
         sqlite3_str_append(pOut, &zOrig[i], k-i);
-        sqlite3_str_appendchar(pOut, 1, 1);
+        sqlite3_str_appendchar(pOut, 1, 2);
         i = k-1;
       }else{
         sqlite3_str_appendchar(pOut, 1, zOrig[i]);

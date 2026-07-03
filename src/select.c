@@ -6150,6 +6150,7 @@ static int selectExpander(Walker *pWalker, Select *p){
         int tableSeen = 0;      /* Set to 1 when TABLE matches */
         char *zTName = 0;       /* text of name of TABLE */
         int iErrOfst;
+        ExprList *pExclude;     /* The EXCLUDE clause, or NULL */
         if( pE->op==TK_DOT ){
           assert( (selFlags & SF_NestedFrom)==0 );
           assert( pE->pLeft!=0 );
@@ -6157,9 +6158,13 @@ static int selectExpander(Walker *pWalker, Select *p){
           zTName = pE->pLeft->u.zToken;
           assert( ExprUseWOfst(pE->pLeft) );
           iErrOfst = pE->pRight->w.iOfst;
+          assert( ExprUseXList(pE->pRight) );
+          pExclude = pE->pRight->x.pList;
         }else{
           assert( ExprUseWOfst(pE) );
           iErrOfst = pE->w.iOfst;
+          assert( ExprUseXList(pE) );
+          pExclude = pE->x.pList;
         }
         for(i=0, pFrom=pTabList->a; i<pTabList->nSrc; i++, pFrom++){
           int nAdd;                    /* Number of cols including rowid */
@@ -6216,8 +6221,9 @@ static int selectExpander(Walker *pWalker, Select *p){
           nAdd = pTab->nCol;
           if( VisibleRowid(pTab) && (selFlags & SF_NestedFrom)!=0 ) nAdd++;
           for(j=0; j<nAdd; j++){
-            const char *zName; 
-            struct ExprList_item *pX; /* Newly added ExprList term */
+            const char *zName;
+            struct ExprList_item *pEx; /* Matching pExclude term */
+            struct ExprList_item *pX;  /* Newly added ExprList term */
 
             if( j==pTab->nCol ){
               zName = sqlite3RowidAlias(pTab);
@@ -6253,6 +6259,19 @@ static int selectExpander(Walker *pWalker, Select *p){
               ){
                 continue;
               }
+
+              /* Check for EXCLUDE columns */
+              pEx = 0;
+              if( pExclude ){
+                int kk;
+                for(kk=0; kk<pExclude->nExpr; kk++){
+                  if( sqlite3_stricmp(pExclude->a[kk].zEName,zName)==0 ){
+                    pEx = &pExclude->a[kk];
+                    break;
+                  }
+                }
+                if( pEx && pEx->fg.eEName==ENAME_EXCLUDE ) continue;
+              }
             }
             assert( zName );
             tableSeen = 1;
@@ -6266,27 +6285,31 @@ static int selectExpander(Walker *pWalker, Select *p){
                 continue;
               }
             }
-            pRight = sqlite3Expr(db, TK_ID, zName);
-            if( (pTabList->nSrc>1
-                 && (  (pFrom->fg.jointype & JT_LTORJ)==0
-                     || (selFlags & SF_NestedFrom)!=0
-                     || !inAnyUsingClause(zName,pFrom,pTabList->nSrc-i-1)
-                    )
-                )
-             || IN_RENAME_OBJECT
-            ){
-              Expr *pLeft;
-              pLeft = sqlite3Expr(db, TK_ID, zTabName);
-              pExpr = sqlite3PExpr(pParse, TK_DOT, pLeft, pRight);
-              if( IN_RENAME_OBJECT && pE->pLeft ){
-                sqlite3RenameTokenRemap(pParse, pLeft, pE->pLeft);
-              }
-              if( zSchemaName ){
-                pLeft = sqlite3Expr(db, TK_ID, zSchemaName);
-                pExpr = sqlite3PExpr(pParse, TK_DOT, pLeft, pExpr);
-              }
+            if( pEx && pEx->fg.eEName==ENAME_REPLACE ){
+              pExpr = sqlite3ExprDup(db, pEx->pExpr, 0);
             }else{
-              pExpr = pRight;
+              pRight = sqlite3Expr(db, TK_ID, zName);
+              if( (pTabList->nSrc>1
+                   && (  (pFrom->fg.jointype & JT_LTORJ)==0
+                       || (selFlags & SF_NestedFrom)!=0
+                       || !inAnyUsingClause(zName,pFrom,pTabList->nSrc-i-1)
+                      )
+                  )
+               || IN_RENAME_OBJECT
+              ){
+                Expr *pLeft;
+                pLeft = sqlite3Expr(db, TK_ID, zTabName);
+                pExpr = sqlite3PExpr(pParse, TK_DOT, pLeft, pRight);
+                if( IN_RENAME_OBJECT && pE->pLeft ){
+                  sqlite3RenameTokenRemap(pParse, pLeft, pE->pLeft);
+                }
+                if( zSchemaName ){
+                  pLeft = sqlite3Expr(db, TK_ID, zSchemaName);
+                  pExpr = sqlite3PExpr(pParse, TK_DOT, pLeft, pExpr);
+                }
+              }else{
+                pExpr = pRight;
+              }
             }
             sqlite3ExprSetErrorOffset(pExpr, iErrOfst);
             pNew = sqlite3ExprListAppend(pParse, pNew, pExpr);
@@ -6313,6 +6336,8 @@ static int selectExpander(Walker *pWalker, Select *p){
               ){
                 pX->fg.bNoExpand = 1;
               }
+            }else if( pEx && pEx->fg.eEName==ENAME_RENAME ){
+              pX->zEName = sqlite3DbStrDup(db, pEx->pExpr->u.zToken);
             }else if( longNames ){
               pX->zEName = sqlite3MPrintf(db, "%s.%s", zTabName, zName);
               pX->fg.eEName = ENAME_NAME;

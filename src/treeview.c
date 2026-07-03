@@ -883,7 +883,13 @@ void sqlite3TreeViewExpr(TreeView *pView, const Expr *pExpr, u8 moreToFollow){
       break;
     }
     case TK_ASTERISK: {
-      sqlite3TreeViewLine(pView, "ASTERISK");
+      if( pExpr->pLeft ){
+        assert( pExpr->pLeft->op==TK_ID );
+        assert( !ExprHasProperty(pExpr->pLeft, EP_IntValue) );
+        sqlite3TreeViewLine(pView, "\"%w\".ASTERISK", pExpr->pLeft->u.zToken);
+      }else{
+        sqlite3TreeViewLine(pView, "ASTERISK");
+      }
       if( pExpr->x.pList ){
         sqlite3TreeViewExprList(pView, pExpr->x.pList, 0, "EXCLUDE");
       }
@@ -966,7 +972,9 @@ void sqlite3TreeViewBareExprList(
         fprintf(stdout, "\n");
         fflush(stdout);
       }
-      sqlite3TreeViewExpr(pView, pList->a[i].pExpr, moreToFollow);
+      if( pList->a[i].fg.eEName!=ENAME_EXCLUDE ){
+        sqlite3TreeViewExpr(pView, pList->a[i].pExpr, moreToFollow);
+      }
       if( j || zName || sortFlags ){
         sqlite3TreeViewPop(&pView);
       }

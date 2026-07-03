@@ -893,12 +893,10 @@ static int isAsteriskTerm(
   Expr *pTerm         /* A term in the RETURNING clause */
 ){
   assert( pTerm!=0 );
-  if( pTerm->op==TK_ASTERISK ) return 1;
-  if( pTerm->op!=TK_DOT ) return 0;
-  assert( pTerm->pRight!=0 );
-  assert( pTerm->pLeft!=0 );
-  if( pTerm->pRight->op!=TK_ASTERISK ) return 0;
-  sqlite3ErrorMsg(pParse, "RETURNING may not use \"TABLE.*\" wildcards");
+  if( pTerm->op!=TK_ASTERISK ) return 0;
+  if( pTerm->pLeft!=0 ){
+    sqlite3ErrorMsg(pParse, "RETURNING may not use \"TABLE.*\" wildcards");
+  }
   return 1;
 }
 

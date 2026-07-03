@@ -5964,24 +5964,25 @@ static int inAnyUsingClause(
 **
 */
 static int selectExpander(Walker *pWalker, Select *p){
-  Parse *pParse = pWalker->pParse;
+  Parse *pParse;
+  sqlite3 *db;
   int i, j, k, rc;
   SrcList *pTabList;
   ExprList *pEList;
   SrcItem *pFrom;
-  sqlite3 *db = pParse->db;
   Expr *pE, *pRight, *pExpr;
-  u16 selFlags = p->selFlags;
   u32 elistFlags = 0;
 
+  if( p->selFlags & SF_Expanded ){
+    return WRC_Prune;
+  }
   p->selFlags |= SF_Expanded;
+  pParse = pWalker->pParse;
+  db = pParse->db;
   if( db->mallocFailed  ){
     return WRC_Abort;
   }
   assert( p->pSrc!=0 );
-  if( (selFlags & SF_Expanded)!=0 ){
-    return WRC_Prune;
-  }
   if( pWalker->eCode ){
     /* Renumber selId because it has been copied from a view */
     p->selId = ++pParse->nSelect;
@@ -6110,9 +6111,6 @@ static int selectExpander(Walker *pWalker, Select *p){
   for(k=0; k<pEList->nExpr; k++){
     pE = pEList->a[k].pExpr;
     if( pE->op==TK_ASTERISK ) break;
-    assert( pE->op!=TK_DOT || pE->pRight!=0 );
-    assert( pE->op!=TK_DOT || (pE->pLeft!=0 && pE->pLeft->op==TK_ID) );
-    if( pE->op==TK_DOT && pE->pRight->op==TK_ASTERISK ) break;
     elistFlags |= pE->flags;
   }
   if( k<pEList->nExpr ){
@@ -6132,9 +6130,7 @@ static int selectExpander(Walker *pWalker, Select *p){
       elistFlags |= pE->flags;
       pRight = pE->pRight;
       assert( pE->op!=TK_DOT || pRight!=0 );
-      if( pE->op!=TK_ASTERISK
-       && (pE->op!=TK_DOT || pRight->op!=TK_ASTERISK)
-      ){
+      if( pE->op!=TK_ASTERISK ){
         /* This particular expression does not need to be expanded.
         */
         pNew = sqlite3ExprListAppend(pParse, pNew, a[k].pExpr);
@@ -6151,21 +6147,25 @@ static int selectExpander(Walker *pWalker, Select *p){
         char *zTName = 0;       /* text of name of TABLE */
         int iErrOfst;
         ExprList *pExclude;     /* The EXCLUDE clause, or NULL */
-        if( pE->op==TK_DOT ){
-          assert( (selFlags & SF_NestedFrom)==0 );
-          assert( pE->pLeft!=0 );
-          assert( !ExprHasProperty(pE->pLeft, EP_IntValue) );
-          zTName = pE->pLeft->u.zToken;
-          assert( ExprUseWOfst(pE->pLeft) );
-          iErrOfst = pE->pRight->w.iOfst;
-          assert( ExprUseXList(pE->pRight) );
-          pExclude = pE->pRight->x.pList;
-        }else{
-          assert( ExprUseWOfst(pE) );
-          iErrOfst = pE->w.iOfst;
-          assert( ExprUseXList(pE) );
-          pExclude = pE->x.pList;
+        assert( ExprUseWOfst(pE) );
+        iErrOfst = pE->w.iOfst;
+        assert( ExprUseXList(pE) );
+        pExclude = pE->x.pList;
+        assert( pE->pLeft==0 || pE->pLeft->op==TK_ID );
+        assert( pE->pLeft==0 || !ExprHasProperty(pE->pLeft, EP_IntValue) );
+        zTName = pE->pLeft ? pE->pLeft->u.zToken : 0;
+
+#ifdef SQLITE_DEBUG
+        /* If there is an EXCLUDE clause, make sure fg.done is initialized
+        ** to zero, which should have occurred in the parser */
+        if( pExclude ){
+          int kk;
+          for(kk=0; kk<pExclude->nExpr; kk++){
+            assert( pExclude->a[kk].fg.done==0 );
+          }
         }
+#endif
+
         for(i=0, pFrom=pTabList->a; i<pTabList->nSrc; i++, pFrom++){
           int nAdd;                    /* Number of cols including rowid */
           Table *pTab = pFrom->pSTab;  /* Table for this data source */
@@ -6197,7 +6197,7 @@ static int selectExpander(Walker *pWalker, Select *p){
           }
           if( i+1<pTabList->nSrc
            && pFrom[1].fg.isUsing
-           && (selFlags & SF_NestedFrom)!=0
+           && (p->selFlags & SF_NestedFrom)!=0
           ){
             int ii;
             pUsing = pFrom[1].u3.pUsing;
@@ -6219,7 +6219,7 @@ static int selectExpander(Walker *pWalker, Select *p){
           }
 
           nAdd = pTab->nCol;
-          if( VisibleRowid(pTab) && (selFlags & SF_NestedFrom)!=0 ) nAdd++;
+          if( VisibleRowid(pTab) && (p->selFlags & SF_NestedFrom)!=0 ) nAdd++;
           for(j=0; j<nAdd; j++){
             const char *zName;
             struct ExprList_item *pEx; /* Matching pExclude term */
@@ -6255,7 +6255,7 @@ static int selectExpander(Walker *pWalker, Select *p){
               }
               if( (pTab->aCol[j].colFlags & COLFLAG_NOEXPAND)!=0
                && zTName==0
-               && (selFlags & (SF_NestedFrom))==0
+               && (p->selFlags & (SF_NestedFrom))==0
               ){
                 continue;
               }
@@ -6267,6 +6267,7 @@ static int selectExpander(Walker *pWalker, Select *p){
                 for(kk=0; kk<pExclude->nExpr; kk++){
                   if( sqlite3_stricmp(pExclude->a[kk].zEName,zName)==0 ){
                     pEx = &pExclude->a[kk];
+                    pEx->fg.done = 1;
                     break;
                   }
                 }
@@ -6276,7 +6277,7 @@ static int selectExpander(Walker *pWalker, Select *p){
             assert( zName );
             tableSeen = 1;
 
-            if( i>0 && zTName==0 && (selFlags & SF_NestedFrom)==0 ){
+            if( i>0 && zTName==0 && (p->selFlags & SF_NestedFrom)==0 ){
               if( pFrom->fg.isUsing
                && sqlite3IdListIndex(pFrom->u3.pUsing, zName)>=0
               ){
@@ -6291,7 +6292,7 @@ static int selectExpander(Walker *pWalker, Select *p){
               pRight = sqlite3Expr(db, TK_ID, zName);
               if( (pTabList->nSrc>1
                    && (  (pFrom->fg.jointype & JT_LTORJ)==0
-                       || (selFlags & SF_NestedFrom)!=0
+                       || (p->selFlags & SF_NestedFrom)!=0
                        || !inAnyUsingClause(zName,pFrom,pTabList->nSrc-i-1)
                       )
                   )
@@ -6318,7 +6319,7 @@ static int selectExpander(Walker *pWalker, Select *p){
             }
             pX = &pNew->a[pNew->nExpr-1];
             assert( pX->zEName==0 );
-            if( (selFlags & SF_NestedFrom)!=0 && !IN_RENAME_OBJECT ){
+            if( (p->selFlags & SF_NestedFrom)!=0 && !IN_RENAME_OBJECT ){
               if( pNestedFrom && (!ViewCanHaveRowid || j<pNestedFrom->nExpr) ){
                 assert( j<pNestedFrom->nExpr );
                 pX->zEName = sqlite3DbStrDup(db, pNestedFrom->a[j].zEName);
@@ -6344,6 +6345,16 @@ static int selectExpander(Walker *pWalker, Select *p){
             }else{
               pX->zEName = sqlite3DbStrDup(db, zName);
               pX->fg.eEName = ENAME_NAME;
+            }
+          }
+        }
+        if( pExclude ){
+          int kk;
+          for(kk=0; kk<pExclude->nExpr; kk++){
+            if( pExclude->a[kk].fg.done==0 ){
+              sqlite3ErrorMsg(pParse, "no column named \"%s\"",
+                              pExclude->a[kk].zEName);
+              break;
             }
           }
         }
@@ -6376,6 +6387,7 @@ static int selectExpander(Walker *pWalker, Select *p){
 #endif
   return WRC_Continue;
 }
+
 
 #if SQLITE_DEBUG
 /*

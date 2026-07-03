@@ -736,12 +736,12 @@ selcollist(A) ::= sclp(A) scanpt STAR(X) colexcl(E). {
   A = sqlite3ExprListAppend(pParse, A, p);
 }
 selcollist(A) ::= sclp(A) scanpt nm(X) DOT STAR(Y) colexcl(E). {
-  Expr *pRight, *pLeft, *pDot;
-  pRight = parserWildcardExpr(pParse->db, E);
-  sqlite3ExprSetErrorOffset(pRight, (int)(Y.z - pParse->zTail));
-  pLeft = tokenExpr(pParse, TK_ID, X);
-  pDot = sqlite3PExpr(pParse, TK_DOT, pLeft, pRight);
-  A = sqlite3ExprListAppend(pParse,A, pDot);
+  Expr *p = parserWildcardExpr(pParse->db, E);
+  sqlite3ExprSetErrorOffset(p, (int)(Y.z - pParse->zTail));
+  if( p ){
+    p->pLeft = tokenExpr(pParse, TK_ID, X);
+  }
+  A = sqlite3ExprListAppend(pParse, A, p);
 }
 
 // The colexcl nonterminal represents the EXCLUDE clause that can

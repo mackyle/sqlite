@@ -1355,8 +1355,19 @@ expr(A) ::= expr(A) COLLATE ids(C). {
 }
 %ifndef SQLITE_OMIT_CAST
 expr(A) ::= CAST LP expr(E) AS typetoken(T) RP. {
-  A = sqlite3ExprAlloc(pParse->db, TK_CAST, &T, 1);
-  sqlite3ExprAttachSubtrees(pParse->db, A, E, 0);
+  Expr *p = sqlite3ExprAlloc(pParse->db, TK_CAST, &T, 1);
+  if( p ){
+    if( E ){
+      p->pLeft = E;
+      p->flags |= EP_Propagate & E->flags;
+#if SQLITE_MAX_EXPR_DEPTH>0
+      p->nHeight = E->nHeight+1;
+#endif
+    }
+  }else{
+    p = E;
+  }
+  A = p;
 }
 %endif  SQLITE_OMIT_CAST
 

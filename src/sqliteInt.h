@@ -3265,6 +3265,7 @@ struct ExprList {
       } x;
       int iConstExprReg;   /* Register in which Expr value is cached. Used only
                            ** by Parse.pConstExpr */
+      int iENameOfst;      /* Locate of zEName for EXCLUDE clauses */
     } u;
   } a[FLEXARRAY];          /* One slot for each expression in the list */
 };

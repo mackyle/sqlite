@@ -5938,6 +5938,31 @@ static int inAnyUsingClause(
   return 0;
 }
 
+/*
+** pExclude is an EXCLUDE clause following a * wildcard in the result set.
+** Check to ensure that every term of that EXCLUDE clause has been matched.
+** Generate necessary error message.
+*/
+static void selectCheckForExcludeErrors(Parse *pParse, ExprList *pExclude){
+  int i, j;
+  assert( pExclude!=0 );
+  for(i=0; i<pExclude->nExpr; i++){
+    struct ExprList_item *p = pExclude->a + i;
+    if( p->fg.done==0 ){
+      for(j=0; j<i; j++){
+        if( sqlite3_stricmp(pExclude->a[j].zEName,p->zEName)==0 ){
+          sqlite3ErrorMsg(pParse, "second use of column \"%s\"", p->zEName);
+          pParse->db->errByteOffset = p->u.iENameOfst;
+          return;
+        }
+      }
+      sqlite3ErrorMsg(pParse, "no column named \"%s\"", p->zEName);
+      pParse->db->errByteOffset = p->u.iENameOfst;
+      return;
+    }
+  }
+}
+
 
 /*
 ** This routine is a Walker callback for "expanding" a SELECT statement.
@@ -6156,8 +6181,9 @@ static int selectExpander(Walker *pWalker, Select *p){
         zTName = pE->pLeft ? pE->pLeft->u.zToken : 0;
 
 #ifdef SQLITE_DEBUG
-        /* If there is an EXCLUDE clause, make sure fg.done is initialized
-        ** to zero, which should have occurred in the parser */
+        /* Verify that the fg.done flag is initially clear in every
+        ** term of the EXCLUDE clause.  The parser should have left it
+        ** this way. */
         if( pExclude ){
           int kk;
           for(kk=0; kk<pExclude->nExpr; kk++){
@@ -6349,14 +6375,7 @@ static int selectExpander(Walker *pWalker, Select *p){
           }
         }
         if( pExclude ){
-          int kk;
-          for(kk=0; kk<pExclude->nExpr; kk++){
-            if( pExclude->a[kk].fg.done==0 ){
-              sqlite3ErrorMsg(pParse, "no column named \"%s\"",
-                              pExclude->a[kk].zEName);
-              break;
-            }
-          }
+          selectCheckForExcludeErrors(pParse, pExclude);
         }
         if( !tableSeen ){
           if( zTName ){

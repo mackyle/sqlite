@@ -770,6 +770,8 @@ selcollist(A) ::= sclp(A) scanpt nm(X) DOT STAR(Y) colexcl(E). {
 %destructor cexcllist {sqlite3ExprListDelete(pParse->db, $$);}
 %type cexclitem {ExprList*}
 %destructor cexclitem {sqlite3ExprListDelete(pParse->db, $$);}
+%type cexclexcl {ExprList*}
+%destructor cexclexcl {sqlite3ExprListDelete(pParse->db, $$);}
 %type cexclreplace {ExprList*}
 %destructor cexclreplace {sqlite3ExprListDelete(pParse->db, $$);}
 %type cexclrename {ExprList*}
@@ -781,10 +783,13 @@ colexcl(A) ::= LP cexcllist(X) RP. {A = X;}
 cexcllist(A) ::= cexclitem(A).
 cexcllist(A) ::= cexcllist(A) cexclitem(X).
    {A = parserExcludeConcat(pParse,A,X);}
-cexclitem(A) ::= EXCLUDE LP idlist(X) RP.
-   {A = parserExcludeIdList(pParse,X);}
+cexclitem(A) ::= EXCLUDE LP cexclexcl(X) RP. {A = X;}
 cexclitem(A) ::= REPLACE LP cexclreplace(X) RP. {A = X;}
 cexclitem(A) ::= RENAME LP cexclrename(X) RP. {A = X;}
+cexclexcl(A) ::= nm(X).
+   {A = parserExcludeExpr(pParse,0,&X,0,ENAME_EXCLUDE);}
+cexclexcl(A) ::= cexclexcl(A) COMMA nm(X).
+   {A = parserExcludeExpr(pParse,A,&X,0,ENAME_EXCLUDE);}
 cexclreplace(A) ::= nm(X) WITH expr(Y).
    {A = parserExcludeExpr(pParse,0,&X,Y,ENAME_REPLACE);}
 cexclreplace(A) ::= cexclreplace(A) COMMA nm(X) WITH expr(Y).
@@ -819,44 +824,28 @@ cexclrename(A) ::= cexclrename(A) COMMA nm(X) AS nm(Y). {
     sqlite3ExprListDelete(pParse->db, pSrc);
     return pDest;
   }
-  /* Convert an IdList in pSrc into an EXCLUDE ExprList and return
-  ** the ExprList.  Free pSrc when done */
-  static ExprList *parserExcludeIdList(
-    Parse *pParse,    /* Parsing context */
-    IdList *pSrc      /* Identifiers come from this list */
-  ){
-    int i;
-    ExprList *pDest = 0;
-    if( pSrc==0 ) return 0;
-    for(i=0; i<pSrc->nId; i++){
-      pDest = sqlite3ExprListAppend(pParse, pDest, 0);
-      if( pDest ){
-        int j = pDest->nExpr - 1;
-        pDest->a[j].zEName = pSrc->a[i].zName;
-        pDest->a[j].fg.eEName = ENAME_EXCLUDE;
-        pSrc->a[i].zName = 0;
-      }
-    }
-    sqlite3IdListDelete(pParse->db, pSrc);
-    return pDest;
-  }
-  /* Add a single new REPLACE or RENAME term into the EXCLUDE ExprList
-  ** in pDest. */
+  /* Add a single new entry to the EXCLUDE ExprList in pDest. */
   static ExprList *parserExcludeExpr(
     Parse *pParse,    /* Parsing context */
     ExprList *pDest,  /* Append one term to this ExprList */
     Token *pName,     /* Name of the column to be replaced */
     Expr *pExpr,      /* Replacement expression */
-    int eEName        /* ENAME_REPLACE or ENAME_RENAME */
+    int eEName        /* ENAME_REPLACE, ENAME_RENAME, or ENAME_EXCLUDE */
   ){
+    assert( eEName>=ENAME_EXCLUDE && eEName<=ENAME_RENAME );
+    assert( eEName!=ENAME_EXCLUDE || pExpr==0 );
     pDest = sqlite3ExprListAppend(pParse, pDest, pExpr);
     sqlite3ExprListSetName(pParse, pDest, pName, 1);
     if( pDest ){
-      pDest->a[pDest->nExpr-1].fg.eEName = eEName;
+      struct ExprList_item *pItem = pDest->a + (pDest->nExpr - 1);
+      pItem->fg.eEName = eEName;
+      pItem->u.iENameOfst = (int)(pName->z - pParse->zTail);
     }
     return pDest;
   }
 }
+
+
 // An option "AS <id>" phrase that can follow one of the expressions that
 // define the result set, or one of the tables in the FROM clause.
 //

@@ -611,6 +611,11 @@ void sqlite3TreeViewExpr(TreeView *pView, const Expr *pExpr, u8 moreToFollow){
       sqlite3TreeViewLine(pView,"ID \"%w\"", pExpr->u.zToken);
       break;
     }
+    case TK_RENAME: {
+      assert( !ExprHasProperty(pExpr, EP_IntValue) );
+      sqlite3TreeViewLine(pView,"RENAME \"%w\"", pExpr->u.zToken);
+      break;
+    }
 #ifndef SQLITE_OMIT_CAST
     case TK_CAST: {
       /* Expressions of the form:   CAST(pLeft AS token) */
@@ -877,6 +882,14 @@ void sqlite3TreeViewExpr(TreeView *pView, const Expr *pExpr, u8 moreToFollow){
       }
       break;
     }
+    case TK_ASTERISK: {
+      sqlite3TreeViewLine(pView, "ASTERISK");
+      if( pExpr->x.pList ){
+        sqlite3TreeViewExprList(pView, pExpr->x.pList, 0, "EXCLUDE");
+      }
+      break;
+    }
+ 
     default: {
       sqlite3TreeViewLine(pView, "op=%d", pExpr->op);
       break;
@@ -930,6 +943,15 @@ void sqlite3TreeViewBareExprList(
               break;
             case ENAME_SPAN:
               fprintf(stdout, "SPAN(\"%s\") ", zName);
+              break;
+            case ENAME_EXCLUDE:
+              fprintf(stdout, "EXCLUDE(\"%s\") ", zName);
+              break;
+            case ENAME_REPLACE:
+              fprintf(stdout, "REPLACE(\"%s\") ", zName);
+              break;
+            case ENAME_RENAME:
+              fprintf(stdout, "RENAME(\"%s\") ", zName);
               break;
           }
         }

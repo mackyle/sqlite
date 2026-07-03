@@ -3235,6 +3235,10 @@ struct Expr {
 **
 **    ENAME_SPAN       Text of the original result set
 **                     expression.
+**
+**    ENAME_EXCLUDE    Column name that is part of an
+**    ENAME_REPLACE      (EXCLUDE(..)) expression following
+**    ENAME_RENAME       the "*" wildcard in a SELECT result set
 */
 struct ExprList {
   int nExpr;             /* Number of expressions on the list */
@@ -3244,7 +3248,7 @@ struct ExprList {
     char *zEName;           /* Token associated with this expression */
     struct {
       u8 sortFlags;           /* Mask of KEYINFO_ORDER_* flags */
-      unsigned eEName :2;     /* Meaning of zEName */
+      unsigned eEName :3;     /* Meaning of zEName */
       unsigned done :1;       /* Indicates when processing is finished */
       unsigned reusable :1;   /* Constant expression is reusable */
       unsigned bSorterRef :1; /* Defer evaluation until after sorting */
@@ -3273,10 +3277,13 @@ struct ExprList {
 /*
 ** Allowed values for Expr.a.eEName
 */
-#define ENAME_NAME  0       /* The AS clause of a result set */
-#define ENAME_SPAN  1       /* Complete text of the result set expression */
-#define ENAME_TAB   2       /* "DB.TABLE.NAME" for the result set */
-#define ENAME_ROWID 3       /* "DB.TABLE._rowid_" for * expansion of rowid */
+#define ENAME_NAME    0     /* The AS clause of a result set */
+#define ENAME_SPAN    1     /* Complete text of the result set expression */
+#define ENAME_TAB     2     /* "DB.TABLE.NAME" for the result set */
+#define ENAME_ROWID   3     /* "DB.TABLE._rowid_" for * expansion of rowid */
+#define ENAME_EXCLUDE 4     /* *EXCLUDE column name */
+#define ENAME_REPLACE 5     /* *REPLACE column name */
+#define ENAME_RENAME  6     /* *RENAME column name */ 
 
 /*
 ** An instance of this structure can hold a simple list of identifiers,

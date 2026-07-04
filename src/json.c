@@ -2252,7 +2252,8 @@ static u32 jsonTranslateBlobToText(
       if( sz==0 ) goto malformed_jsonb;
       if( zIn[0]=='-' ){
         jsonAppendChar(pOut, '-');
-        k++;
+        if( sz<=1 ) goto malformed_jsonb;
+        k = 1;
       }
       if( zIn[k]=='.' ){
         jsonAppendChar(pOut, '0');

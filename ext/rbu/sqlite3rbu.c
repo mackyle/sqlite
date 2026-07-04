@@ -616,7 +616,7 @@ static int rbuDeltaApply(
     return -1;
   }
   zDelta++; lenDelta--;
-  while( *zDelta && lenDelta>0 ){
+  while( lenDelta>0 && *zDelta ){
     unsigned int cnt, ofst;
     cnt = rbuDeltaGetInt(&zDelta, &lenDelta);
     if( lenDelta<=0 ) return -1;

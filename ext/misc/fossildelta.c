@@ -579,7 +579,7 @@ static int delta_apply(
     return -1;
   }
   zDelta++; lenDelta--;
-  while( *zDelta && lenDelta>0 ){
+  while( lenDelta>0 && *zDelta ){
     unsigned int cnt, ofst;
     cnt = deltaGetInt(&zDelta, &lenDelta);
     if( lenDelta<=0 ) return -1;

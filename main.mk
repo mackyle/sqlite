@@ -784,6 +784,7 @@ TESTSRC += \
   $(TOP)/ext/misc/closure.c \
   $(TOP)/ext/misc/csv.c \
   $(TOP)/ext/misc/decimal.c \
+  $(TOP)/ext/misc/diskused.c \
   $(TOP)/ext/misc/eval.c \
   $(TOP)/ext/misc/explain.c \
   $(TOP)/ext/misc/fileio.c \
@@ -803,6 +804,7 @@ TESTSRC += \
   $(TOP)/ext/misc/series.c \
   $(TOP)/ext/misc/spellfix.c \
   $(TOP)/ext/misc/stmtrand.c \
+  $(TOP)/ext/misc/strdup.c \
   $(TOP)/ext/misc/totype.c \
   $(TOP)/ext/misc/unionvtab.c \
   $(TOP)/ext/misc/wholenumber.c \
@@ -993,7 +995,8 @@ FUZZCHECK_SRC = sqlite3.c \
    $(TOP)/ext/misc/series.c \
    $(TOP)/ext/misc/shathree.c \
    $(TOP)/ext/misc/sha1.c \
-   $(TOP)/ext/misc/stmtrand.c
+   $(TOP)/ext/misc/stmtrand.c \
+   $(TOP)/ext/misc/strdup.c
 
 FUZZCHECK_DEP = sqlite3.h
 DBFUZZ_OPT =
@@ -2355,6 +2358,7 @@ SHELL_DEP = \
     $(TOP)/ext/misc/sha1.c \
     $(TOP)/ext/misc/shathree.c \
     $(TOP)/ext/misc/sqlar.c \
+    $(TOP)/ext/misc/strdup.c \
     $(TOP)/ext/misc/uint.c \
     $(TOP)/ext/misc/vfstrace.c \
     $(TOP)/ext/misc/windirent.h \

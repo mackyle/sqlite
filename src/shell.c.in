@@ -302,6 +302,7 @@ INCLUDE ../ext/intck/sqlite3intck.c
 INCLUDE ../ext/misc/stmtrand.c
 INCLUDE ../ext/misc/vfstrace.c
 INCLUDE ../ext/misc/diskused.c
+INCLUDE ../ext/misc/strdup.c
 
 #if !defined(SQLITE_OMIT_VIRTUALTABLE) && defined(SQLITE_ENABLE_DBPAGE_VTAB)
 #define SQLITE_SHELL_HAVE_RECOVER 1
@@ -5097,6 +5098,7 @@ static void open_db(ShellState *p, int openFlags){
     sqlite3_ieee_init(p->db, 0, 0);
     sqlite3_series_init(p->db, 0, 0);
     sqlite3_diskused_init(p->db, 0, 0);
+    sqlite3_strdup_init(p->db, 0, 0);
 #ifndef SQLITE_SHELL_FIDDLE
     sqlite3_fileio_init(p->db, 0, 0);
     sqlite3_completion_init(p->db, 0, 0);

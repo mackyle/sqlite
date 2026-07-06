@@ -74,7 +74,7 @@ static void strdupfunc(
       sqlite3_result_error_nomem(context);
       return;
     }
-    memcpy(zOut, zIn, nIn);
+    if( nIn>0 ) memcpy(zOut, zIn, nIn);
     sqlite3_result_blob(context, zOut, nIn, free);
   }else{
     zIn = (const unsigned char*)sqlite3_value_text(argv[0]);

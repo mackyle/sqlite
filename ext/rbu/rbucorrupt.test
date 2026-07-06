@@ -14,6 +14,13 @@ source [file join [file dirname [info script]] rbu_common.tcl]
 if_no_rbu_support { finish_test ; return }
 set ::testprefix rbucorrupt
 
+catch {db close}
+sqlite3_shutdown
+sqlite3_config_lookaside 0 0
+sqlite3_initialize
+autoinstall_test_functions
+reset_db
+
 forcedelete rbu.db
 forcedelete state.db
 
@@ -56,6 +63,38 @@ do_test 1.4 {
   rbu step
   list [catch { rbu close } msg] $msg
 } {1 SQLITE_CORRUPT}
+
+#-------------------------------------------------------------------------
+reset_db
+forcedelete rbu.db
+forcedelete state.db
+
+do_test 2.0 {
+  for {set ii 0} {$ii<200} {incr ii} {
+    lappend cols "c$ii"
+  }
+  execsql "
+    CREATE TABLE t1(a INTEGER PRIMARY KEY, [join $cols ,]);
+    INSERT INTO t1(a, c0) VALUES(10, 100);
+  "
+} {}
+
+db close
+sqlite3 db rbu.db
+do_test 2.1 {
+  execsql "
+    CREATE TABLE data_t1(a INTEGER PRIMARY KEY, [join $cols ,], rbu_control);
+    INSERT INTO data_t1(a, c0, rbu_control) VALUES(10, 100, 'x');
+  "
+  db close
+} {}
+
+breakpoint
+do_test 2.2 {
+  sqlite3rbu rbu test.db rbu.db
+  while {[rbu step]=="SQLITE_OK"} {}
+  list [catch { rbu close } msg] $msg
+} {1 {SQLITE_ERROR - invalid rbu_control value}}
 
 
 finish_test

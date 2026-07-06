@@ -1952,7 +1952,10 @@ static void qrfColumnar(Qrf *p){
   int bRTrim;                             /* Trim trailing space */
 
   rc = sqlite3_step(p->pStmt);
-  if( rc!=SQLITE_ROW || nColumn==0 ){
+  if( nColumn==0 ){
+    return;   /* Not a query.  No results every shown. */
+  }
+  if( rc!=SQLITE_ROW && (rc!=SQLITE_DONE || p->spec.bTitles!=QRF_Always) ){
     return;   /* No output */
   }
 
@@ -1969,8 +1972,8 @@ static void qrfColumnar(Qrf *p){
   if( qrfColDataEnlarge(&data) ) return;
   assert( data.az!=0 );
 
-  /* Load the column header names and all cell content into data */
-  if( p->spec.bTitles==QRF_Yes ){
+  /* Load the column header names into data */
+  if( p->spec.bTitles>=QRF_Yes ){
     unsigned char saved_eText = p->spec.eText;
     p->spec.eText = p->spec.eTitle;
     memset(data.abNum, 0, nColumn);
@@ -1995,9 +1998,10 @@ static void qrfColumnar(Qrf *p){
       if( nNL ) data.bMultiRow = 1;
     }
     p->spec.eText = saved_eText;
-    p->nRow++;
   }
-  do{
+
+  /* Load query results into data */
+  while( rc==SQLITE_ROW && p->iErr==SQLITE_OK ){
     if( data.n+nColumn > data.nAlloc ){
       if( qrfColDataEnlarge(&data) ) return;
     }
@@ -2018,7 +2022,8 @@ static void qrfColumnar(Qrf *p){
       if( nNL ) data.bMultiRow = 1;
     }
     p->nRow++;
-  }while( sqlite3_step(p->pStmt)==SQLITE_ROW && p->iErr==SQLITE_OK );
+    rc = sqlite3_step(p->pStmt);
+  }
   if( p->iErr ){
     qrfColDataFree(&data);
     return;
@@ -2226,7 +2231,7 @@ static void qrfColumnar(Qrf *p){
     ** body.  isTitleDataSeparator will be true if we are doing (1).
     */
     if( (i==0 || data.bMultiRow) && i+nColumn<data.n ){
-      int isTitleDataSeparator = (i==0 && p->spec.bTitles==QRF_Yes);
+      int isTitleDataSeparator = (i==0 && p->spec.bTitles>=QRF_Yes);
       if( isTitleDataSeparator ){
         qrfLoadAlignment(&data, p);
       }
@@ -2273,7 +2278,7 @@ static void qrfColumnar(Qrf *p){
   }
 
   /* Draw the line across the bottom of the table */
-  if( p->spec.bBorder!=QRF_No ){
+  if( p->spec.bBorder!=QRF_No || p->nRow==0 ){
     switch( p->spec.eStyle ){
       case QRF_STYLE_Box:
         qrfBoxSeparator(p->pOut, &data, BOX_R12, BOX_124, BOX_R14, 0);
@@ -2282,6 +2287,10 @@ static void qrfColumnar(Qrf *p){
         qrfRowSeparator(p->pOut, &data, '+');
         break;
     }
+  }
+  if( p->spec.bRowCount==QRF_Yes ){
+    sqlite3_int64 n = p->nRow;
+    sqlite3_str_appendf(p->pOut, "(%d row%s)\n", n, n==1 ? "" : "s");
   }
   qrfWrite(p);
 
@@ -2566,7 +2575,7 @@ static void qrfOneSimpleRow(Qrf *p){
       break;
     }
     case QRF_STYLE_Html: {
-      if( p->nRow==0 && p->spec.bTitles==QRF_Yes ){
+      if( p->nRow==0 && p->spec.bTitles>=QRF_Yes ){
         sqlite3_str_append(p->pOut, "<TR>", 4);
         for(i=0; i<p->nCol; i++){
           const char *zCName = sqlite3_column_name(p->pStmt, i);
@@ -2597,7 +2606,7 @@ static void qrfOneSimpleRow(Qrf *p){
         }else{
           sqlite3_str_appendf(p->pOut,"INSERT INTO %s",p->spec.zTableName);
         }
-        if( p->spec.bTitles==QRF_Yes ){
+        if( p->spec.bTitles>=QRF_Yes ){
           for(i=0; i<p->nCol; i++){
             const char *zCName = sqlite3_column_name(p->pStmt, i);
             if( qrf_need_quote(zCName) ){
@@ -2697,7 +2706,7 @@ static void qrfOneSimpleRow(Qrf *p){
       break;
     }
     default: {  /* QRF_STYLE_List */
-      if( p->nRow==0 && p->spec.bTitles==QRF_Yes ){
+      if( p->nRow==0 && p->spec.bTitles>=QRF_Yes ){
         int saved_eText = p->spec.eText;
         p->spec.eText = p->spec.eTitle;
         for(i=0; i<p->nCol; i++){
@@ -2733,7 +2742,7 @@ static void qrfInitialize(
   size_t sz;                     /* Size of pSpec[], based on pSpec->iVersion */
   memset(p, 0, sizeof(*p));
   p->pzErr = pzErr;
-  if( pSpec->iVersion>1 ){
+  if( pSpec->iVersion>2 ){
     qrfError(p, SQLITE_ERROR,
        "unusable sqlite3_qrf_spec.iVersion (%d)",
        pSpec->iVersion);
@@ -2761,6 +2770,9 @@ static void qrfInitialize(
   if( p->spec.eText>QRF_TEXT_Relaxed ) p->spec.eText = QRF_Auto;
   if( p->spec.eTitle>QRF_TEXT_Relaxed ) p->spec.eTitle = QRF_Auto;
   if( p->spec.eBlob>QRF_BLOB_Size ) p->spec.eBlob = QRF_Auto;
+  if( pSpec->iVersion<=1 ){
+    p->spec.bRowCount = 0;
+  }
 qrf_reinit:
   switch( p->spec.eStyle ){
     case QRF_Auto: {

@@ -1347,7 +1347,8 @@ do_test shell1-8.4b {
     {SELECT ieee754_mantissa(47.49) AS M, ieee754_exponent(47.49) AS E;}
 } {0 {        M         |  E
 ------------------+-----
- 6683623321994527 | -47}}
+ 6683623321994527 | -47
+(1 row)}}
 do_test_with_ansi_output shell1-8.5 {
   catchcmd ":memory: --box" {
 create table t(a text, b int);

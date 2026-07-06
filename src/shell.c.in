@@ -594,7 +594,7 @@ static const ModeInfo aModeInfo[] = {
   { "list",     2,     1,    9,    1,    1,    0,   1,   12,    0,  0 },
   { "markdown", 0,     0,    9,    1,    1,    0,   2,   13,    2,  0 },
   { "off",      0,     0,    0,    0,    0,    0,   0,   14,    0,  0 },
-  { "psql",     0,     0,    9,    1,    1,    0,   2,   19,    2,  1 },
+  { "psql",     0,     0,    9,    1,    1,    0,   3,   19,    2,  1 },
   { "qbox",     0,     0,    10,   2,    1,    0,   2,   1,     2,  0 },
   { "quote",    4,     1,    10,   2,    2,    0,   1,   12,    0,  0 },
   { "split",    0,     0,    9,    1,    1,    0,   1,   2,     2,  2 },
@@ -613,7 +613,7 @@ static const ModeInfo aModeInfo[] = {
        **      1: plain        v----------'   0: n/a
        **      2: sql          0: auto        1: no         
        **      3: csv          1: as-text     2: yes
-       **      4: html         2: sql
+       **      4: html         2: sql         3: always
        **      5: c            3: hex
        **      6: json         4: c
        **                      5: json
@@ -2046,7 +2046,7 @@ static void modeFree(Mode *p){
   free(p->spec.zTableName);
   free(p->spec.zNull);
   memset(p, 0, sizeof(*p));
-  p->spec.iVersion = 1;
+  p->spec.iVersion = 2;
   p->autoExplain = autoExplain;
 }
 
@@ -2162,6 +2162,7 @@ static void modeChange(ShellState *p, unsigned char eMode){
     pM->spec.eTitle = pI->eHdr;
     if( pI->mFlg & 0x01 ){
       pM->spec.bBorder = QRF_No;
+      pM->spec.bRowCount = QRF_Yes;
     }else{
       pM->spec.bBorder = QRF_Auto;
     }
@@ -2200,7 +2201,7 @@ static void modeChange(ShellState *p, unsigned char eMode){
 ** already been freed and zeroed prior to calling this routine.
 */
 static void modeDefault(ShellState *p){
-  p->mode.spec.iVersion = 1;
+  p->mode.spec.iVersion = 2;
   p->mode.autoExplain = 1;
   if( stdin_is_interactive || stdout_is_console ){
     modeChange(p, MODE_TTY);
@@ -8555,8 +8556,10 @@ static int dotCmdImport(ShellState *p){
 **    0:     The titles do not matter.  Never show anything.
 **    1:     Show  "--titles off"
 **    2:     Show  "--titles on"
-**    3:     Show  "--title VALUE"  where VALUE is an encoding method
+**    3:     Show  "--titles always"
+**    4:     Show  "--title VALUE"  where VALUE is an encoding method
 **             to use, one of: plain sql csv html tcl json
+**    5:     Show  "--title VALUE" as in 3, followed by "--titles always"
 **
 ** Inputs are:
 **
@@ -8593,7 +8596,23 @@ static int modeTitleDsply(ShellState *p, int bAll){
   if( bT<2 ) v >>= 8;    /* ON in even bytes, OFF in odd bytes (1st byte 0) */
   if( !bAll ) v >>= 4;   /* bAll values are in the lower half-byte */
 
-  return v & 3;          /* Return the selected truth-table entry */
+  v &= 3;
+  /* At this point v means:
+  **    0:     The titles do not matter.  Never show anything.
+  **    1:     Show  "--titles off"
+  **    2:     Show  "--titles on"
+  **    3:     Show  "--title VALUE"  where VALUE is an encoding method
+  **             to use, one of: plain sql csv html tcl json
+  ** If bTitles is QRF_Always, convert 2->3, 3->5.  If bTitles is not
+  ** QRF_Always, convert 3->4.
+  */
+  if( p->mode.spec.bTitles==QRF_Always ){
+    if( v==3 ) v = 5;
+    if( v==2 ) v = 3;
+  }else{
+    if( v==3 ) v = 4;
+  }
+  return v;
 }
 
 /*
@@ -8641,6 +8660,7 @@ static int modeTitleDsply(ShellState *p, int bAll){
 **                            "tcl", or "json". "off" means show the text as-is.
 **                            "on" is an alias for "sql".
 **   --reset                  Changes all mode settings back to their default.
+**   --rowcount BOOLEAN       Show "(N rows)" at the end of output.
 **   --rowsep STRING          Use STRING as the row separator
 **   --sw|--screenwidth N     Declare the screen width of the output device
 **                            to be N characters.  An attempt may be made to
@@ -8880,6 +8900,13 @@ static int dotCmdMode(ShellState *p){
       int saved_eMode = p->mode.eMode;
       modeFree(&p->mode);
       modeChange(p, saved_eMode);
+    }else if( optionMatch(z,"rowcount") ){
+      if( i+1>=nArg ){
+        dotCmdError(p, i, "missing argument", 0);
+        return 1;
+      }
+      p->mode.spec.bRowCount = booleanValue(azArg[++i]) ? QRF_Yes : QRF_No;
+      chng = 1;
     }else if( optionMatch(z,"screenwidth") || optionMatch(z,"sw") ){
       if( (++i)>=nArg ){
         dotCmdError(p, i-1, "missing argument", 0);
@@ -8939,15 +8966,19 @@ static int dotCmdMode(ShellState *p){
         return 1;
       }
       k = pickStr(azArg[++i],&zErr,
-              "off","on","plain","sql","csv","html","tcl","json","");
-          /*   0     1    2       3     4     5     6      7 */
+              "off","on","plain","sql","csv","html","tcl","json","always","");
+          /*   0     1    2       3     4     5     6      7      8  */
       if( k<0 ){
         dotCmdError(p, i, "bad --titles value","%z", zErr);
         return 1;
       }
-      p->mode.spec.bTitles = k>=1 ? QRF_Yes : QRF_No;
-      p->mode.mFlags &= ~MFLG_HDR;
-      p->mode.spec.eTitle = k>1 ? k-1 : aModeInfo[p->mode.eMode].eHdr;
+      if( k==8 ){
+        p->mode.spec.bTitles = QRF_Always;
+      }else{
+        p->mode.spec.bTitles = k>=1 ? QRF_Yes : QRF_No;
+        p->mode.mFlags &= ~MFLG_HDR;
+        p->mode.spec.eTitle = k>1 ? k-1 : aModeInfo[p->mode.eMode].eHdr;
+      }
       chng = 1;
     }else if( optionMatch(z,"widths") || optionMatch(z,"width") ){
       int nWidth = 0;
@@ -9102,6 +9133,12 @@ static int dotCmdMode(ShellState *p){
     ){
       sqlite3_str_appendf(pDesc," --quote %s",qrfQuoteNames[p->mode.spec.eText]);
     }
+    if( bAll 
+     || ((p->mode.spec.bRowCount==QRF_Yes) != ((pI->mFlg&1)!=0))
+    ){
+      sqlite3_str_appendf(pDesc," --rowcount %s",
+             p->mode.spec.bRowCount==QRF_Yes ? "on" : "off");
+    }
     zSetting = aModeStr[pI->eRSep];
     if( bAll || (zSetting && cli_strcmp(zSetting,p->mode.spec.zRowSep)!=0) ){
       sqlite3_str_appendf(pDesc, " --rowsep ");
@@ -9131,10 +9168,15 @@ static int dotCmdMode(ShellState *p){
     }else if( k==2 ){
       sqlite3_str_appendall(pDesc, " --titles on");
     }else if( k==3 ){
+      sqlite3_str_appendall(pDesc, " --titles always");
+    }else if( k>=4 ){
       static const char *azTitle[] =
           { "plain", "sql", "csv", "html", "tcl", "json"};
       sqlite3_str_appendf(pDesc, " --titles %s",
                    azTitle[p->mode.spec.eTitle-1]);
+      if( k==5 ){
+        sqlite3_str_appendf(pDesc, " --titles always");
+      }
     }    
     if( p->mode.spec.nWidth>0 && (bAll || pI->eCx==2) ){
       int ii;

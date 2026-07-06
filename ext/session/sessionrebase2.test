@@ -37,4 +37,25 @@ do_test 1.0 {
   R delete
 } {}
 
+#-------------------------------------------------------------------------
+# Ensure that is an error to pass a patchset to sqlite3rebase_configure().
+#
+set input "0000ff0021"
+set rebaser [string map {{ } {}} \
+  "5003030000 7400 0921 010000000d00490006"
+]
+
+set I [db one {SELECT unhex($input)}]
+set R [db one {SELECT unhex($rebaser)}]
+
+do_test 2.0 {
+  sqlite3rebaser_create R
+  list [catch { R configure $R } msg] $msg
+} {1 SQLITE_ERROR}
+
+do_test 2.1 {
+  set I2 [R rebase $I]
+  R delete
+} {}
+
 finish_test

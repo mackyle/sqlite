@@ -567,7 +567,7 @@ struct ModeInfo {
   unsigned char bHdr;    /* Show headers by default.  0: n/a, 1: no 2: yes */
   unsigned char eStyle;  /* Underlying QRF style */
   unsigned char eCx;     /* 0: other, 1: line, 2: columnar */
-  unsigned char mFlg;    /* Flags. 1=border-off 2=split-column */
+  unsigned char mFlg;    /* Flags. 1=border-off 2=split-column 4=rowcount */
 };
 
 /* String constants used by built-in modes */
@@ -594,7 +594,7 @@ static const ModeInfo aModeInfo[] = {
   { "list",     2,     1,    9,    1,    1,    0,   1,   12,    0,  0 },
   { "markdown", 0,     0,    9,    1,    1,    0,   2,   13,    2,  0 },
   { "off",      0,     0,    0,    0,    0,    0,   0,   14,    0,  0 },
-  { "psql",     0,     0,    9,    1,    1,    0,   3,   19,    2,  1 },
+  { "psql",     0,     0,    9,    1,    1,    0,   3,   19,    2,  5 },
   { "qbox",     0,     0,    10,   2,    1,    0,   2,   1,     2,  0 },
   { "quote",    4,     1,    10,   2,    2,    0,   1,   12,    0,  0 },
   { "split",    0,     0,    9,    1,    1,    0,   1,   2,     2,  2 },
@@ -612,9 +612,9 @@ static const ModeInfo aModeInfo[] = {
        **      0: n/a                blob |   v-----'                    /
        **      1: plain        v----------'   0: n/a           _________/
        **      2: sql          0: auto        1: no           |
-       **      3: csv          1: as-text     2: yes          1: border-off +
-       **      4: html         2: sql         3: always          title-always
-       **      5: c            3: hex                         2: split-column
+       **      3: csv          1: as-text     2: yes          1: border-off
+       **      4: html         2: sql         3: always       2: split-column
+       **      5: c            3: hex                         4: rowcount
        **      6: json         4: c
        **                      5: json
        **                      6: size
@@ -2162,16 +2162,19 @@ static void modeChange(ShellState *p, unsigned char eMode){
     pM->spec.eTitle = pI->eHdr;
     if( pI->mFlg & 0x01 ){
       pM->spec.bBorder = QRF_No;
-      pM->spec.bRowCount = QRF_Yes;
     }else{
       pM->spec.bBorder = QRF_Auto;
-      pM->spec.bRowCount = QRF_No;
     }
     if( pI->mFlg & 0x02 ){
       pM->spec.bSplitColumn = QRF_Yes;
       pM->bAutoScreenWidth = 1;
     }else{
       pM->spec.bSplitColumn = QRF_No;
+    }
+    if( pI->mFlg & 0x04 ){
+      pM->spec.bRowCount = QRF_Yes;
+    }else{
+      pM->spec.bRowCount = QRF_No;
     }
   }else if( eMode>=MODE_USER && eMode-MODE_USER<p->nSavedModes ){
     modeFree(&p->mode);
@@ -9135,7 +9138,7 @@ static int dotCmdMode(ShellState *p){
       sqlite3_str_appendf(pDesc," --quote %s",qrfQuoteNames[p->mode.spec.eText]);
     }
     if( bAll 
-     || ((p->mode.spec.bRowCount==QRF_Yes) != ((pI->mFlg&1)!=0))
+     || ((p->mode.spec.bRowCount==QRF_Yes) != ((pI->mFlg&4)!=0))
     ){
       sqlite3_str_appendf(pDesc," --rowcount %s",
              p->mode.spec.bRowCount==QRF_Yes ? "on" : "off");

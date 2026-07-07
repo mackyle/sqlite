@@ -57,6 +57,8 @@ struct sqlite3_qrf_spec {
   void *pRenderArg;           /* First argument to the xRender callback */
   void *pWriteArg;            /* First argument to the xWrite callback */
   char **pzOutput;            /* Storage location for output string */
+  /* The following are available in iVersion 2 and later */
+  unsigned char bRowCount;    /* Show the number of rows at end of each query */
   /* Additional fields may be added in the future */
 };
 
@@ -144,6 +146,11 @@ int sqlite3_format_query_result(
 #define QRF_Auto        0 /* Alternate spelling for QRF_*_Auto */
 #define QRF_No          1 /* Alternate spelling for QRF_SW_Off */
 #define QRF_Yes         2 /* Alternate spelling for QRF_SW_On */
+
+/*
+** Additional value allowed for bTitles
+*/
+#define QRF_Always      3 /* Always show titles, even if no rows */
 
 /*
 ** Possible alignment values alignment settings

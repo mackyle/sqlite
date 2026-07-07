@@ -103,7 +103,7 @@ END
 .testcase 140
 .mode -v
 .check <<END
-.mode qbox --align "" --border on --blob-quote auto --colsep "" --escape auto --limits on --multiinsert 3000 --null "NULL" --quote relaxed --rowsep "" --sw auto --tablename "" --textjsonb on --titles on --widths "" --wordwrap off --wrap 10
+.mode qbox --align "" --border on --blob-quote auto --colsep "" --escape auto --limits on --multiinsert 3000 --null "NULL" --quote relaxed --rowcount off --rowsep "" --sw auto --tablename "" --textjsonb on --titles on --widths "" --wordwrap off --wrap 10
 END
 .testcase 150 --error-prefix "Error:"
 .mode foo
@@ -162,7 +162,7 @@ END
 .mode --limits 0,0,0
 .mode -v
 .check <<END
-.mode box --align "" --border on --blob-quote auto --colsep "" --escape auto --limits off --multiinsert 0 --null "" --quote off --rowsep "" --sw 0 --tablename "" --textjsonb off --titles on --widths "" --wordwrap off
+.mode box --align "" --border on --blob-quote auto --colsep "" --escape auto --limits off --multiinsert 0 --null "" --quote off --rowcount off --rowsep "" --sw 0 --tablename "" --textjsonb off --titles on --widths "" --wordwrap off
 END
 
 .testcase 400
@@ -327,6 +327,27 @@ SELECT * FROM tbl1;
 INSERT INTO new_table VALUES('hello!',10);
 INSERT INTO new_table VALUES('goodbye',20);
 END
+.testcase 730
+.mode insert new_table --titles always --rowcount on
+SELECT * FROM tbl1;
+.check <<END
+INSERT INTO new_table(one,two) VALUES('hello!',10);
+INSERT INTO new_table(one,two) VALUES('goodbye',20);
+/* 2 rows inserted */
+END
+.testcase 740
+.mode insert new_table --titles always --rowcount on
+SELECT * FROM tbl1 WHERE two<0;
+.check <<END
+/* 0 rows inserted */
+END
+.testcase 750
+.mode insert new_table --titles always --rowcount on
+SELECT * FROM tbl1 WHERE two<15;
+.check <<END
+INSERT INTO new_table(one,two) VALUES('hello!',10);
+/* 1 row inserted */
+END
 
 # QRF reports an error if the string is too big.
 #
@@ -337,3 +358,51 @@ WITH c(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM c WHERE n<100)
 SELECT hex(randomblob(100)) c;
 .check -glob "*: string or blob too big"
 .limit length 10000000
+
+# "psql" mode.
+#
+.testcase 900
+.mode --reset psql -v
+.check <<END
+.mode psql --align "" --border off --blob-quote auto --colsep "" --escape auto --limits off --multiinsert 0 --null "" --quote off --rowcount on --rowsep "" --sw 0 --tablename "" --textjsonb off --titles always --widths "" --wordwrap off
+END
+.testcase 901
+.mode
+.check <<END
+.mode psql
+END
+.testcase 902
+.mode --rowcount off
+.mode
+.check <<END
+.mode psql --rowcount off
+END
+.testcase 910
+.mode psql --reset
+DROP TABLE IF EXISTS t1;
+CREATE TABLE t1(ab INT, text_column TEXT, int_col INT);
+SELECT * FROM t1;
+.check <<END
+ ab | text_column | int_col
+----+-------------+---------
+(0 rows)
+END
+.testcase 911
+INSERT INTO t1 VALUES(31415926,'Hello',99);
+SELECT * FROM t1;
+.check <<END
+    ab    | text_column | int_col
+----------+-------------+---------
+ 31415926 | Hello       |      99
+(1 row)
+END
+.testcase 912
+INSERT INTO t1 VALUES(2,NULL,2);
+SELECT * FROM t1;
+.check <<END
+    ab    | text_column | int_col
+----------+-------------+---------
+ 31415926 | Hello       |      99
+        2 |             |       2
+(2 rows)
+END

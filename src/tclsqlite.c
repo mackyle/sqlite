@@ -2066,6 +2066,7 @@ static void DbHookCmd(
 **     -defaultalign ("auto"|"left"|...)       Default alignment
 **     -titalalign ("auto"|"left"|"right"|...) Default column name alignment
 **     -border ("auto"|"off"|"on")             Border for box and table styles
+**     -rowcount ("auto"|"off"|"on")           Show row counts
 **     -wrap NUMBER                            Max width of any single column
 **     -screenwidth NUMBER                     Width of the display TTY
 **     -linelimit NUMBER                       Max lines for any cell
@@ -2136,7 +2137,7 @@ static int dbQrf(SqliteDb *pDb, int objc, Tcl_Obj *const*objv){
   };
 
   memset(&qrf, 0, sizeof(qrf));
-  qrf.iVersion = 1;
+  qrf.iVersion = 2;
   qrf.pzOutput = &zResult;
   for(i=2; i<objc; i++){
     const char *zArg = Tcl_GetString(objv[i]);
@@ -2150,7 +2151,7 @@ static int dbQrf(SqliteDb *pDb, int objc, Tcl_Obj *const*objv){
       }
       zSql  = zArg;
     }else if( i==objc-1 ){
-      Tcl_AppendResult(pDb->interp, "option has no argument: ", zArg, (char*)0);
+      Tcl_AppendResult(pDb->interp, "option has no argument: ", zArg,(char*)0);
       rc = TCL_ERROR;
       goto format_failed;
     }else if( strcmp(zArg,"-style")==0 ){
@@ -2195,7 +2196,7 @@ static int dbQrf(SqliteDb *pDb, int objc, Tcl_Obj *const*objv){
       /* NB: --title can be "off" or "on but --text may not be.  Thus we put
       ** the "off" and "on" choices first and start the search on the
       ** thrid element of the array when processing --text */
-      static const char *azText[] = {           "off",   "on",
+      static const char *azText[] = {           "off",   "on",  "always",
         "auto",             "csv",              "html",
         "json",             "plain",            "relaxed",
         "sql",              "tcl",              0
@@ -2207,17 +2208,20 @@ static int dbQrf(SqliteDb *pDb, int objc, Tcl_Obj *const*objv){
       };
       int txt;
       int k = zArg[2]=='e';
-      rc = Tcl_GetIndexFromObj(pDb->interp, objv[i+1], &azText[k*2], zArg,
+      rc = Tcl_GetIndexFromObj(pDb->interp, objv[i+1], &azText[k*3], zArg,
                                0, &txt);
       if( rc ) goto format_failed;
       if( k ){
         qrf.eText = aTextMap[txt];
-      }else if( txt<=1 ){
-        qrf.bTitles = txt ? QRF_Yes : QRF_No;
+      }else if( txt<=2 ){
+        assert( QRF_No==1 );
+        assert( QRF_Yes==2 );
+        assert( QRF_Always==3 );
+        qrf.bTitles = txt+QRF_No;
         qrf.eTitle = QRF_TEXT_Auto;
       }else{
         qrf.bTitles = QRF_Yes;
-        qrf.eTitle = aTextMap[txt-2];
+        qrf.eTitle = aTextMap[txt-3];
       }
       i++;
     }else if( strcmp(zArg,"-blob")==0 ){
@@ -2247,6 +2251,7 @@ static int dbQrf(SqliteDb *pDb, int objc, Tcl_Obj *const*objv){
     }else if( strcmp(zArg,"-textjsonb")==0
            || strcmp(zArg,"-splitcolumn")==0
            || strcmp(zArg,"-border")==0
+           || strcmp(zArg,"-rowcount")==0
     ){
       int v = 0;
       rc = Tcl_GetIndexFromObj(pDb->interp, objv[i+1], azBool,
@@ -2256,11 +2261,14 @@ static int dbQrf(SqliteDb *pDb, int objc, Tcl_Obj *const*objv){
         qrf.bTextJsonb = aBoolMap[v];
       }else if( zArg[1]=='b' ){
         qrf.bBorder = aBoolMap[v];
+      }else if( zArg[1]=='r' ){
+        qrf.bRowCount = aBoolMap[v];
       }else{
         qrf.bSplitColumn = aBoolMap[v];
       }
       i++;
-    }else if( strcmp(zArg,"-defaultalign")==0 || strcmp(zArg,"-titlealign")==0){
+    }else if( strcmp(zArg,"-defaultalign")==0
+           || strcmp(zArg,"-titlealign")==0){
       int ax = 0;
       rc = Tcl_GetIndexFromObj(pDb->interp, objv[i+1], azAlign,
                     zArg[1]=='d' ?  "default alignment (-defaultalign)" :

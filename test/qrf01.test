@@ -66,6 +66,51 @@ do_test 1.11d {
  1           │ 2.5 │ three
  x'424c4f42' │     │ Ἀμήν
 }
+do_test 1.11e {
+  set result "\n[db format -rowcount on {SELECT * FROM t1}]"
+} {
+╭──────┬─────┬───────╮
+│  a   │  b  │   c   │
+╞══════╪═════╪═══════╡
+│    1 │ 2.5 │ three │
+│ BLOB │     │ Ἀμήν  │
+╰──────┴─────┴───────╯
+(2 rows)
+}
+do_test 1.11f {
+  set result "\n[db format -rowcount on {SELECT * FROM t1 WHERE a=1}]"
+} {
+╭───┬─────┬───────╮
+│ a │  b  │   c   │
+╞═══╪═════╪═══════╡
+│ 1 │ 2.5 │ three │
+╰───┴─────┴───────╯
+(1 row)
+}
+do_test 1.11g {
+  set result "\n[db format {SELECT * FROM t1 WHERE a=2}]"
+} {}
+do_test 1.11h {
+  set result "\n[db format -rowcount on {SELECT * FROM t1 WHERE a=2}]"
+} {
+(0 rows)
+}
+do_test 1.11i {
+  set result "\n[db format -title always -rowcount off {SELECT * FROM t1 WHERE a=2}]"
+} {
+╭───┬───┬───╮
+│ a │ b │ c │
+╰───┴───┴───╯
+}
+do_test 1.11j {
+  set result "\n[db format -title always -rowcount on {SELECT * FROM t1 WHERE a=2}]"
+} {
+╭───┬───┬───╮
+│ a │ b │ c │
+╰───┴───┴───╯
+(0 rows)
+}
+
 do_test 1.12 {
   set result "\n[db format -text csv {SELECT * FROM t1}]"
 } {
@@ -378,7 +423,7 @@ x'424c4f42'|NULL|'Ἀμήν'
 do_test 1.118 {
   set rc [catch {db format -style list -title unk {SELECT * FROM t1}} res]
   lappend rc $res
-} {1 {bad -title "unk": must be off, on, auto, csv, html, json, plain, relaxed, sql, or tcl}}
+} {1 {bad -title "unk": must be off, on, always, auto, csv, html, json, plain, relaxed, sql, or tcl}}
 
 
 do_test 1.120 {
@@ -409,7 +454,6 @@ do_test 1.131 {
 1,2.5,'three'
 x'424c4f42',NULL,'Ἀμήν'
 }
-
 
 do_execsql_test 2.0 {
   DELETE FROM t1;

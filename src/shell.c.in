@@ -2165,6 +2165,7 @@ static void modeChange(ShellState *p, unsigned char eMode){
       pM->spec.bRowCount = QRF_Yes;
     }else{
       pM->spec.bBorder = QRF_Auto;
+      pM->spec.bRowCount = QRF_No;
     }
     if( pI->mFlg & 0x02 ){
       pM->spec.bSplitColumn = QRF_Yes;
@@ -8660,7 +8661,7 @@ static int modeTitleDsply(ShellState *p, int bAll){
 **                            "tcl", or "json". "off" means show the text as-is.
 **                            "on" is an alias for "sql".
 **   --reset                  Changes all mode settings back to their default.
-**   --rowcount BOOLEAN       Show "(N rows)" at the end of output.
+**   --rowcount BOOLEAN       Show "(N rows)" at the end of query results.
 **   --rowsep STRING          Use STRING as the row separator
 **   --sw|--screenwidth N     Declare the screen width of the output device
 **                            to be N characters.  An attempt may be made to
@@ -8672,7 +8673,7 @@ static int modeTitleDsply(ShellState *p, int bAll){
 **   --textjsonb BOOLEAN      If enabled, JSONB text is displayed as text JSON.
 **   --title ARG              Whether or not to show column headers, and if so
 **                            how to encode them.  ARG can be "off", "on",
-**                            "sql", "csv", "html", "tcl", or "json".
+**                            "sql", "csv", "html", "tcl", "json", or "always".
 **   --titlelimit N           Limit the length of column titles to N characters.
 **   -v|--verbose             Verbose output
 **   --widths LIST            Set the columns widths for columnar modes. The

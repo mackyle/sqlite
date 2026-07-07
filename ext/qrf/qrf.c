@@ -2334,7 +2334,7 @@ static void qrfColumnar(Qrf *p){
   }
   if( p->spec.bRowCount==QRF_Yes ){
     sqlite3_int64 n = p->nRow;
-    sqlite3_str_appendf(p->pOut, "(%d row%s)\n", n, n==1 ? "" : "s");
+    sqlite3_str_appendf(p->pOut, "(%lld row%s)\n", n, n==1 ? "" : "s");
   }
   qrfWrite(p);
 
@@ -3112,14 +3112,14 @@ int sqlite3_format_query_result(
           case QRF_STYLE_Csv:
           case QRF_STYLE_List:
           case QRF_STYLE_Quote:
-            sqlite3_str_appendf(qrf.pOut,"(%d row%s)\n",qrf.nRow,zPlural);
+            sqlite3_str_appendf(qrf.pOut,"(%lld row%s)\n",qrf.nRow,zPlural);
             break;
           case QRF_STYLE_Html:
-            sqlite3_str_appendf(qrf.pOut,"<!-- %d row%s -->\n",
+            sqlite3_str_appendf(qrf.pOut,"<!-- %lld row%s -->\n",
                                 qrf.nRow, zPlural);
             break;
           case QRF_STYLE_Insert:
-            sqlite3_str_appendf(qrf.pOut,"/* %d row%s inserted */\n",
+            sqlite3_str_appendf(qrf.pOut,"/* %lld row%s inserted */\n",
                                 qrf.nRow, zPlural);
             break;
         }

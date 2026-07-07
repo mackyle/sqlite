@@ -100,14 +100,14 @@ do_test 1.11.8 {
 } {
 ╭───┬───┬───╮
 │ a │ b │ c │
-╰───┴───┴───╯
+╘═══╧═══╧═══╛
 }
 do_test 1.11.9 {
   set result "\n[db format -title always -rowcount on {SELECT * FROM t1 WHERE a=2}]"
 } {
 ╭───┬───┬───╮
 │ a │ b │ c │
-╰───┴───┴───╯
+╘═══╧═══╧═══╛
 (0 rows)
 }
 
@@ -243,7 +243,7 @@ do_test 1.34.1 {
                  {SELECT * FROM t1 WHERE a=2}]"
 } {
  a │ b │ c
-───┴───┴───
+═══╧═══╧═══
 }
 do_test 1.35 {
   set result "\n[db format -style box -border off \
@@ -274,6 +274,7 @@ do_test 1.42 {
   set result "\n[db format -style column -title always {SELECT * FROM t1 WHERE a=2}]"
 } {
 a  b  c
+-  -  -
 }
 
 do_test 1.50 {

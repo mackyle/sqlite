@@ -602,19 +602,19 @@ static const ModeInfo aModeInfo[] = {
   { "tabs",     8,     1,    9,    3,    3,    0,   1,   12,    0,  0 },
   { "tcl",      3,     1,    12,   5,    5,    4,   1,   12,    0,  0 },
   { "www",      0,     0,    9,    4,    4,    0,   2,   7,     0,  0 }
-};     /*       |     /     /      |     /    /     |    |       \
-       **       |    /     /       |    /    /      |    |        \_ 2: columnar
-       ** Index into aModeStr[]    |   /    /       |    |           1: line
-       **                          |  /    /        |    |           0: other
-       **                          | /    /         |     \
-       **           text encoding  |/     |    show |      \
-       **      v-------------------'      |   hdrs? |       The QRF style
-       **      0: n/a                blob |   v-----'
-       **      1: plain        v----------'   0: n/a
-       **      2: sql          0: auto        1: no         
-       **      3: csv          1: as-text     2: yes
-       **      4: html         2: sql         3: always
-       **      5: c            3: hex
+};     /*       |     /     /      |     /    /     |    |     /     \____
+       **       |    /     /       |    /    /      |    |    /           |
+       ** Index into aModeStr[]    |   /    /       |    |  2: columnar   |
+       **                          |  /    /        |    |  1: line       |
+       **                          | /    /         |    |  0: other      |
+       **           text encoding  |/     |    show |    |                |
+       **      v-------------------'      |   hdrs? |    The QRF style    |
+       **      0: n/a                blob |   v-----'                    /
+       **      1: plain        v----------'   0: n/a           _________/
+       **      2: sql          0: auto        1: no           |
+       **      3: csv          1: as-text     2: yes          1: border-off +
+       **      4: html         2: sql         3: always          title-always
+       **      5: c            3: hex                         2: split-column
        **      6: json         4: c
        **                      5: json
        **                      6: size

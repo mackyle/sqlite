@@ -377,3 +377,32 @@ END
 .check <<END
 .mode psql --rowcount off
 END
+.testcase 910
+.mode psql --reset
+DROP TABLE IF EXISTS t1;
+CREATE TABLE t1(ab INT, text_column TEXT, int_col INT);
+SELECT * FROM t1;
+.check <<END
+ ab | text_column | int_col
+----+-------------+---------
+(0 rows)
+END
+.testcase 911
+INSERT INTO t1 VALUES(31415926,'Hello',99);
+SELECT * FROM t1;
+.check <<END
+    ab    | text_column | int_col
+----------+-------------+---------
+ 31415926 | Hello       |      99
+(1 row)
+END
+.testcase 912
+INSERT INTO t1 VALUES(2,NULL,2);
+SELECT * FROM t1;
+.check <<END
+    ab    | text_column | int_col
+----------+-------------+---------
+ 31415926 | Hello       |      99
+        2 |             |       2
+(2 rows)
+END

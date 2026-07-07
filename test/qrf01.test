@@ -31,7 +31,7 @@ do_test 1.10 {
 │ BLOB │     │ Ἀμήν  │
 ╰──────┴─────┴───────╯
 }
-do_test 1.11a {
+do_test 1.11.0 {
   set result "\n[db format -title off {SELECT * FROM t1}]"
 } {
 ╭──────┬─────┬───────╮
@@ -39,7 +39,7 @@ do_test 1.11a {
 │ BLOB │     │ Ἀμήν  │
 ╰──────┴─────┴───────╯
 }
-do_test 1.11b {
+do_test 1.11.1 {
   set result "\n[db format -text sql {SELECT * FROM t1}]"
 } {
 ╭─────────────┬─────┬─────────╮
@@ -49,7 +49,7 @@ do_test 1.11b {
 │ x'424c4f42' │     │ 'Ἀμήν'  │
 ╰─────────────┴─────┴─────────╯
 }
-do_test 1.11c {
+do_test 1.11.2 {
   set result "\n[db format -text sql -border off {SELECT * FROM t1}]"
 } {
       a      │  b  │    c
@@ -57,7 +57,7 @@ do_test 1.11c {
  1           │ 2.5 │ 'three'
  x'424c4f42' │     │ 'Ἀμήν'
 }
-do_test 1.11d {
+do_test 1.11.3 {
   set result "\n[db format -text relaxed -blob sql -border off \
                  {SELECT * FROM t1}]"
 } {
@@ -66,7 +66,7 @@ do_test 1.11d {
  1           │ 2.5 │ three
  x'424c4f42' │     │ Ἀμήν
 }
-do_test 1.11e {
+do_test 1.11.4 {
   set result "\n[db format -rowcount on {SELECT * FROM t1}]"
 } {
 ╭──────┬─────┬───────╮
@@ -77,7 +77,7 @@ do_test 1.11e {
 ╰──────┴─────┴───────╯
 (2 rows)
 }
-do_test 1.11f {
+do_test 1.11.5 {
   set result "\n[db format -rowcount on {SELECT * FROM t1 WHERE a=1}]"
 } {
 ╭───┬─────┬───────╮
@@ -87,22 +87,22 @@ do_test 1.11f {
 ╰───┴─────┴───────╯
 (1 row)
 }
-do_test 1.11g {
+do_test 1.11.6 {
   set result "\n[db format {SELECT * FROM t1 WHERE a=2}]"
 } {}
-do_test 1.11h {
+do_test 1.11.7 {
   set result "\n[db format -rowcount on {SELECT * FROM t1 WHERE a=2}]"
 } {
 (0 rows)
 }
-do_test 1.11i {
+do_test 1.11.8 {
   set result "\n[db format -title always -rowcount off {SELECT * FROM t1 WHERE a=2}]"
 } {
 ╭───┬───┬───╮
 │ a │ b │ c │
 ╰───┴───┴───╯
 }
-do_test 1.11j {
+do_test 1.11.9 {
   set result "\n[db format -title always -rowcount on {SELECT * FROM t1 WHERE a=2}]"
 } {
 ╭───┬───┬───╮
@@ -143,7 +143,14 @@ do_test 1.16 {
   catch {db format -text sql -style unk {SELECT * FROM t1}} res
   set res
 } {bad format style (-style) "unk": must be auto, box, column, count, csv, eqp, explain, html, insert, jobject, json, line, list, markdown, quote, stats, stats-est, stats-vm, or table}
-
+do_test 1.17 {
+  catch {db format -text sql -title unk {SELECT * FROM t1}} res
+  set res
+} {bad -title "unk": must be off, on, always, auto, csv, html, json, plain, relaxed, sql, or tcl}
+do_test 1.18 {
+  catch {db format -text sql -rowcount unk {SELECT * FROM t1}} res
+  set res
+} {bad -rowcount "unk": must be auto, yes, no, on, or off}
 	
 do_test 1.20 {
   set result "\n[db format -style box {SELECT * FROM t1}]"
@@ -165,6 +172,34 @@ do_test 1.30 {
 | 1    | 2.5 | three |
 | BLOB |     | Ἀμήν  |
 +------+-----+-------+
+}
+do_test 1.30.1 {
+  set result "\n[db format -style table -rowcount on {SELECT * FROM t1}]"
+} {
++------+-----+-------+
+|  a   |  b  |   c   |
++------+-----+-------+
+| 1    | 2.5 | three |
+| BLOB |     | Ἀμήν  |
++------+-----+-------+
+(2 rows)
+}
+do_test 1.30.2 {
+  set result "\n[db format -style table -rowcount off {SELECT * FROM t1 WHERE a=2}]"
+} {
+}
+do_test 1.30.3 {
+  set result "\n[db format -style table -rowcount on {SELECT * FROM t1 WHERE a=2}]"
+} {
+(0 rows)
+}
+do_test 1.30.4 {
+  set result "\n[db format -style table -rowcount on -title always {SELECT * FROM t1 WHERE a=2}]"
+} {
++---+---+---+
+| a | b | c |
++---+---+---+
+(0 rows)
 }
 do_test 1.31 {
   set result "\n[db format -style table -title off {SELECT * FROM t1}]"
@@ -192,7 +227,7 @@ do_test 1.33 {
    1|2.5|three
 BLOB|   |Ἀμήν
 }
-do_test 1.34 {
+do_test 1.34.0 {
   set result "\n[db format -style box -border off \
                  -screenwidth 30 \
                  {SELECT * FROM t1}]"
@@ -201,6 +236,14 @@ do_test 1.34 {
 ══════╪═════╪═══════
     1 │ 2.5 │ three
  BLOB │     │ Ἀμήν
+}
+do_test 1.34.1 {
+  set result "\n[db format -style box -border off \
+                 -screenwidth 30 -title always \
+                 {SELECT * FROM t1 WHERE a=2}]"
+} {
+ a │ b │ c
+───┴───┴───
 }
 do_test 1.35 {
   set result "\n[db format -style box -border off \
@@ -227,29 +270,38 @@ do_test 1.41 {
 1     2.5  three
 BLOB       Ἀμήν
 }
+do_test 1.42 {
+  set result "\n[db format -style column -title always {SELECT * FROM t1 WHERE a=2}]"
+} {
+a  b  c
+}
 
 do_test 1.50 {
   db format -style count {SELECT * FROM t1}
 } 2
 
-do_test 1.60a {
+do_test 1.60.0 {
   db format -style list -columnsep , -rowsep \r\n -text csv -blob tcl {SELECT * FROM t1}
 } "1,2.5,three\r\n\"\\102\\114\\117\\102\",,\"Ἀμήν\"\r\n"
-do_test 1.60b {
+do_test 1.60.1 {
   db format -style csv -columnsep xyz -rowsep pqr -text sql -blob sql {SELECT * FROM t1}
 } "1,2.5,three\r\nx'424c4f42',,\"Ἀμήν\"\r\n"
-do_test 1.61a {
+do_test 1.61.0 {
   db format -style list -columnsep , -rowsep \r\n -text csv -title auto -blob tcl {SELECT * FROM t1}
 } "a,b,c\r\n1,2.5,three\r\n\"\\102\\114\\117\\102\",,\"Ἀμήν\"\r\n"
-do_test 1.61b {
+do_test 1.61.1 {
   db format -style csv -title auto -blob tcl {SELECT * FROM t1}
 } "a,b,c\r\n1,2.5,three\r\n\"\\102\\114\\117\\102\",,\"Ἀμήν\"\r\n"
-do_test 1.62a {
+do_test 1.62.2 {
   db format -style list -columnsep , -rowsep \r\n -text csv -title csv -blob tcl {SELECT a AS 'a x y', b, c FROM t1}
 } "\"a x y\",b,c\r\n1,2.5,three\r\n\"\\102\\114\\117\\102\",,\"Ἀμήν\"\r\n"
-do_test 1.62b {
+do_test 1.62.1 {
   db format -style csv -title csv -blob tcl {SELECT a AS 'a x y', b, c FROM t1}
 } "\"a x y\",b,c\r\n1,2.5,three\r\n\"\\102\\114\\117\\102\",,\"Ἀμήν\"\r\n"
+do_test 1.63.0 {
+  db format -style list -columnsep , -rowsep \r\n -text csv \
+       -title always -rowcount on -blob tcl {SELECT * FROM t1 WHERE a=2}
+} "a,b,c\r\n(0 rows)"
 
 do_test 1.70 {
   set result "\n[db format -style html {SELECT * FROM t1}]"
@@ -298,6 +350,40 @@ do_test 1.72 {
 <TD>xy&#39;z
 </TR>
 }
+do_test 1.73 {
+  set result "\n[db format -style html -rowcount on {SELECT * FROM t1 WHERE a=1}]"
+} {
+<TR>
+<TD>1
+<TD>2.5
+<TD>three
+</TR>
+<!-- 1 row -->
+}
+do_test 1.74 {
+  set result "\n[db format -style html -rowcount on {SELECT * FROM t1 WHERE a=2}]"
+} {
+<!-- 0 rows -->
+}
+do_test 1.75 {
+  set result "\n[db format -style html -title always -rowcount on {SELECT * FROM t1 WHERE a=2}]"
+} {
+<TR>
+<TH>a
+<TH>b
+<TH>c
+</TR>
+<!-- 0 rows -->
+}
+do_test 1.76 {
+  set result "\n[db format -style html -title always -rowcount off {SELECT * FROM t1 WHERE a=2}]"
+} {
+<TR>
+<TH>a
+<TH>b
+<TH>c
+</TR>
+}
 
 do_test 1.80 {
   set result "\n[db format -style insert {SELECT * FROM t1}]"
@@ -318,8 +404,15 @@ do_test 1.82 {
 INSERT INTO t1(a,b,c) VALUES(1,2.5,'three');
 INSERT INTO t1(a,b,c) VALUES(x'424c4f42',NULL,'Ἀμήν');
 }
-do_test 1.83 {
+do_test 1.83.0 {
   set result "\n[db format -style insert -tablename drop -title on \
+      {SELECT a AS "a-b", b, c AS "123" FROM t1}]"
+} {
+INSERT INTO "drop"("a-b",b,"123") VALUES(1,2.5,'three');
+INSERT INTO "drop"("a-b",b,"123") VALUES(x'424c4f42',NULL,'Ἀμήν');
+}
+do_test 1.83.1 {
+  set result "\n[db format -style insert -tablename drop -title always \
       {SELECT a AS "a-b", b, c AS "123" FROM t1}]"
 } {
 INSERT INTO "drop"("a-b",b,"123") VALUES(1,2.5,'three');
@@ -344,6 +437,14 @@ INSERT INTO tab VALUES(1,10),
 INSERT INTO tab VALUES(6,60),
   (7,70);
 }
+do_test 1.86 {
+  set result "\n[db format -style insert -tablename drop -title on \
+      -rowcount on {SELECT a AS "a-b", b, c AS "123" FROM t1}]"
+} {
+INSERT INTO "drop"("a-b",b,"123") VALUES(1,2.5,'three');
+INSERT INTO "drop"("a-b",b,"123") VALUES(x'424c4f42',NULL,'Ἀμήν');
+/* 2 rows inserted */
+}
 
 do_test 1.90 {
   set result "\n[db format -style json {SELECT * FROM t1}]"
@@ -363,6 +464,13 @@ do_test 1.92 {
 {"a":1,"b":2.5,"c":"three","xyz":"abc\n123\r\nxyz"}
 {"a":"\u0042\u004c\u004f\u0042","b":null,"c":"Ἀμήν","xyz":"abc\n123\r\nxyz"}
 }
+do_test 1.93 {
+  set result "\n[db format -style json -title always -rowcount on {SELECT * FROM t1}]"
+} {
+[{"a":1,"b":2.5,"c":"three"},
+{"a":"\u0042\u004c\u004f\u0042","b":null,"c":"Ἀμήν"}]
+}
+
 
 do_test 1.100 {
   set result "\n[db format -style line {SELECT * FROM t1}]"
@@ -398,6 +506,24 @@ a = x'424c4f42'
 b = (NULL)
 c = 'Ἀμήν'
 }
+do_test 1.103 {
+  set result "\n[db format -style line -title always -rowcount on {SELECT * FROM t1}]"
+} {
+a: 1
+b: 2.5
+c: three
+
+a: BLOB
+b: 
+c: Ἀμήν
+
+(2 rows)
+}
+do_test 1.104 {
+  set result "\n[db format -style line -title always -rowcount on {SELECT * FROM t1 WHERE a=2}]"
+} {
+(0 rows)
+}
 
 do_test 1.110 {
   set result "\n[db format -style list {SELECT * FROM t1}]"
@@ -420,6 +546,27 @@ a|b|c
 1|2.5|'three'
 x'424c4f42'|NULL|'Ἀμήν'
 }
+do_test 1.113 {
+  set result "\n[db format -style list {SELECT * FROM t1 WHERE a=2}]"
+} {
+}
+do_test 1.114 {
+  set result "\n[db format -style list -rowcount on {SELECT * FROM t1 WHERE a=2}]"
+} {
+(0 rows)
+}
+do_test 1.115 {
+  set result "\n[db format -style list -rowcount on -title always {SELECT * FROM t1 WHERE a=2}]"
+} {
+a|b|c
+(0 rows)
+}
+do_test 1.116 {
+  set result "\n[db format -style list -rowcount off -title always {SELECT * FROM t1 WHERE a=2}]"
+} {
+a|b|c
+}
+
 do_test 1.118 {
   set rc [catch {db format -style list -title unk {SELECT * FROM t1}} res]
   lappend rc $res
@@ -440,6 +587,21 @@ do_test 1.121 {
 | 1    | 2.5 | three |
 | BLOB |     | Ἀμήν  |
 }
+do_test 1.122 {
+  set result "\n[db format -style markdown -rowcount on {SELECT * FROM t1}]"
+} {
+|  a   |  b  |   c   |
+|------|-----|-------|
+| 1    | 2.5 | three |
+| BLOB |     | Ἀμήν  |
+(2 rows)
+}
+do_test 1.123 {
+  set result "\n[db format -style markdown -rowcount on -title always {SELECT * FROM t1 WHERE a=2}]"
+} {
+| a | b | c |
+(0 rows)
+}
 
 do_test 1.130 {
   set result "\n[db format -style quote {SELECT * FROM t1}]"
@@ -453,6 +615,19 @@ do_test 1.131 {
 'a','b','c'
 1,2.5,'three'
 x'424c4f42',NULL,'Ἀμήν'
+}
+do_test 1.132 {
+  set result "\n[db format -style quote -rowcount on {SELECT * FROM t1}]"
+} {
+1,2.5,'three'
+x'424c4f42',NULL,'Ἀμήν'
+(2 rows)
+}
+do_test 1.133 {
+  set result "\n[db format -style quote -rowcount off -title always \
+                 {SELECT * FROM t1 WHERE a=2}]"
+} {
+'a','b','c'
 }
 
 do_execsql_test 2.0 {

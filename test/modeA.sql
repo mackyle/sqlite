@@ -327,6 +327,27 @@ SELECT * FROM tbl1;
 INSERT INTO new_table VALUES('hello!',10);
 INSERT INTO new_table VALUES('goodbye',20);
 END
+.testcase 730
+.mode insert new_table --titles always --rowcount on
+SELECT * FROM tbl1;
+.check <<END
+INSERT INTO new_table(one,two) VALUES('hello!',10);
+INSERT INTO new_table(one,two) VALUES('goodbye',20);
+/* 2 rows inserted */
+END
+.testcase 740
+.mode insert new_table --titles always --rowcount on
+SELECT * FROM tbl1 WHERE two<0;
+.check <<END
+/* 0 rows inserted */
+END
+.testcase 750
+.mode insert new_table --titles always --rowcount on
+SELECT * FROM tbl1 WHERE two<15;
+.check <<END
+INSERT INTO new_table(one,two) VALUES('hello!',10);
+/* 1 row inserted */
+END
 
 # QRF reports an error if the string is too big.
 #

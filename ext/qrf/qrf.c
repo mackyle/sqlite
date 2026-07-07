@@ -3071,6 +3071,7 @@ int sqlite3_format_query_result(
         qrfSimpleTitle(&qrf);
       }
       if( qrf.nCol>0 && qrf.spec.bRowCount==QRF_Yes ){
+        const char *zPlural = qrf.nRow==1 ? "" : "s";
         switch( qrf.spec.eStyle ){
           case QRF_STYLE_Line:
             if( qrf.nRow>0 ) sqlite3_str_append(qrf.pOut, "\n", 1);
@@ -3078,12 +3079,15 @@ int sqlite3_format_query_result(
           case QRF_STYLE_Csv:
           case QRF_STYLE_List:
           case QRF_STYLE_Quote:
-            sqlite3_str_appendf(qrf.pOut,"(%d row%s)\n",
-                                qrf.nRow, qrf.nRow==1 ? "" : "s");
+            sqlite3_str_appendf(qrf.pOut,"(%d row%s)\n",qrf.nRow,zPlural);
             break;
           case QRF_STYLE_Html:
             sqlite3_str_appendf(qrf.pOut,"<!-- %d row%s -->\n",
-                                qrf.nRow, qrf.nRow==1 ? "" : "s");
+                                qrf.nRow, zPlural);
+            break;
+          case QRF_STYLE_Insert:
+            sqlite3_str_appendf(qrf.pOut,"/* %d row%s inserted */\n",
+                                qrf.nRow, zPlural);
             break;
         }
       }

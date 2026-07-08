@@ -406,3 +406,88 @@ SELECT * FROM t1;
         2 |             |       2
 (2 rows)
 END
+
+# Variations on ".mode -title"
+#
+DROP TABLE IF EXISTS t1;
+CREATE TABLE t1("a b", "c'""<""'d", "xyz", "123");
+.testcase 1000
+.mode box -reset -title off -title plain
+SELECT * FROM t1;
+.check <<END
+╭─────┬─────────┬─────┬─────╮
+│ a b │ c'"<"'d │ xyz │ 123 │
+╘═════╧═════════╧═════╧═════╛
+END
+.testcase 1001
+.mode -title off -title sql
+SELECT * FROM t1;
+.check <<END
+╭───────┬─────────────┬───────┬───────╮
+│ 'a b' │ 'c''"<"''d' │ 'xyz' │ '123' │
+╘═══════╧═════════════╧═══════╧═══════╛
+END
+.testcase 1002
+.mode -title off -title csv
+SELECT * FROM t1;
+.check <<END
+╭───────┬─────────────┬─────┬─────╮
+│ "a b" │ "c'""<""'d" │ xyz │ 123 │
+╘═══════╧═════════════╧═════╧═════╛
+END
+.testcase 1003
+.mode -title off -title html
+SELECT * FROM t1;
+.check <<END
+╭─────┬──────────────────────────────┬─────┬─────╮
+│ a b │ c&#39;&quot;&lt;&quot;&#39;d │ xyz │ 123 │
+╘═════╧══════════════════════════════╧═════╧═════╛
+END
+.testcase 1003b
+.mode -title off -title html -title off --title always
+SELECT * FROM t1;
+.check <<END
+╭─────┬──────────────────────────────┬─────┬─────╮
+│ a b │ c&#39;&quot;&lt;&quot;&#39;d │ xyz │ 123 │
+╘═════╧══════════════════════════════╧═════╧═════╛
+END
+.testcase 1003c
+.show
+.check --glob "*headers: always*"
+.testcase 1004
+.mode -title off -title tcl
+SELECT * FROM t1;
+.check <<END
+╭───────┬─────────────┬───────┬───────╮
+│ "a b" │ "c'\"<\"'d" │ "xyz" │ "123" │
+╘═══════╧═════════════╧═══════╧═══════╛
+END
+.testcase 1005
+.mode -title off -title json
+SELECT * FROM t1;
+.check <<END
+╭───────┬─────────────┬───────┬───────╮
+│ "a b" │ "c'\"<\"'d" │ "xyz" │ "123" │
+╘═══════╧═════════════╧═══════╧═══════╛
+END
+.testcase 1006
+.mode -title on -title json
+SELECT * FROM t1;
+.check ""
+.testcase 1007
+.mode -title on -title json -title auto
+SELECT * FROM t1;
+.check <<END
+╭─────┬─────────┬─────┬─────╮
+│ a b │ c'"<"'d │ xyz │ 123 │
+╘═════╧═════════╧═════╧═════╛
+END
+.testcase 1008
+.mode -title off -title json
+.headers always
+SELECT * FROM t1;
+.check <<END
+╭─────┬─────────┬─────┬─────╮
+│ a b │ c'"<"'d │ xyz │ 123 │
+╘═════╧═════════╧═════╧═════╛
+END

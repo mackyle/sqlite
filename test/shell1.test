@@ -386,7 +386,7 @@ do_test shell1-3.7.4 {
 # .header(s) ON|OFF      Turn display of headers on or off
 do_test shell1-3.9.1 {
   catchcmd "test.db" ".header"
-} {1 {Usage: .headers on|off}}
+} {1 {Usage: .headers off|on|always}}
 do_test shell1-3.9.2 {
   catchcmd "test.db" ".header ON"
 } {0 {}}
@@ -396,11 +396,11 @@ do_test shell1-3.9.3 {
 do_test shell1-3.9.4 {
   # too many arguments
   catchcmd "test.db" ".header OFF BAD"
-} {1 {Usage: .headers on|off}}
+} {1 {Usage: .headers off|on|always}}
 
 do_test shell1-3.9.5 {
   catchcmd "test.db" ".headers"
-} {1 {Usage: .headers on|off}}
+} {1 {Usage: .headers off|on|always}}
 do_test shell1-3.9.6 {
   catchcmd "test.db" ".headers ON"
 } {0 {}}
@@ -410,7 +410,7 @@ do_test shell1-3.9.7 {
 do_test shell1-3.9.8 {
   # too many arguments
   catchcmd "test.db" ".headers OFF BAD"
-} {1 {Usage: .headers on|off}}
+} {1 {Usage: .headers off|on|always}}
 
 # .help                  Show this message
 do_test shell1-3.10.1 {

@@ -2088,7 +2088,7 @@ static void DbHookCmd(
 **     -style            eStyle
 **     -esc              eEsc
 **     -text             eText
-**     -title            eTitle, bTitle
+**     -title            eTitle, bTitles
 **     -blob             eBlob
 **     -wordwrap         bWordWrap
 **     -textjsonb        bTextJsonb
@@ -2108,6 +2108,26 @@ static void DbHookCmd(
 **     -rowsep           zRowSep
 **     -tablename        zTableName
 **     -null             zNull
+**
+** The TCL -title option maps to eTitle and bTitles as follows:
+**
+**     -title       eTitle              bTitles 
+**     -------      -----------------   ------------
+**     off          QRF_TEXT_Auto       QRF_Off
+**     on           QRF_TEXT_Auto       QRF_On
+**     always       QRF_TEXT_Auto       QRF_Always
+**     auto         QRF_TEXT_Auto       QRF_On
+**     csv          QRF_TEXT_Csv        QRF_On
+**     html         QRF_TEXT_Html       QRF_On
+**     json         QRF_TEXT_Json       QRF_On
+**     plain        QRF_TEXT_Plain      QRF_On
+**     relaxed      QRF_TEXT_Relaxed    QRF_On
+**     sql          QRF_TEXT_Sql        QRF_On
+**     tcl          QRF_TEXT_Tcl        QRF_On
+**
+** Note in particular that for the last seven entries ("csv" through "tcl"),
+** the CLI .mode --title option sets bTitles to QRF_Always, whereas this TCL
+** interface set it to QRF_On.
 */
 static int dbQrf(SqliteDb *pDb, int objc, Tcl_Obj *const*objv){
 #ifndef SQLITE_QRF_H

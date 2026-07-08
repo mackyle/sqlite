@@ -2324,6 +2324,11 @@ static void qrfColumnar(Qrf *p){
       case QRF_STYLE_Table:
         qrfRowSeparator(p->pOut, &data, '+');
         break;
+      case QRF_STYLE_Markdown:
+        if( p->nRow==0 ){
+          qrfRowSeparator(p->pOut, &data, '|');
+        }
+        break;
       case QRF_STYLE_Column:
         if( p->nRow==0 ){
           qrfColumnSeparator(p->pOut, &data, colSep, szColSep,

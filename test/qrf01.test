@@ -601,6 +601,7 @@ do_test 1.123 {
   set result "\n[db format -style markdown -rowcount on -title always {SELECT * FROM t1 WHERE a=2}]"
 } {
 | a | b | c |
+|---|---|---|
 (0 rows)
 }
 

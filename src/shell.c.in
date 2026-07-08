@@ -580,28 +580,28 @@ static const char *aModeStr[] =
 static const ModeInfo aModeInfo[] = {
 /*   zName      eCSep  eRSep eNull eText eHdr eBlob bHdr eStyle eCx mFlg */
   { "ascii",    7,     6,    9,    1,    1,    0,   1,   12,    0,  0 },
-  { "box",      0,     0,    9,    1,    1,    0,   2,   1,     2,  0 },
+  { "box",      0,     0,    9,    1,    1,    0,   3,   1,     2,  0 },
   { "c",        4,     1,    10,   5,    5,    4,   1,   12,    0,  0 },
-  { "column",   0,     0,    9,    1,    1,    0,   2,   2,     2,  0 },
+  { "column",   0,     0,    9,    1,    1,    0,   3,   2,     2,  0 },
   { "count",    0,     0,    0,    0,    0,    0,   0,   3,     0,  0 },
   { "csv",      4,     5,    9,    3,    3,    0,   1,   12,    0,  0 },
-  { "html",     0,     0,    9,    4,    4,    0,   2,   7,     0,  0 },
+  { "html",     0,     0,    9,    4,    4,    0,   3,   7,     0,  0 },
   { "insert",   0,     0,    10,   2,    2,    0,   1,   8,     0,  0 },
   { "jatom",    4,     1,    11,   6,    6,    0,   1,   12,    0,  0 },
   { "jobject",  0,     1,    11,   6,    6,    0,   0,   10,    0,  0 },
   { "json",     0,     0,    11,   6,    6,    0,   0,   9,     0,  0 },
   { "line",     13,    1,    9,    1,    1,    0,   0,   11,    1,  0 },
   { "list",     2,     1,    9,    1,    1,    0,   1,   12,    0,  0 },
-  { "markdown", 0,     0,    9,    1,    1,    0,   2,   13,    2,  0 },
+  { "markdown", 0,     0,    9,    1,    1,    0,   3,   13,    2,  0 },
   { "off",      0,     0,    0,    0,    0,    0,   0,   14,    0,  0 },
   { "psql",     0,     0,    9,    1,    1,    0,   3,   19,    2,  5 },
-  { "qbox",     0,     0,    10,   2,    1,    0,   2,   1,     2,  0 },
+  { "qbox",     0,     0,    10,   2,    1,    0,   3,   1,     2,  0 },
   { "quote",    4,     1,    10,   2,    2,    0,   1,   12,    0,  0 },
   { "split",    0,     0,    9,    1,    1,    0,   1,   2,     2,  2 },
-  { "table",    0,     0,    9,    1,    1,    0,   2,   19,    2,  0 },
+  { "table",    0,     0,    9,    1,    1,    0,   3,   19,    2,  0 },
   { "tabs",     8,     1,    9,    3,    3,    0,   1,   12,    0,  0 },
   { "tcl",      3,     1,    12,   5,    5,    4,   1,   12,    0,  0 },
-  { "www",      0,     0,    9,    4,    4,    0,   2,   7,     0,  0 }
+  { "www",      0,     0,    9,    4,    4,    0,   3,   7,     0,  0 }
 };     /*       |     /     /      |     /    /     |    |     /     \____
        **       |    /     /       |    /    /      |    |    /           |
        ** Index into aModeStr[]    |   /    /       |    |  2: columnar   |
@@ -8558,12 +8558,12 @@ static int dotCmdImport(ShellState *p){
 ** titles (or column-names).  Output is an integer between 0 and 3:
 **
 **    0:     The titles do not matter.  Never show anything.
-**    1:     Show  "--titles off"
-**    2:     Show  "--titles on"
-**    3:     Show  "--titles always"
+**    1:     Show  "--title off"
+**    2:     Show  "--title on"
+**    3:     Show  "--title always"
 **    4:     Show  "--title VALUE"  where VALUE is an encoding method
 **             to use, one of: plain sql csv html tcl json
-**    5:     Show  "--title VALUE" as in 3, followed by "--titles always"
+**    5:     Show  "--title VALUE" as in 3, followed by "--title always"
 **
 ** Inputs are:
 **
@@ -8603,8 +8603,8 @@ static int modeTitleDsply(ShellState *p, int bAll){
   v &= 3;
   /* At this point v means:
   **    0:     The titles do not matter.  Never show anything.
-  **    1:     Show  "--titles off"
-  **    2:     Show  "--titles on"
+  **    1:     Show  "--title off"
+  **    2:     Show  "--title on"
   **    3:     Show  "--title VALUE"  where VALUE is an encoding method
   **             to use, one of: plain sql csv html tcl json
   ** If bTitles is QRF_Always, convert 2->3, 3->5.  If bTitles is not
@@ -8676,7 +8676,7 @@ static int modeTitleDsply(ShellState *p, int bAll){
 **   --textjsonb BOOLEAN      If enabled, JSONB text is displayed as text JSON.
 **   --title ARG              Whether or not to show column headers, and if so
 **                            how to encode them.  ARG can be "off", "on",
-**                            "sql", "csv", "html", "tcl", "json", or "always".
+**                            "always", "sql", "csv", "html", "tcl", or "json".
 **   --titlelimit N           Limit the length of column titles to N characters.
 **   -v|--verbose             Verbose output
 **   --widths LIST            Set the columns widths for columnar modes. The
@@ -8964,24 +8964,58 @@ static int dotCmdMode(ShellState *p){
       p->mode.spec.bTextJsonb = booleanValue(azArg[++i]) ? QRF_Yes : QRF_No;
       chng = 1;
     }else if( optionMatch(z,"titles") || optionMatch(z,"title") ){
+      /* The --titles option controls two fields of the
+      ** sqlite3_qrf_spec object: eTitle and bTitles.
+      **
+      **    --titles      eTitle             bTitles
+      **    --------      ---------------    ---------------------
+      **    "off"         (unchanged)        QRF_Off
+      **    "on"          (unchanged)        QRF_On
+      **    "always"      (unchanged)        QRF_Always
+      **    "auto",       (default)          (default)
+      **    "plain"       QRF_TEXT_Plain     QRF_Always or QRF_On
+      **    "sql"         QRF_TEXT_Sql       QRF_Always or QRF_On
+      **    "csv"         QRF_TEXT_Csv       QRF_Always or QRF_On
+      **    "html"        QRF_TEXT_Html      QRF_Always or QRF_On
+      **    "tcl"         QRF_TEXT_Tcl       QRF_Always or QRF_On
+      **    "json"        QRF_TEXT_Json      QRF_Always or QRF_On
+      **
+      ** This mapping is different from the -title option to the "format"
+      ** method of the TCL interface.  In this mapping:
+      **
+      **    *   "off", "on", and "always" affect only bTitles and leave
+      **        eTitle unchanged
+      **
+      **    *   "auto" sets both bTitles and eTitle to the default value
+      **        in aModeInfo[] according to the current --style.
+      **
+      **    *   "plain" through "json" set eTitle but leave bTitles
+      **        unchanged if it is not QRF_Off.  If bTitles is QRF_Off,
+      **        then it is changed QRF_Always.
+      */
       char *zErr = 0;
       if( i+1>=nArg ){
         dotCmdError(p, i, "missing argument", 0);
         return 1;
       }
       k = pickStr(azArg[++i],&zErr,
-              "off","on","plain","sql","csv","html","tcl","json","always","");
-          /*   0     1    2       3     4     5     6      7      8  */
+          "off","on","always","auto","plain","sql","csv","html","tcl","json","");
+        /* 0     1    2        3      4       5     6     7      8     9 */
       if( k<0 ){
         dotCmdError(p, i, "bad --titles value","%z", zErr);
         return 1;
       }
-      if( k==8 ){
-        p->mode.spec.bTitles = QRF_Always;
+      p->mode.mFlags &= ~MFLG_HDR;
+      if( k<=2 ){
+        p->mode.spec.bTitles = QRF_No+k;
+      }else if( k==3 ){
+        p->mode.spec.eTitle = aModeInfo[p->mode.eMode].eHdr;
+        p->mode.spec.bTitles = aModeInfo[p->mode.eMode].bHdr;
       }else{
-        p->mode.spec.bTitles = k>=1 ? QRF_Yes : QRF_No;
-        p->mode.mFlags &= ~MFLG_HDR;
-        p->mode.spec.eTitle = k>1 ? k-1 : aModeInfo[p->mode.eMode].eHdr;
+        p->mode.spec.eTitle = (k-4)+QRF_TEXT_Plain;
+        if( p->mode.spec.bTitles==QRF_No ){
+          p->mode.spec.bTitles = QRF_Always;
+        }
       }
       chng = 1;
     }else if( optionMatch(z,"widths") || optionMatch(z,"width") ){
@@ -10502,11 +10536,15 @@ static int do_meta_command(const char *zLine, ShellState *p){
 
   if( c=='h' && cli_strncmp(azArg[0], "headers", n)==0 ){
     if( nArg==2 ){
-      p->mode.spec.bTitles = booleanValue(azArg[1]) ? QRF_Yes : QRF_No;
+      if( cli_strcmp(azArg[1],"always")==0 ){
+        p->mode.spec.bTitles = QRF_Always;
+      }else{
+        p->mode.spec.bTitles = booleanValue(azArg[1]) ? QRF_Yes : QRF_No;
+      }
       p->mode.mFlags |= MFLG_HDR;
       p->mode.spec.eTitle = aModeInfo[p->mode.eMode].eHdr;
     }else{
-      eputz("Usage: .headers on|off\n");
+      eputz("Usage: .headers off|on|always\n");
       rc = 1;
     }
   }else
@@ -12102,7 +12140,8 @@ static int do_meta_command(const char *zLine, ShellState *p){
     cli_printf(p->out, "%12.12s: %s\n","explain",
                              p->mode.autoExplain ? "auto" : "off");
     cli_printf(p->out, "%12.12s: %s\n","headers",
-          azBool[p->mode.spec.bTitles==QRF_Yes]);
+          p->mode.spec.bTitles==QRF_Always ? "always" :
+            azBool[p->mode.spec.bTitles==QRF_Yes]);
     if( p->mode.spec.eStyle==QRF_STYLE_Column
      || p->mode.spec.eStyle==QRF_STYLE_Box
      || p->mode.spec.eStyle==QRF_STYLE_Table
@@ -14176,7 +14215,7 @@ int SQLITE_CDECL main(int argc, char **argv){
      modeSetStr(&data.mode.spec.zNull, 
                        cmdline_option_value(argc,argv,++i));
     }else if( cli_strcmp(z,"-header")==0 ){
-      data.mode.spec.bTitles = QRF_Yes;
+      data.mode.spec.bTitles = QRF_Always;
       data.mode.mFlags |= MFLG_HDR;
      }else if( cli_strcmp(z,"-noheader")==0 ){
       data.mode.spec.bTitles = QRF_No;

@@ -13533,8 +13533,10 @@ int SQLITE_CDECL main(int argc, char **argv){
       }
       open_db(&data, OPEN_DB_ZIPFILE);
       if( z[2] ){
+        char *zSaved = argv[i];
         argv[i] = &z[2];
         arDotCommand(&data, 1, argv+(i-1), argc-(i-1));
+        argv[i] = zSaved;
       }else{
         arDotCommand(&data, 1, argv+i, argc-i);
       }

@@ -110,6 +110,7 @@ int sqlite3InitCallback(void *pInit, int argc, char **argv, char **NotUsed){
   }
 
   assert( iDb>=0 && iDb<db->nDb );
+  assert( db->aDb[iDb].pSchema!=0 );
   if( argv[3]==0 ){
     corruptSchema(pData, argv, 0);
   }else if( argv[4]
@@ -183,6 +184,16 @@ int sqlite3InitCallback(void *pInit, int argc, char **argv, char **NotUsed){
       if( sqlite3Config.bExtraSchemaChecks ){
         corruptSchema(pData, argv, "invalid rootpage");
       }
+    }
+  }
+  if( pData->pzErrMsg[0]==0 ){
+    Schema *pX = db->aDb[iDb].pSchema;
+    if( pX->tblHash.count + pX->idxHash.count + pX->trigHash.count
+                   > (u32)db->aLimit[SQLITE_LIMIT_SCHEMA]
+    ){
+      *pData->pzErrMsg = sqlite3MPrintf(db, "too many schema objects");
+      pData->rc = SQLITE_ERROR;
+      return 1;
     }
   }
   return 0;

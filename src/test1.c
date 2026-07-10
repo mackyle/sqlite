@@ -7400,10 +7400,11 @@ static int SQLITE_TCLAPI test_limit(
     { "SQLITE_LIMIT_VARIABLE_NUMBER",     SQLITE_LIMIT_VARIABLE_NUMBER      },
     { "SQLITE_LIMIT_TRIGGER_DEPTH",       SQLITE_LIMIT_TRIGGER_DEPTH        },
     { "SQLITE_LIMIT_WORKER_THREADS",      SQLITE_LIMIT_WORKER_THREADS       },
+    { "SQLITE_LIMIT_SCHEMA",              SQLITE_LIMIT_SCHEMA               },
     
     /* Out of range test cases */
     { "SQLITE_LIMIT_TOOSMALL",            -1,                               },
-    { "SQLITE_LIMIT_TOOBIG",              SQLITE_LIMIT_PARSER_DEPTH+1       },
+    { "SQLITE_LIMIT_TOOBIG",              SQLITE_LIMIT_SCHEMA+1             },
   };
   int i, id = 0;
   int val;

@@ -922,7 +922,7 @@ static int parseModifier(
       if( sqlite3_strnicmp(z, "weekday ", 8)==0
        && sqlite3AtoF(&z[8], &r)>0
        && r>=-6.0 && r<=6.0
-       && (n=(int)r)==r
+       && sqlite3RealSameAsInt(r,(i64)(n=(int)r))
       ){
         sqlite3_int64 Z;
         computeYMD_HMS(p);

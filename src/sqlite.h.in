@@ -6484,7 +6484,11 @@ typedef void (*sqlite3_destructor_type)(void*);
 **
 ** ^The sqlite3_result_zeroblob(C,N) and sqlite3_result_zeroblob64(C,N)
 ** interfaces set the result of the application-defined function to be
-** a BLOB containing all zero bytes and N bytes in size.
+** a BLOB containing all zero bytes and N bytes in size.  The
+** zeroblob64(C,N) interface returns a [result code], which is normally
+** [SQLITE_OK] but might be some other value if the requested operation
+** could not be complete, for example if insufficient memory is available
+** or if the value of N is out of range.
 **
 ** ^The sqlite3_result_double() interface sets the result from
 ** an application-defined function to be a floating point value specified

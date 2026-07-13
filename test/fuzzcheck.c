@@ -182,6 +182,7 @@ extern int sqlite3_regexp_init(sqlite3*,char**,void*);
 extern int sqlite3_shathree_init(sqlite3*,char**,void*);
 extern int sqlite3_sha_init(sqlite3*,char**,void*);
 extern int sqlite3_stmtrand_init(sqlite3*,char**,void*);
+extern int sqlite3_strdup_init(sqlite3*,char**,void*);
 
 /*
 ** Print an error message and quit.
@@ -1404,6 +1405,7 @@ int runCombinedDbSqlInput(
   sqlite3_shathree_init(cx.db, 0, 0);
   sqlite3_sha_init(cx.db, 0, 0);
   sqlite3_stmtrand_init(cx.db, 0, 0);
+  sqlite3_strdup_init(cx.db, 0, 0);
 
   /* Add support for sqlite_dbdata and sqlite_dbptr virtual tables used
   ** by the recovery API */

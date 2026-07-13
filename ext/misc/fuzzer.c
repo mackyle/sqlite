@@ -466,6 +466,8 @@ static char *fuzzerDequote(const char *zIn){
         if( zIn[iIn]==q ) iIn++;
         zOut[iOut++] = zIn[iIn];
       }
+      assert( iOut<=nIn );
+      zOut[iOut] = 0;
     }
     assert( (int)strlen(zOut)<=nIn );
   }
@@ -981,6 +983,7 @@ static int fuzzerFilter(
   idx = 0;
   if( idxNum & 1 ){
     zWord = (const char*)sqlite3_value_text(argv[0]);
+    if( zWord==0 ) zWord = "";
     idx++;
   }
   if( idxNum & 2 ){

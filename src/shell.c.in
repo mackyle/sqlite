@@ -302,6 +302,7 @@ INCLUDE ../ext/intck/sqlite3intck.c
 INCLUDE ../ext/misc/stmtrand.c
 INCLUDE ../ext/misc/vfstrace.c
 INCLUDE ../ext/misc/diskused.c
+INCLUDE ../ext/misc/strdup.c
 
 #if !defined(SQLITE_OMIT_VIRTUALTABLE) && defined(SQLITE_ENABLE_DBPAGE_VTAB)
 #define SQLITE_SHELL_HAVE_RECOVER 1
@@ -566,7 +567,7 @@ struct ModeInfo {
   unsigned char bHdr;    /* Show headers by default.  0: n/a, 1: no 2: yes */
   unsigned char eStyle;  /* Underlying QRF style */
   unsigned char eCx;     /* 0: other, 1: line, 2: columnar */
-  unsigned char mFlg;    /* Flags. 1=border-off 2=split-column */
+  unsigned char mFlg;    /* Flags. 1=border-off 2=split-column 4=rowcount */
 };
 
 /* String constants used by built-in modes */
@@ -579,41 +580,41 @@ static const char *aModeStr[] =
 static const ModeInfo aModeInfo[] = {
 /*   zName      eCSep  eRSep eNull eText eHdr eBlob bHdr eStyle eCx mFlg */
   { "ascii",    7,     6,    9,    1,    1,    0,   1,   12,    0,  0 },
-  { "box",      0,     0,    9,    1,    1,    0,   2,   1,     2,  0 },
+  { "box",      0,     0,    9,    1,    1,    0,   3,   1,     2,  0 },
   { "c",        4,     1,    10,   5,    5,    4,   1,   12,    0,  0 },
-  { "column",   0,     0,    9,    1,    1,    0,   2,   2,     2,  0 },
+  { "column",   0,     0,    9,    1,    1,    0,   3,   2,     2,  0 },
   { "count",    0,     0,    0,    0,    0,    0,   0,   3,     0,  0 },
   { "csv",      4,     5,    9,    3,    3,    0,   1,   12,    0,  0 },
-  { "html",     0,     0,    9,    4,    4,    0,   2,   7,     0,  0 },
+  { "html",     0,     0,    9,    4,    4,    0,   3,   7,     0,  0 },
   { "insert",   0,     0,    10,   2,    2,    0,   1,   8,     0,  0 },
   { "jatom",    4,     1,    11,   6,    6,    0,   1,   12,    0,  0 },
   { "jobject",  0,     1,    11,   6,    6,    0,   0,   10,    0,  0 },
   { "json",     0,     0,    11,   6,    6,    0,   0,   9,     0,  0 },
   { "line",     13,    1,    9,    1,    1,    0,   0,   11,    1,  0 },
   { "list",     2,     1,    9,    1,    1,    0,   1,   12,    0,  0 },
-  { "markdown", 0,     0,    9,    1,    1,    0,   2,   13,    2,  0 },
+  { "markdown", 0,     0,    9,    1,    1,    0,   3,   13,    2,  0 },
   { "off",      0,     0,    0,    0,    0,    0,   0,   14,    0,  0 },
-  { "psql",     0,     0,    9,    1,    1,    0,   2,   19,    2,  1 },
-  { "qbox",     0,     0,    10,   2,    1,    0,   2,   1,     2,  0 },
+  { "psql",     0,     0,    9,    1,    1,    0,   3,   19,    2,  5 },
+  { "qbox",     0,     0,    10,   2,    1,    0,   3,   1,     2,  0 },
   { "quote",    4,     1,    10,   2,    2,    0,   1,   12,    0,  0 },
   { "split",    0,     0,    9,    1,    1,    0,   1,   2,     2,  2 },
-  { "table",    0,     0,    9,    1,    1,    0,   2,   19,    2,  0 },
+  { "table",    0,     0,    9,    1,    1,    0,   3,   19,    2,  0 },
   { "tabs",     8,     1,    9,    3,    3,    0,   1,   12,    0,  0 },
   { "tcl",      3,     1,    12,   5,    5,    4,   1,   12,    0,  0 },
-  { "www",      0,     0,    9,    4,    4,    0,   2,   7,     0,  0 }
-};     /*       |     /     /      |     /    /     |    |       \
-       **       |    /     /       |    /    /      |    |        \_ 2: columnar
-       ** Index into aModeStr[]    |   /    /       |    |           1: line
-       **                          |  /    /        |    |           0: other
-       **                          | /    /         |     \
-       **           text encoding  |/     |    show |      \
-       **      v-------------------'      |   hdrs? |       The QRF style
-       **      0: n/a                blob |   v-----'
-       **      1: plain        v----------'   0: n/a
-       **      2: sql          0: auto        1: no         
-       **      3: csv          1: as-text     2: yes
-       **      4: html         2: sql
-       **      5: c            3: hex
+  { "www",      0,     0,    9,    4,    4,    0,   3,   7,     0,  0 }
+};     /*       |     /     /      |     /    /     |    |     /     \____
+       **       |    /     /       |    /    /      |    |    /           |
+       ** Index into aModeStr[]    |   /    /       |    |  2: columnar   |
+       **                          |  /    /        |    |  1: line       |
+       **                          | /    /         |    |  0: other      |
+       **           text encoding  |/     |    show |    |                |
+       **      v-------------------'      |   hdrs? |    The QRF style    |
+       **      0: n/a                blob |   v-----'                    /
+       **      1: plain        v----------'   0: n/a           _________/
+       **      2: sql          0: auto        1: no           |
+       **      3: csv          1: as-text     2: yes          1: border-off
+       **      4: html         2: sql         3: always       2: split-column
+       **      5: c            3: hex                         4: rowcount
        **      6: json         4: c
        **                      5: json
        **                      6: size
@@ -2045,7 +2046,7 @@ static void modeFree(Mode *p){
   free(p->spec.zTableName);
   free(p->spec.zNull);
   memset(p, 0, sizeof(*p));
-  p->spec.iVersion = 1;
+  p->spec.iVersion = 2;
   p->autoExplain = autoExplain;
 }
 
@@ -2170,6 +2171,11 @@ static void modeChange(ShellState *p, unsigned char eMode){
     }else{
       pM->spec.bSplitColumn = QRF_No;
     }
+    if( pI->mFlg & 0x04 ){
+      pM->spec.bRowCount = QRF_Yes;
+    }else{
+      pM->spec.bRowCount = QRF_No;
+    }
   }else if( eMode>=MODE_USER && eMode-MODE_USER<p->nSavedModes ){
     modeFree(&p->mode);
     modeDup(&p->mode, &p->aSavedModes[eMode-MODE_USER].mode);
@@ -2199,7 +2205,7 @@ static void modeChange(ShellState *p, unsigned char eMode){
 ** already been freed and zeroed prior to calling this routine.
 */
 static void modeDefault(ShellState *p){
-  p->mode.spec.iVersion = 1;
+  p->mode.spec.iVersion = 2;
   p->mode.autoExplain = 1;
   if( stdin_is_interactive || stdout_is_console ){
     modeChange(p, MODE_TTY);
@@ -5097,6 +5103,7 @@ static void open_db(ShellState *p, int openFlags){
     sqlite3_ieee_init(p->db, 0, 0);
     sqlite3_series_init(p->db, 0, 0);
     sqlite3_diskused_init(p->db, 0, 0);
+    sqlite3_strdup_init(p->db, 0, 0);
 #ifndef SQLITE_SHELL_FIDDLE
     sqlite3_fileio_init(p->db, 0, 0);
     sqlite3_completion_init(p->db, 0, 0);
@@ -8551,10 +8558,12 @@ static int dotCmdImport(ShellState *p){
 ** titles (or column-names).  Output is an integer between 0 and 3:
 **
 **    0:     The titles do not matter.  Never show anything.
-**    1:     Show  "--titles off"
-**    2:     Show  "--titles on"
-**    3:     Show  "--title VALUE"  where VALUE is an encoding method
+**    1:     Show  "--title off"
+**    2:     Show  "--title on"
+**    3:     Show  "--title always"
+**    4:     Show  "--title VALUE"  where VALUE is an encoding method
 **             to use, one of: plain sql csv html tcl json
+**    5:     Show  "--title VALUE" as in 3, followed by "--title always"
 **
 ** Inputs are:
 **
@@ -8591,7 +8600,23 @@ static int modeTitleDsply(ShellState *p, int bAll){
   if( bT<2 ) v >>= 8;    /* ON in even bytes, OFF in odd bytes (1st byte 0) */
   if( !bAll ) v >>= 4;   /* bAll values are in the lower half-byte */
 
-  return v & 3;          /* Return the selected truth-table entry */
+  v &= 3;
+  /* At this point v means:
+  **    0:     The titles do not matter.  Never show anything.
+  **    1:     Show  "--title off"
+  **    2:     Show  "--title on"
+  **    3:     Show  "--title VALUE"  where VALUE is an encoding method
+  **             to use, one of: plain sql csv html tcl json
+  ** If bTitles is QRF_Always, convert 2->3, 3->5.  If bTitles is not
+  ** QRF_Always, convert 3->4.
+  */
+  if( p->mode.spec.bTitles==QRF_Always ){
+    if( v==3 ) v = 5;
+    if( v==2 ) v = 3;
+  }else{
+    if( v==3 ) v = 4;
+  }
+  return v;
 }
 
 /*
@@ -8639,6 +8664,7 @@ static int modeTitleDsply(ShellState *p, int bAll){
 **                            "tcl", or "json". "off" means show the text as-is.
 **                            "on" is an alias for "sql".
 **   --reset                  Changes all mode settings back to their default.
+**   --rowcount BOOLEAN       Show "(N rows)" at the end of query results.
 **   --rowsep STRING          Use STRING as the row separator
 **   --sw|--screenwidth N     Declare the screen width of the output device
 **                            to be N characters.  An attempt may be made to
@@ -8650,7 +8676,7 @@ static int modeTitleDsply(ShellState *p, int bAll){
 **   --textjsonb BOOLEAN      If enabled, JSONB text is displayed as text JSON.
 **   --title ARG              Whether or not to show column headers, and if so
 **                            how to encode them.  ARG can be "off", "on",
-**                            "sql", "csv", "html", "tcl", or "json".
+**                            "always", "sql", "csv", "html", "tcl", or "json".
 **   --titlelimit N           Limit the length of column titles to N characters.
 **   -v|--verbose             Verbose output
 **   --widths LIST            Set the columns widths for columnar modes. The
@@ -8878,6 +8904,13 @@ static int dotCmdMode(ShellState *p){
       int saved_eMode = p->mode.eMode;
       modeFree(&p->mode);
       modeChange(p, saved_eMode);
+    }else if( optionMatch(z,"rowcount") ){
+      if( i+1>=nArg ){
+        dotCmdError(p, i, "missing argument", 0);
+        return 1;
+      }
+      p->mode.spec.bRowCount = booleanValue(azArg[++i]) ? QRF_Yes : QRF_No;
+      chng = 1;
     }else if( optionMatch(z,"screenwidth") || optionMatch(z,"sw") ){
       if( (++i)>=nArg ){
         dotCmdError(p, i-1, "missing argument", 0);
@@ -8931,21 +8964,59 @@ static int dotCmdMode(ShellState *p){
       p->mode.spec.bTextJsonb = booleanValue(azArg[++i]) ? QRF_Yes : QRF_No;
       chng = 1;
     }else if( optionMatch(z,"titles") || optionMatch(z,"title") ){
+      /* The --titles option controls two fields of the
+      ** sqlite3_qrf_spec object: eTitle and bTitles.
+      **
+      **    --titles      eTitle             bTitles
+      **    --------      ---------------    ---------------------
+      **    "off"         (unchanged)        QRF_Off
+      **    "on"          (unchanged)        QRF_On
+      **    "always"      (unchanged)        QRF_Always
+      **    "auto",       (default)          (default)
+      **    "plain"       QRF_TEXT_Plain     QRF_Always or QRF_On
+      **    "sql"         QRF_TEXT_Sql       QRF_Always or QRF_On
+      **    "csv"         QRF_TEXT_Csv       QRF_Always or QRF_On
+      **    "html"        QRF_TEXT_Html      QRF_Always or QRF_On
+      **    "tcl"         QRF_TEXT_Tcl       QRF_Always or QRF_On
+      **    "json"        QRF_TEXT_Json      QRF_Always or QRF_On
+      **
+      ** This mapping is different from the -title option to the "format"
+      ** method of the TCL interface.  In this mapping:
+      **
+      **    *   "off", "on", and "always" affect only bTitles and leave
+      **        eTitle unchanged
+      **
+      **    *   "auto" sets both bTitles and eTitle to the default value
+      **        in aModeInfo[] according to the current --style.
+      **
+      **    *   "plain" through "json" set eTitle but leave bTitles
+      **        unchanged if it is not QRF_Off.  If bTitles is QRF_Off,
+      **        then it is changed QRF_Always.
+      */
       char *zErr = 0;
       if( i+1>=nArg ){
         dotCmdError(p, i, "missing argument", 0);
         return 1;
       }
       k = pickStr(azArg[++i],&zErr,
-              "off","on","plain","sql","csv","html","tcl","json","");
-          /*   0     1    2       3     4     5     6      7 */
+          "off","on","always","auto","plain","sql","csv","html","tcl","json","");
+        /* 0     1    2        3      4       5     6     7      8     9 */
       if( k<0 ){
         dotCmdError(p, i, "bad --titles value","%z", zErr);
         return 1;
       }
-      p->mode.spec.bTitles = k>=1 ? QRF_Yes : QRF_No;
       p->mode.mFlags &= ~MFLG_HDR;
-      p->mode.spec.eTitle = k>1 ? k-1 : aModeInfo[p->mode.eMode].eHdr;
+      if( k<=2 ){
+        p->mode.spec.bTitles = QRF_No+k;
+      }else if( k==3 ){
+        p->mode.spec.eTitle = aModeInfo[p->mode.eMode].eHdr;
+        p->mode.spec.bTitles = aModeInfo[p->mode.eMode].bHdr;
+      }else{
+        p->mode.spec.eTitle = (k-4)+QRF_TEXT_Plain;
+        if( p->mode.spec.bTitles==QRF_No ){
+          p->mode.spec.bTitles = QRF_Always;
+        }
+      }
       chng = 1;
     }else if( optionMatch(z,"widths") || optionMatch(z,"width") ){
       int nWidth = 0;
@@ -9100,6 +9171,12 @@ static int dotCmdMode(ShellState *p){
     ){
       sqlite3_str_appendf(pDesc," --quote %s",qrfQuoteNames[p->mode.spec.eText]);
     }
+    if( bAll 
+     || ((p->mode.spec.bRowCount==QRF_Yes) != ((pI->mFlg&4)!=0))
+    ){
+      sqlite3_str_appendf(pDesc," --rowcount %s",
+             p->mode.spec.bRowCount==QRF_Yes ? "on" : "off");
+    }
     zSetting = aModeStr[pI->eRSep];
     if( bAll || (zSetting && cli_strcmp(zSetting,p->mode.spec.zRowSep)!=0) ){
       sqlite3_str_appendf(pDesc, " --rowsep ");
@@ -9129,10 +9206,15 @@ static int dotCmdMode(ShellState *p){
     }else if( k==2 ){
       sqlite3_str_appendall(pDesc, " --titles on");
     }else if( k==3 ){
+      sqlite3_str_appendall(pDesc, " --titles always");
+    }else if( k>=4 ){
       static const char *azTitle[] =
           { "plain", "sql", "csv", "html", "tcl", "json"};
       sqlite3_str_appendf(pDesc, " --titles %s",
                    azTitle[p->mode.spec.eTitle-1]);
+      if( k==5 ){
+        sqlite3_str_appendf(pDesc, " --titles always");
+      }
     }    
     if( p->mode.spec.nWidth>0 && (bAll || pI->eCx==2) ){
       int ii;
@@ -10454,11 +10536,15 @@ static int do_meta_command(const char *zLine, ShellState *p){
 
   if( c=='h' && cli_strncmp(azArg[0], "headers", n)==0 ){
     if( nArg==2 ){
-      p->mode.spec.bTitles = booleanValue(azArg[1]) ? QRF_Yes : QRF_No;
+      if( cli_strcmp(azArg[1],"always")==0 ){
+        p->mode.spec.bTitles = QRF_Always;
+      }else{
+        p->mode.spec.bTitles = booleanValue(azArg[1]) ? QRF_Yes : QRF_No;
+      }
       p->mode.mFlags |= MFLG_HDR;
       p->mode.spec.eTitle = aModeInfo[p->mode.eMode].eHdr;
     }else{
-      eputz("Usage: .headers on|off\n");
+      eputz("Usage: .headers off|on|always\n");
       rc = 1;
     }
   }else
@@ -10666,9 +10752,17 @@ static int do_meta_command(const char *zLine, ShellState *p){
 
   if( c=='i' && cli_strncmp(azArg[0], "intck", n)==0 ){
     i64 iArg = 0;
+    open_db(p, 0);
     if( nArg==2 ){
       iArg = integerValue(azArg[1]);
-      if( iArg==0 ) iArg = -1;
+      if( iArg==0 ){
+        if( cli_strcmp(azArg[1],"register")==0 ){
+          sqlite3_intck_register(p->db, 1);
+          rc = 0;
+          goto meta_command_exit;
+        }
+        iArg = -1;
+      }
     }
     if( (nArg!=1 && nArg!=2) || iArg<0 ){
       cli_printf(stderr,"%s","Usage: .intck STEPS_PER_UNLOCK\n");
@@ -10720,6 +10814,7 @@ static int do_meta_command(const char *zLine, ShellState *p){
       { "variable_number",       SQLITE_LIMIT_VARIABLE_NUMBER           },
       { "trigger_depth",         SQLITE_LIMIT_TRIGGER_DEPTH             },
       { "worker_threads",        SQLITE_LIMIT_WORKER_THREADS            },
+      { "schema",                SQLITE_LIMIT_SCHEMA                    },
     };
     int i, n2;
     open_db(p, 0);
@@ -12046,7 +12141,8 @@ static int do_meta_command(const char *zLine, ShellState *p){
     cli_printf(p->out, "%12.12s: %s\n","explain",
                              p->mode.autoExplain ? "auto" : "off");
     cli_printf(p->out, "%12.12s: %s\n","headers",
-          azBool[p->mode.spec.bTitles==QRF_Yes]);
+          p->mode.spec.bTitles==QRF_Always ? "always" :
+            azBool[p->mode.spec.bTitles==QRF_Yes]);
     if( p->mode.spec.eStyle==QRF_STYLE_Column
      || p->mode.spec.eStyle==QRF_STYLE_Box
      || p->mode.spec.eStyle==QRF_STYLE_Table
@@ -14120,7 +14216,7 @@ int SQLITE_CDECL main(int argc, char **argv){
      modeSetStr(&data.mode.spec.zNull, 
                        cmdline_option_value(argc,argv,++i));
     }else if( cli_strcmp(z,"-header")==0 ){
-      data.mode.spec.bTitles = QRF_Yes;
+      data.mode.spec.bTitles = QRF_Always;
       data.mode.mFlags |= MFLG_HDR;
      }else if( cli_strcmp(z,"-noheader")==0 ){
       data.mode.spec.bTitles = QRF_No;
@@ -14221,8 +14317,10 @@ int SQLITE_CDECL main(int argc, char **argv){
       }
       open_db(&data, OPEN_DB_ZIPFILE);
       if( z[2] ){
+        char *zSaved = argv[i];
         argv[i] = &z[2];
         arDotCommand(&data, 1, argv+(i-1), argc-(i-1));
+        argv[i] = zSaved;
       }else{
         arDotCommand(&data, 1, argv+i, argc-i);
       }

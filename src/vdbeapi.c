@@ -27,8 +27,14 @@
 ** added or changed.
 */
 int sqlite3_expired(sqlite3_stmt *pStmt){
-  Vdbe *p = (Vdbe*)pStmt;
-  return p==0 || p->expired;
+  int iRet = 1;
+  if( pStmt ){
+    Vdbe *p = (Vdbe*)pStmt;
+    sqlite3_mutex_enter(p->db->mutex);
+    iRet = p->expired;
+    sqlite3_mutex_leave(p->db->mutex);
+  }
+  return iRet;
 }
 #endif
 
@@ -745,10 +751,11 @@ void sqlite3_result_str(sqlite3_context *pCtx, sqlite3_str *pStr, int eOwn){
   if( pCtx==0 ) return;
   if( pStr==0 ) return;
 #endif
+  testcase( pStr==(sqlite3_str*)&sqlite3OomStr );
   if( pStr->accError==0 ){
     if( pStr->nChar==0 ){
       setResultStrOrError(pCtx, "", 0, SQLITE_UTF8_ZT, SQLITE_STATIC);
-      if( eOwn ) sqlite3_str_reset(pStr);
+      sqlite3_str_reset(pStr);
     }else{
       const char *zText = sqlite3_str_value(pStr);
       /* Only internal code has the ability to capture a pointer to
@@ -763,6 +770,7 @@ void sqlite3_result_str(sqlite3_context *pCtx, sqlite3_str *pStr, int eOwn){
       }else{
         setResultStrOrError(pCtx, zText, pStr->nChar,
                             SQLITE_UTF8_ZT, SQLITE_DYNAMIC);
+        sqlite3StrAccumInit(pStr, pStr->db, 0, 0, pStr->mxAlloc);
       }
     }
   }else if( pStr->accError==SQLITE_NOMEM ){
@@ -771,14 +779,8 @@ void sqlite3_result_str(sqlite3_context *pCtx, sqlite3_str *pStr, int eOwn){
     assert( pStr->accError==SQLITE_TOOBIG );
     sqlite3_result_error_toobig(pCtx);
   }
-  if( eOwn ){
-    testcase( pStr==(sqlite3_str*)&sqlite3OomStr );
-    if( pStr->accError==0 ){
-      sqlite3StrAccumInit(pStr, pStr->db, 0, 0, pStr->mxAlloc);
-    }
-    if( eOwn==SQLITE_FINISH ){
-      sqlite3_str_free(pStr);
-    }
+  if( eOwn==SQLITE_FINISH ){
+    sqlite3_str_free(pStr);
   }
 }
 

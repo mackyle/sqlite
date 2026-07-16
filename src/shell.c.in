@@ -320,6 +320,16 @@ INCLUDE ../ext/recover/sqlite3recover.c
 # include SHELL_STRINGIFY(SQLITE_SHELL_EXTSRC)
 #endif
 
+/*
+** Set the SQLITE_SHELL_EDITION to a YYYYMMDD date string and the
+** code will attempt to use defaults for the prompt and for the
+** initial output mode (and maybe other feature) that were for
+** the most recent version not newer than the specified date.
+*/
+#ifndef SQLITE_SHELL_EDITION
+# define SQLITE_SHELL_EDITION 99991231  /* Use the latest if unspecified */
+#endif
+
 #if defined(SQLITE_ENABLE_SESSION)
 /*
 ** State information for a single open session
@@ -965,7 +975,9 @@ static const char *shellPromptAppDef(int c){
   switch( c ){
     /* The default main prompt string */
     case 1:
-#if   defined(SQLITE_PS1)
+#if   SQLITE_SHELL_EDITION<20260423
+      return "sqlite> ";  /* Legacy prompt for backwards compatibility */
+#elif defined(SQLITE_PS1)
       return SQLITE_PS1;
 #else
       if( shellNoColor() ){
@@ -977,7 +989,9 @@ static const char *shellPromptAppDef(int c){
 
     /* The default continuation prompt string */
     case 2:
-#if   defined(SQLITE_PS2)
+#if   SQLITE_SHELL_EDITION<20260423
+      return "   ...> ";  /* Legacy continuation prompt */
+#elif defined(SQLITE_PS2)
       return SQLITE_PS2;
 #else
       if( shellNoColor() ){
@@ -2207,7 +2221,9 @@ static void modeChange(ShellState *p, unsigned char eMode){
 static void modeDefault(ShellState *p){
   p->mode.spec.iVersion = 2;
   p->mode.autoExplain = 1;
-  if( stdin_is_interactive || stdout_is_console ){
+  if( (stdin_is_interactive || stdout_is_console)
+   && SQLITE_SHELL_EDITION>=20260409
+  ){
     modeChange(p, MODE_TTY);
   }else{
     modeChange(p, MODE_BATCH);

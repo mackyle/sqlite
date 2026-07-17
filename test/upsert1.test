@@ -292,4 +292,89 @@ do_execsql_test upsert1-1300 {
    ON CONFLICT (x) DO UPDATE SET y = excluded.y;
 } {}
 
+# 2026-07-17 Forum Post 2026-07-17T09:30:42Z
+# Combination of ON CONFLICT FAIL on a UNIQUE index and
+# an ON CONFLICT DO NOTHING in a different index leads to
+# database corruption.
+#
+reset_db
+do_execsql_test upsert1-1400 {
+  CREATE TABLE t(
+    a INTEGER PRIMARY KEY ON CONFLICT REPLACE,
+    b INT UNIQUE ON CONFLICT FAIL,
+    c INT UNIQUE
+  );
+  INSERT INTO t VALUES (1, 10, 100),(2, 20, 200);
+}
+do_catchsql_test upsert1-1410 {
+  INSERT INTO t VALUES (1, 20, 300) ON CONFLICT(c) DO NOTHING;
+} {1 {UNIQUE constraint failed: t.b}}
+do_execsql_test upsert1-1420 {
+  PRAGMA integrity_check;
+} {ok}
+do_execsql_test upsert1-1430 {
+  SELECT * FROM t ORDER BY a;
+} {1 10 100 2 20 200}
+
+do_execsql_test upsert1-1440 {
+  DROP TABLE t;
+  CREATE TABLE t(
+    a INTEGER PRIMARY KEY ON CONFLICT REPLACE,
+    b INT UNIQUE ON CONFLICT IGNORE,
+    c INT UNIQUE
+  );
+  INSERT INTO t VALUES (1, 10, 100),(2, 20, 200);
+}
+do_catchsql_test upsert1-1450 {
+  INSERT INTO t VALUES (1, 20, 300) ON CONFLICT(c) DO NOTHING;
+} {0 {}}
+do_execsql_test upsert1-1420 {
+  PRAGMA integrity_check;
+} {ok}
+do_execsql_test upsert1-1460 {
+  SELECT * FROM t ORDER BY a;
+} {1 10 100 2 20 200}
+
+do_execsql_test upsert1-1470 {
+  DROP TABLE t;
+  CREATE TABLE t(
+    a INTEGER PRIMARY KEY ON CONFLICT REPLACE,
+    b INT UNIQUE ON CONFLICT FAIL,
+    c INT UNIQUE
+  );
+  INSERT INTO t VALUES (1, 10, 100),(2, 20, 200);
+}
+do_catchsql_test upsert1-1480 {
+  INSERT INTO t VALUES (1, 20, 300) ON CONFLICT(c) DO NOTHING;
+} {1 {UNIQUE constraint failed: t.b}}
+do_execsql_test upsert1-1490 {
+  PRAGMA integrity_check;
+} {ok}
+do_execsql_test upsert1-1500 {
+  SELECT * FROM t ORDER BY a;
+} {1 10 100 2 20 200}
+do_execsql_test upsert1-1510 {
+  CREATE TABLE t1(a INTEGER PRIMARY KEY, b UNIQUE ON CONFLICT FAIL, c UNIQUE);
+  INSERT INTO t1 VALUES(1, 1, 1);
+}
+do_catchsql_test upsert1-1520 {
+  -- Inserts 0 rows, because hitting the constraint on (b) does ABORT:
+  INSERT INTO t1 VALUES(3, 3, 3), (2, 1, 2) ON CONFLICT(c) DO NOTHING;
+} {1 {UNIQUE constraint failed: t1.b}}
+do_execsql_test upsert1-1530 {
+  SELECT * FROM t1 ORDER BY a;
+} {1 1 1 3 3 3}
+do_catchsql_test upsert1-1530 {
+  -- Inserts 1 row, because hitting the constraint on (b) does FAIL:
+  DELETE FROM t1 WHERE a=3;
+  INSERT INTO t1 VALUES(3, 3, 3), (2, 1, 2);
+} {1 {UNIQUE constraint failed: t1.b}}
+do_execsql_test upsert1-1540 {
+  SELECT * FROM t1 ORDER BY a;
+} {1 1 1 3 3 3}
+do_execsql_test upsert1-1550 {
+  PRAGMA integrity_check;
+} ok
+
+
 finish_test

@@ -301,8 +301,8 @@ reset_db
 do_execsql_test upsert1-1400 {
   CREATE TABLE t0(
     a INTEGER PRIMARY KEY ON CONFLICT REPLACE,
-    b INT UNIQUE ON CONFLICT FAIL,
-    c INT UNIQUE
+    b INT UNIQUE          ON CONFLICT FAIL,
+    c INT UNIQUE          ON CONFLICT ABORT
   );
   INSERT INTO t0 VALUES (1, 10, 100),(2, 20, 200);
 }
@@ -319,8 +319,8 @@ do_execsql_test upsert1-1404 {
   DROP TABLE t0;
   CREATE TABLE t0(
     a INTEGER PRIMARY KEY ON CONFLICT REPLACE,
-    b INT UNIQUE ON CONFLICT IGNORE,
-    c INT UNIQUE
+    b INT UNIQUE          ON CONFLICT IGNORE,
+    c INT UNIQUE          ON CONFLICT ABORT
   );
   INSERT INTO t0 VALUES (1, 10, 100),(2, 20, 200);
 }
@@ -337,8 +337,8 @@ do_execsql_test upsert1-1408 {
   DROP TABLE t0;
   CREATE TABLE t0(
     a INTEGER PRIMARY KEY ON CONFLICT REPLACE,
-    b INT UNIQUE ON CONFLICT FAIL,
-    c INT UNIQUE
+    b INT UNIQUE          ON CONFLICT FAIL,
+    c INT UNIQUE          ON CONFLICT ABORT
   );
   INSERT INTO t0 VALUES (1, 10, 100),(2, 20, 200);
 }
@@ -353,7 +353,11 @@ do_execsql_test upsert1-1410 {
 } {1 10 100 2 20 200}
 do_execsql_test upsert1-1411 {
   DROP TABLE t0;
-  CREATE TABLE t1(a INTEGER PRIMARY KEY, b UNIQUE ON CONFLICT FAIL, c UNIQUE);
+  CREATE TABLE t1(
+    a INTEGER PRIMARY KEY,
+    b UNIQUE ON CONFLICT FAIL,
+    c UNIQUE
+  );
   INSERT INTO t1 VALUES(1, 1, 1);
 }
 do_catchsql_test upsert1-1412 {
@@ -381,23 +385,24 @@ do_execsql_test upsert1-1417 {
   PRAGMA recursive_triggers=ON;
   CREATE TABLE t2(
     a INTEGER PRIMARY KEY ON CONFLICT REPLACE,
-    b INT UNIQUE ON CONFLICT FAIL,
-    c INT UNIQUE
+    b INT UNIQUE          ON CONFLICT FAIL,
+    c INT UNIQUE          ON CONFLICT ABORT
   );
   CREATE TRIGGER t_ad AFTER DELETE ON t2 BEGIN
-    INSERT INTO t2 VALUES(99,20,999);
+    INSERT INTO t2 VALUES(99,30,999);
   END;
-  INSERT INTO t2 VALUES(1,10,100),(2,30,200);
+  INSERT INTO t2 VALUES(1,10,100),(2,20,200);
   SELECT * FROM t2 ORDER BY a;
-} {1 10 100 2 30 200}
+} {1 10 100 2 20 200}
 do_catchsql_test upsert1-1418 {
-  INSERT INTO t2 VALUES(1,20,300) ON CONFLICT(c) DO NOTHING;
+  INSERT INTO t2 VALUES(4,40,400),(1,30,300),(5,50,500)
+      ON CONFLICT(c) DO NOTHING;
 } {1 {UNIQUE constraint failed: t2.b}}
 do_execsql_test upsert1-1419 {
   PRAGMA integrity_check;
 } ok
 do_execsql_test upsert1-1420 {
   SELECT * FROM t2 ORDER BY a;
-} {2 30 200 99 20 999}
+} {2 20 200 4 40 400 99 30 999}
 
 finish_test

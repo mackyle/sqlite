@@ -403,7 +403,7 @@ do_execsql_test upsert1-1419 {
 } ok
 do_execsql_test upsert1-1420 {
   SELECT * FROM t2 ORDER BY a;
-} {2 20 200 4 40 400 99 30 999}
+} {1 10 100 2 20 200}
 
 # This is a slightly simpler version of the test above (1417-1420). Before
 # the bug was fixed, this would:
@@ -417,20 +417,21 @@ do_execsql_test upsert1-1420 {
 reset_db
 do_execsql_test upsert-1421 {
   PRAGMA recursive_triggers = ON;
-
   CREATE TABLE t1(
       a PRIMARY KEY ON CONFLICT REPLACE,
       b UNIQUE
   );
   INSERT INTO t1 VALUES(100, 'abcde');
-
   CREATE TRIGGER tr1 AFTER DELETE ON t1 BEGIN
     INSERT INTO t1 VALUES(200, 'HELLO');
   END;
-
-  INSERT INTO t1 VALUES(100, 'HELLO');
-
-  SELECT * FROM t1;
 }
+do_catchsql_test upsert-1422 {
+  INSERT INTO t1 VALUES(100, 'HELLO');
+} {1 {UNIQUE constraint failed: t1.b}}
+do_execsql_test upsert-1423 {
+  PRAGMA integrity_check;
+  SELECT * FROM t1 ORDER BY +a;
+} {ok 100 abcde}
 
 finish_test

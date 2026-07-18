@@ -405,4 +405,32 @@ do_execsql_test upsert1-1420 {
   SELECT * FROM t2 ORDER BY a;
 } {2 20 200 4 40 400 99 30 999}
 
+# This is a slightly simpler version of the test above (1417-1420). Before
+# the bug was fixed, this would:
+#
+#   1) Checks there are no instances of 'HELLO' in the index on t1(b),
+#   2) Deletes the row from t1 as a result of the REPLACE on the PK,
+#   3) Fires the trigger, inserting ('HELLO', 200) into index t1(b).
+#   4) Finishes the insert without rechecking t1(b), inserting 
+#      ('HELLO', 100). Corruption.
+#
+reset_db
+do_execsql_test upsert-1421 {
+  PRAGMA recursive_triggers = ON;
+
+  CREATE TABLE t1(
+      a PRIMARY KEY ON CONFLICT REPLACE,
+      b UNIQUE
+  );
+  INSERT INTO t1 VALUES(100, 'abcde');
+
+  CREATE TRIGGER tr1 AFTER DELETE ON t1 BEGIN
+    INSERT INTO t1 VALUES(200, 'HELLO');
+  END;
+
+  INSERT INTO t1 VALUES(100, 'HELLO');
+
+  SELECT * FROM t1;
+}
+
 finish_test

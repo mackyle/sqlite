@@ -2231,6 +2231,22 @@ void sqlite3GenerateConstraintChecks(
       regTrigCnt = sqlite3FkRequired(pParse, pTab, 0, 0);
     }
     if( regTrigCnt ){
+      /* At this point regTrigCnt is non-zero if there are DELETE triggers
+      ** or FK triggers. But we only care about these things if there is
+      ** a chance that a row will be deleted by an ON CONFLICT REPLACE
+      ** constraint. So zero regTrigCnt if no such constraint can be found. */
+      if( overrideError!=OE_Replace ){
+        if( overrideError!=OE_Default ){
+          regTrigCnt = 0;
+        }else if( pkChng==0 || pPk || pTab->keyConf!=OE_Replace ){
+          for(pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext){
+            if( pIdx->onError==OE_Replace ) break;
+          }
+          if( pIdx==0 ) regTrigCnt = 0;
+        }
+      }
+    }
+    if( regTrigCnt ){
       /* Replace triggers might exist.  Allocate the counter and
       ** initialize it to zero. */
       regTrigCnt = ++pParse->nMem;
@@ -2405,6 +2421,7 @@ void sqlite3GenerateConstraintChecks(
     int iThisCur;        /* Cursor for this UNIQUE index */
     int addrUniqueOk;    /* Jump here if the UNIQUE constraint is satisfied */
     int addrConflictCk;  /* First opcode in the conflict check logic */
+    int nConflictCk;     /* Number of opcodes in conflict check logic */
 
     if( aRegIdx[ix]==0 ) continue;  /* Skip indices that do not change */
     if( pUpsert ){
@@ -2581,6 +2598,11 @@ void sqlite3GenerateConstraintChecks(
       }
     }
 
+    nConflictCk = sqlite3VdbeCurrentAddr(v) - addrConflictCk;
+    assert( nConflictCk>0 || db->mallocFailed );
+    testcase( nConflictCk<=0 );
+    testcase( nConflictCk>1 );
+
     /* Generate code that executes if the new index entry is not unique */
     assert( onError==OE_Rollback || onError==OE_Abort || onError==OE_Fail
         || onError==OE_Ignore || onError==OE_Replace || onError==OE_Update );
@@ -2606,13 +2628,7 @@ void sqlite3GenerateConstraintChecks(
         break;
       }
       default: {
-        int nConflictCk;   /* Number of opcodes in conflict check logic */
-
         assert( onError==OE_Replace );
-        nConflictCk = sqlite3VdbeCurrentAddr(v) - addrConflictCk;
-        assert( nConflictCk>0 || db->mallocFailed );
-        testcase( nConflictCk<=0 );
-        testcase( nConflictCk>1 );
         if( regTrigCnt ){
           sqlite3MultiWrite(pParse);
           nReplaceTrig++;
@@ -2626,57 +2642,57 @@ void sqlite3GenerateConstraintChecks(
         if( pTrigger && isUpdate ){
           sqlite3VdbeAddOp1(v, OP_CursorUnlock, iDataCur);
         }
-        if( regTrigCnt ){
-          int addrBypass;  /* Jump destination to bypass recheck logic */
-
-          sqlite3VdbeAddOp2(v, OP_AddImm, regTrigCnt, 1); /* incr trigger cnt */
-          addrBypass = sqlite3VdbeAddOp0(v, OP_Goto);  /* Bypass recheck */
-          VdbeComment((v, "bypass recheck"));
-
-          /* Here we insert code that will be invoked after all constraint
-          ** checks have run, if and only if one or more replace triggers
-          ** fired. */
-          sqlite3VdbeResolveLabel(v, lblRecheckOk);
-          lblRecheckOk = sqlite3VdbeMakeLabel(pParse);
-          if( pIdx->pPartIdxWhere ){
-            /* Bypass the recheck if this partial index is not defined
-            ** for the current row */
-            sqlite3VdbeAddOp2(v, OP_IsNull, regIdx-1, lblRecheckOk);
-            VdbeCoverage(v);
-          }
-          /* Copy the constraint check code from above, except change
-          ** the constraint-ok jump destination to be the address of
-          ** the next retest block */
-          while( nConflictCk>0 ){
-            VdbeOp x;    /* Conflict check opcode to copy */
-            /* The sqlite3VdbeAddOp4() call might reallocate the opcode array.
-            ** Hence, make a complete copy of the opcode, rather than using
-            ** a pointer to the opcode. */
-            x = *sqlite3VdbeGetOp(v, addrConflictCk);
-            if( x.opcode!=OP_IdxRowid ){
-              int p2;      /* New P2 value for copied conflict check opcode */
-              const char *zP4;
-              if( sqlite3OpcodeProperty[x.opcode]&OPFLG_JUMP ){
-                p2 = lblRecheckOk;
-              }else{
-                p2 = x.p2;
-              }
-              zP4 = x.p4type==P4_INT32 ? SQLITE_INT_TO_PTR(x.p4.i) : x.p4.z;
-              sqlite3VdbeAddOp4(v, x.opcode, x.p1, p2, x.p3, zP4, x.p4type);
-              sqlite3VdbeChangeP5(v, x.p5);
-              VdbeCoverageIf(v, p2!=x.p2);
-            }
-            nConflictCk--;
-            addrConflictCk++;
-          }
-          /* If the retest fails, issue an abort */
-          sqlite3UniqueConstraint(pParse, OE_Abort, pIdx);
-
-          sqlite3VdbeJumpHere(v, addrBypass); /* Terminate the recheck bypass */
-        }
         seenReplace = 1;
         break;
       }
+    }
+    if( regTrigCnt ){
+      int addrBypass;  /* Jump destination to bypass recheck logic */
+
+      sqlite3VdbeAddOp2(v, OP_AddImm, regTrigCnt, 1); /* incr trigger cnt */
+      addrBypass = sqlite3VdbeAddOp0(v, OP_Goto);  /* Bypass recheck */
+      VdbeComment((v, "bypass recheck"));
+
+      /* Here we insert code that will be invoked after all constraint
+      ** checks have run, if and only if one or more replace triggers
+      ** fired. */
+      sqlite3VdbeResolveLabel(v, lblRecheckOk);
+      lblRecheckOk = sqlite3VdbeMakeLabel(pParse);
+      if( pIdx->pPartIdxWhere ){
+        /* Bypass the recheck if this partial index is not defined
+        ** for the current row */
+        sqlite3VdbeAddOp2(v, OP_IsNull, regIdx-1, lblRecheckOk);
+        VdbeCoverage(v);
+      }
+      /* Copy the constraint check code from above, except change
+      ** the constraint-ok jump destination to be the address of
+      ** the next retest block */
+      while( nConflictCk>0 ){
+        VdbeOp x;    /* Conflict check opcode to copy */
+        /* The sqlite3VdbeAddOp4() call might reallocate the opcode array.
+        ** Hence, make a complete copy of the opcode, rather than using
+        ** a pointer to the opcode. */
+        x = *sqlite3VdbeGetOp(v, addrConflictCk);
+        if( x.opcode!=OP_IdxRowid ){
+          int p2;      /* New P2 value for copied conflict check opcode */
+          const char *zP4;
+          if( sqlite3OpcodeProperty[x.opcode]&OPFLG_JUMP ){
+            p2 = lblRecheckOk;
+          }else{
+            p2 = x.p2;
+          }
+          zP4 = x.p4type==P4_INT32 ? SQLITE_INT_TO_PTR(x.p4.i) : x.p4.z;
+          sqlite3VdbeAddOp4(v, x.opcode, x.p1, p2, x.p3, zP4, x.p4type);
+          sqlite3VdbeChangeP5(v, x.p5);
+          VdbeCoverageIf(v, p2!=x.p2);
+        }
+        nConflictCk--;
+        addrConflictCk++;
+      }
+      /* If the retest fails, issue an abort */
+      sqlite3UniqueConstraint(pParse, OE_Abort, pIdx);
+
+      sqlite3VdbeJumpHere(v, addrBypass); /* Terminate the recheck bypass */
     }
     sqlite3VdbeResolveLabel(v, addrUniqueOk);
     if( regR!=regIdx ) sqlite3ReleaseTempRange(pParse, regR, nPkField);
@@ -2715,8 +2731,8 @@ void sqlite3GenerateConstraintChecks(
     }else{
       sqlite3VdbeGoto(v, addrRecheck);
     }
-    sqlite3VdbeResolveLabel(v, lblRecheckOk);
   }
+  if( regTrigCnt ) sqlite3VdbeResolveLabel(v, lblRecheckOk);
 
   /* Generate the table record */
   if( HasRowid(pTab) ){

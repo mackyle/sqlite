@@ -299,82 +299,105 @@ do_execsql_test upsert1-1300 {
 #
 reset_db
 do_execsql_test upsert1-1400 {
-  CREATE TABLE t(
+  CREATE TABLE t0(
     a INTEGER PRIMARY KEY ON CONFLICT REPLACE,
     b INT UNIQUE ON CONFLICT FAIL,
     c INT UNIQUE
   );
-  INSERT INTO t VALUES (1, 10, 100),(2, 20, 200);
+  INSERT INTO t0 VALUES (1, 10, 100),(2, 20, 200);
 }
-do_catchsql_test upsert1-1410 {
-  INSERT INTO t VALUES (1, 20, 300) ON CONFLICT(c) DO NOTHING;
-} {1 {UNIQUE constraint failed: t.b}}
-do_execsql_test upsert1-1420 {
+do_catchsql_test upsert1-1401 {
+  INSERT INTO t0 VALUES (1, 20, 300) ON CONFLICT(c) DO NOTHING;
+} {1 {UNIQUE constraint failed: t0.b}}
+do_execsql_test upsert1-1402 {
   PRAGMA integrity_check;
 } {ok}
-do_execsql_test upsert1-1430 {
-  SELECT * FROM t ORDER BY a;
+do_execsql_test upsert1-1403 {
+  SELECT * FROM t0 ORDER BY a;
 } {1 10 100 2 20 200}
-
-do_execsql_test upsert1-1440 {
-  DROP TABLE t;
-  CREATE TABLE t(
+do_execsql_test upsert1-1404 {
+  DROP TABLE t0;
+  CREATE TABLE t0(
     a INTEGER PRIMARY KEY ON CONFLICT REPLACE,
     b INT UNIQUE ON CONFLICT IGNORE,
     c INT UNIQUE
   );
-  INSERT INTO t VALUES (1, 10, 100),(2, 20, 200);
+  INSERT INTO t0 VALUES (1, 10, 100),(2, 20, 200);
 }
-do_catchsql_test upsert1-1450 {
-  INSERT INTO t VALUES (1, 20, 300) ON CONFLICT(c) DO NOTHING;
+do_catchsql_test upsert1-1405 {
+  INSERT INTO t0 VALUES (1, 20, 300) ON CONFLICT(c) DO NOTHING;
 } {0 {}}
-do_execsql_test upsert1-1420 {
+do_execsql_test upsert1-1406 {
   PRAGMA integrity_check;
 } {ok}
-do_execsql_test upsert1-1460 {
-  SELECT * FROM t ORDER BY a;
+do_execsql_test upsert1-1407 {
+  SELECT * FROM t0 ORDER BY a;
 } {1 10 100 2 20 200}
-
-do_execsql_test upsert1-1470 {
-  DROP TABLE t;
-  CREATE TABLE t(
+do_execsql_test upsert1-1408 {
+  DROP TABLE t0;
+  CREATE TABLE t0(
     a INTEGER PRIMARY KEY ON CONFLICT REPLACE,
     b INT UNIQUE ON CONFLICT FAIL,
     c INT UNIQUE
   );
-  INSERT INTO t VALUES (1, 10, 100),(2, 20, 200);
+  INSERT INTO t0 VALUES (1, 10, 100),(2, 20, 200);
 }
-do_catchsql_test upsert1-1480 {
-  INSERT INTO t VALUES (1, 20, 300) ON CONFLICT(c) DO NOTHING;
-} {1 {UNIQUE constraint failed: t.b}}
+do_catchsql_test upsert1-1409 {
+  INSERT INTO t0 VALUES (1, 20, 300) ON CONFLICT(c) DO NOTHING;
+} {1 {UNIQUE constraint failed: t0.b}}
 do_execsql_test upsert1-1490 {
   PRAGMA integrity_check;
 } {ok}
-do_execsql_test upsert1-1500 {
-  SELECT * FROM t ORDER BY a;
+do_execsql_test upsert1-1410 {
+  SELECT * FROM t0 ORDER BY a;
 } {1 10 100 2 20 200}
-do_execsql_test upsert1-1510 {
+do_execsql_test upsert1-1411 {
+  DROP TABLE t0;
   CREATE TABLE t1(a INTEGER PRIMARY KEY, b UNIQUE ON CONFLICT FAIL, c UNIQUE);
   INSERT INTO t1 VALUES(1, 1, 1);
 }
-do_catchsql_test upsert1-1520 {
+do_catchsql_test upsert1-1412 {
   -- Inserts 0 rows, because hitting the constraint on (b) does ABORT:
   INSERT INTO t1 VALUES(3, 3, 3), (2, 1, 2) ON CONFLICT(c) DO NOTHING;
 } {1 {UNIQUE constraint failed: t1.b}}
-do_execsql_test upsert1-1530 {
+do_execsql_test upsert1-1413 {
   SELECT * FROM t1 ORDER BY a;
 } {1 1 1 3 3 3}
-do_catchsql_test upsert1-1530 {
+do_catchsql_test upsert1-1414 {
   -- Inserts 1 row, because hitting the constraint on (b) does FAIL:
   DELETE FROM t1 WHERE a=3;
   INSERT INTO t1 VALUES(3, 3, 3), (2, 1, 2);
 } {1 {UNIQUE constraint failed: t1.b}}
-do_execsql_test upsert1-1540 {
+do_execsql_test upsert1-1415 {
   SELECT * FROM t1 ORDER BY a;
 } {1 1 1 3 3 3}
-do_execsql_test upsert1-1550 {
+do_execsql_test upsert1-1416 {
   PRAGMA integrity_check;
 } ok
-
+# Counter-example to the fix at check-in 2026-07-17T16:26:56.257Z
+# provided by Pavan Nambi at forum post 2026-07-18T03:35:48Z
+do_execsql_test upsert1-1417 {
+  DROP TABLE t1;
+  PRAGMA recursive_triggers=ON;
+  CREATE TABLE t2(
+    a INTEGER PRIMARY KEY ON CONFLICT REPLACE,
+    b INT UNIQUE ON CONFLICT FAIL,
+    c INT UNIQUE
+  );
+  CREATE TRIGGER t_ad AFTER DELETE ON t2 BEGIN
+    INSERT INTO t2 VALUES(99,20,999);
+  END;
+  INSERT INTO t2 VALUES(1,10,100),(2,30,200);
+  SELECT * FROM t2 ORDER BY a;
+} {1 10 100 2 30 200}
+do_catchsql_test upsert1-1418 {
+  INSERT INTO t2 VALUES(1,20,300) ON CONFLICT(c) DO NOTHING;
+} {1 {UNIQUE constraint failed: t2.b}}
+do_execsql_test upsert1-1419 {
+  PRAGMA integrity_check;
+} ok
+do_execsql_test upsert1-1420 {
+  SELECT * FROM t2 ORDER BY a;
+} {2 30 200 99 20 999}
 
 finish_test

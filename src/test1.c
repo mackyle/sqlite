@@ -8333,6 +8333,7 @@ static int SQLITE_TCLAPI optimization_control(
     { "propagate-const",     SQLITE_PropagateConst },
     { "one-pass",            SQLITE_OnePass        },
     { "exists-to-join",      SQLITE_ExistsToJoin   },
+    { "count-of-view",       SQLITE_CountOfView    },
   };
 
   if( objc!=4 ){

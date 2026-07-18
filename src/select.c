@@ -7155,7 +7155,8 @@ static int countOfViewOptimization(Parse *pParse, Select *p){
   if( p->pSrc->nSrc!=1 ) return 0;                  /* One table in FROM  */
   if( ExprHasProperty(pExpr, EP_WinFunc) ) return 0;/* Not a window function */
   pFrom = p->pSrc->a;
-  if( pFrom->fg.isSubquery==0 ) return 0;    /* FROM is a subquery */
+  if( pFrom->fg.isSubquery==0 ) return 0;           /* FROM is a subquery */
+  if( (p->selFlags & SF_Correlated)!=0 ) return 0;  /* Not a correlated subq */
   pSub = pFrom->u4.pSubq->pSelect;
   if( pSub->pPrior==0 ) return 0;                   /* Must be a compound */
   if( pSub->selFlags & SF_CopyCte ) return 0;       /* Not a CTE */

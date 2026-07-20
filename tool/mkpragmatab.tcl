@@ -406,6 +406,11 @@ set pragma_def {
   TYPE: FLAG
   ARG:  SQLITE_LegacyAlter
   IF:   !defined(SQLITE_OMIT_FLAG_PRAGMAS)
+
+  NAME: auto_strict
+  TYPE: FLAG
+  ARG:  SQLITE_AutoStrict
+  IF:   !defined(SQLITE_OMIT_FLAG_PRAGMAS)
 }
 
 # Open the output file

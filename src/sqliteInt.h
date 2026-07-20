@@ -1878,6 +1878,7 @@ struct sqlite3 {
 #define SQLITE_AttachCreate   HI(0x00010) /* ATTACH allowed to create new dbs */
 #define SQLITE_AttachWrite    HI(0x00020) /* ATTACH allowed to open for write */
 #define SQLITE_Comments       HI(0x00040) /* Enable SQL comments */
+#define SQLITE_AutoStrict     HI(0x00080) /* CREATE TABLE is always STRICT */
 
 /* Flags used only if debugging */
 #ifdef SQLITE_DEBUG

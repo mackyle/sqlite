@@ -2661,6 +2661,7 @@ void sqlite3EndTable(
   sqlite3 *db = pParse->db; /* The database connection */
   int iDb;                  /* Database in which the table lives */
   Index *pIdx;              /* An implied index of the table */
+  const char *zStmtTail = "";  /* Extra text at the end of CREATE TABLE */
 
   if( pEnd==0 && pSelect==0 ){
     return;
@@ -2699,9 +2700,15 @@ void sqlite3EndTable(
   **      then all columns of the PRIMARY KEY must have a NOT NULL
   **      constraint.
   */
-  if( tabOpts & TF_Strict ){
+  if( (tabOpts & TF_Strict)!=0
+   || ((db->flags & SQLITE_AutoStrict)!=0 && !db->init.busy)
+  ){
     int ii;
     p->tabFlags |= TF_Strict;
+    if( (tabOpts & TF_Strict)==0 ){
+      const char zExtra[] = ",STRICT";
+      zStmtTail = zExtra + ((tabOpts & TF_WithoutRowid)==0);
+    }
     for(ii=0; ii<p->nCol; ii++){
       Column *pCol = &p->aCol[ii];
       if( pCol->eCType==COLTYPE_CUSTOM ){
@@ -2918,14 +2925,14 @@ void sqlite3EndTable(
     assert( pParse->isCreate );
     sqlite3NestedParse(pParse,
       "UPDATE %Q." LEGACY_SCHEMA_TABLE
-      " SET type='%s', name=%Q, tbl_name=%Q, rootpage=#%d, sql=%Q"
+      " SET type='%s', name=%Q, tbl_name=%Q, rootpage=#%d, sql='%q%s'"
       " WHERE rowid=#%d",
       db->aDb[iDb].zDbSName,
       zType,
       p->zName,
       p->zName,
       pParse->u1.cr.regRoot,
-      zStmt,
+      zStmt, zStmtTail,
       pParse->u1.cr.regRowid
     );
     sqlite3DbFree(db, zStmt);

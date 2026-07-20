@@ -1,0 +1,94 @@
+# 2026-07-20
+#
+# The author disclaims copyright to this source code.  In place of
+# a legal notice, here is a blessing:
+#
+#    May you do good and not evil.
+#    May you find forgiveness for yourself and forgive others.
+#    May you share freely, never taking more than you give.
+#
+#***********************************************************************
+#
+# Test cases for PRAGMA auto_strict.
+#
+
+set testdir [file dirname $argv0]
+source $testdir/tester.tcl
+set ::testprefix autostrict
+
+do_execsql_test 1.0 {
+  PRAGMA auto_strict;
+} {0}
+do_execsql_test 1.1 {
+  CREATE TABLE t1(a,b,c);
+  INSERT INTO t1 VALUES(1,2,3),('aaa','bbb','ccc');
+  SELECT * FROM t1 ORDER BY rowid;
+} {1 2 3 aaa bbb ccc}
+do_execsql_test 1.2 {
+  PRAGMA auto_strict=ON;
+  PRAGMA auto_strict;
+} {1}
+do_catchsql_test 1.3 {
+  CREATE TABLE t2(x,y,z);
+} {1 {missing datatype for t2.x}}
+do_catchsql_test 1.4 {
+  CREATE TABLE t2(x INT, y TEXT, z TEST);
+} {1 {unknown datatype for t2.z: "TEST"}}
+
+do_execsql_test 2.1 {
+  CREATE TABLE t2(x INT, y TEXT, z ANY);
+  SELECT sql FROM sqlite_schema WHERE name='t2';
+} {{CREATE TABLE t2(x INT, y TEXT, z ANY)STRICT}}
+do_catchsql_test 2.2 {
+  INSERT INTO t2 VALUES(1,'aaa',2),(3,'bbb','ccc');
+} {0 {}}
+do_catchsql_test 2.3 {
+  INSERT INTO t2 VALUES('ccc','ddd',2);
+} {1 {cannot store TEXT value in INT column t2.x}}
+
+do_execsql_test 3.1 {
+  CREATE TABLE t3(x TEXT PRIMARY KEY, y INT, z ANY) WITHOUT ROWID;
+  SELECT sql FROM sqlite_schema WHERE name='t3';
+} {{CREATE TABLE t3(x TEXT PRIMARY KEY, y INT, z ANY) WITHOUT ROWID,STRICT}}
+do_execsql_test 3.2 {
+  INSERT INTO t3(x,y,z) VALUES(1,2,3),('four',5,'six');
+  SELECT typeof(x), * FROM t3 ORDER BY y;
+} {text 1 2 3 text four 5 six}
+do_catchsql_test 3.3 {
+  INSERT INTO t3 VALUES(1,8,9);
+} {1 {UNIQUE constraint failed: t3.x}}
+do_catchsql_test 3.4 {
+  INSERT INTO t3 VALUES('seven','eight','nine');
+} {1 {cannot store TEXT value in INT column t3.y}}
+
+do_execsql_test 4.1 {
+  CREATE TABLE t4(x TEXT, y INT) STRICT;
+  SELECT sql FROM sqlite_schema WHERE name='t4';
+} {{CREATE TABLE t4(x TEXT, y INT) STRICT}}
+do_catchsql_test 4.2 {
+  INSERT INTO t4 VALUES('aaa',1),('bbb',2);
+} {0 {}}
+do_catchsql_test 4.3 {
+  INSERT INTO t4 VALUES('ccc','ddd');
+} {1 {cannot store TEXT value in INT column t4.y}}
+
+db close
+sqlite3 db test.db
+do_execsql_test 5.1 {
+  INSERT INTO t1 VALUES('x','y','z'),(1,2,3);
+  SELECT * FROM t1 ORDER BY rowid;
+} {1 2 3 aaa bbb ccc x y z 1 2 3}
+do_catchsql_test 5.2 {
+  INSERT INTO t2 VALUES('ccc','ddd',2);
+} {1 {cannot store TEXT value in INT column t2.x}}
+do_catchsql_test 5.3 {
+  INSERT INTO t3 VALUES(1,8,9);
+} {1 {UNIQUE constraint failed: t3.x}}
+do_catchsql_test 5.4 {
+  INSERT INTO t3 VALUES('seven','eight','nine');
+} {1 {cannot store TEXT value in INT column t3.y}}
+do_catchsql_test 5.5 {
+  INSERT INTO t4 VALUES('ccc','ddd');
+} {1 {cannot store TEXT value in INT column t4.y}}
+
+finish_test

@@ -4102,8 +4102,9 @@ void sqlite3CreateIndex(
       if( sqlite3FindIndex(db, zName, pDb->zDbSName)!=0 ){
         if( !ifNotExist ){
           sqlite3ErrorMsg(pParse, "index %s already exists", zName);
+        }else if( db->init.busy ){
+          sqlite3ErrorMsg(pParse,"");  /* corruptSchema() will do the error */
         }else{
-          assert( !db->init.busy );
           sqlite3CodeVerifySchema(pParse, iDb);
           sqlite3ForceNotReadOnly(pParse);
         }

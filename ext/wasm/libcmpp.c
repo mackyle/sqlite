@@ -15,13 +15,13 @@
 
   ./c-pp -I. -I./src -Dsrcdir=./src -Dsed=/usr/bin/sed -o libcmpp.h ./tool/libcmpp.c-pp.h -o libcmpp.c ./tool/libcmpp.c-pp.c
 
-  with libcmpp 2.0.x a53a63923506aba565e91571c0f6bdb678e7dcc05dc9f7e281a17e68bf95aa46 @ 2026-07-21 10:38:56.344 UTC
+  with libcmpp 2.0.x ed6b3b14709bba639fa506517cfe9f7415d4a807912cb28df06cfcf19a526176 @ 2026-07-21 11:54:45.237 UTC
 */
 #define CMPP_PACKAGE_NAME "libcmpp"
 #define CMPP_LIB_VERSION "2.0.x"
-#define CMPP_LIB_VERSION_HASH "a53a63923506aba565e91571c0f6bdb678e7dcc05dc9f7e281a17e68bf95aa46"
-#define CMPP_LIB_VERSION_TIMESTAMP "2026-07-21 10:38:56.344 UTC"
-#define CMPP_LIB_CONFIG_TIMESTAMP "2026-07-21 11:23 GMT"
+#define CMPP_LIB_VERSION_HASH "ed6b3b14709bba639fa506517cfe9f7415d4a807912cb28df06cfcf19a526176"
+#define CMPP_LIB_VERSION_TIMESTAMP "2026-07-21 11:54:45.237 UTC"
+#define CMPP_LIB_CONFIG_TIMESTAMP "2026-07-21 14:56 GMT"
 #define CMPP_VERSION CMPP_LIB_VERSION " " CMPP_LIB_VERSION_HASH " @ " CMPP_LIB_VERSION_TIMESTAMP
 #define CMPP_PLATFORM_EXT_DLL ".so"
 #define CMPP_MODULE_PATH ".:/usr/local/lib/cmpp"
@@ -14513,15 +14513,13 @@ int cmpp_args_parse(cmpp_dx * const dx,
   if( 0==dxppCode ){
     pArgs->argc = pArgs->pimpl->argli.n;
     assert( !pArgs->arg0 );
-    for( unsigned int i = 0; i < pArgs->argc; ++i ){
+    for( unsigned int i = 1; i < pArgs->argc; ++i ){
       /* We have to link arg->next after the loop because
          CmppArgList_append() can realloc, invalidating
          the links. */
-      if( i ){
-        cmpp_arg * const a = &pArgs->pimpl->argli.list[i];
-        assert( ! a->next );
-        pArgs->pimpl->argli.list[i-1].next = a;
-      }
+      cmpp_arg * const a = &pArgs->pimpl->argli.list[i];
+      assert( ! a->next );
+      pArgs->pimpl->argli.list[i-1].next = a;
     }
     if( pArgs->argc ) pArgs->arg0 = pArgs->pimpl->argli.list;
     if( zOut<zInEnd ) *zOut = 0;

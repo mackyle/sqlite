@@ -105,7 +105,7 @@
 //#/if target:es6-module
   }.bind(sIMS);
 
-//#if Module.instantiateWasm and not wasmfs and not target:node
+//#if Module.instantiateWasm and not wasmfs
   /**
      Override Module.instantiateWasm().
 
@@ -128,8 +128,9 @@
 {/*
   The following block uses //% as a directive delimiter and is
   replaced in a second pass after compilation of sqlite3.js.
-*/}
-//%if defined sqlite3.wasm.base64
+ */}
+//%define ? base64.wasm 0
+//%if base64.wasm and defined sqlite3.wasm.base64
     let b64Wasm = `
 //%base64
 //%include -raw [arg sqlite3.wasm.base64]

@@ -883,16 +883,19 @@ static void mk_lib_mode(const char *zBuildName, const BuildDef * pB){
       pf("\t@$(call b.do.wasm-opt,%s)\n", zBuildName);
       pf("\t@$(call b.strip-js-emcc-bindings,$(logtag.%s))\n", zBuildName);
 
-      if( 1 ){
-        pf("\techo 'Embedding $(out.%s.wasm) into $@ ...'\n"
-           "\t@mv $@ $@.in\n"
-           "\t$(call b.c-pp.shcmd,%s,$@.in,$@,"
-           "\"--delimiter=//%%\" "
-           "\"-Dsqlite3.wasm.base64=$(out.%s.wasm)\""
-           ")\n",
-           zBuildName, zBuildName, zBuildName);
-        pf("\t@rm -f $@.in\n");
-      }
+      pf("\t@if [ x1 = 'x$(base64.wasm)' ]; then \\\n"
+         "\techo '[$(emo.magic) Embedding $(out.%s.wasm) into $@ ...]'; \\\n"
+         "\telse \\\n"
+         "\techo '[$(emo.megaphone) Not embedding WASM in JS. Pass base64.wasm=1 to do that.]'; \\\n"
+         "\tfi\n",
+         zBuildName);
+      pf("\t@mv $@ $@.in; \\\n"
+         "\t$(call b.c-pp.shcmd,%s,$@.in,$@,"
+         " \"--delimiter=//%%\" -Dbase64.wasm=$(base64.wasm)"
+         " \"-Dsqlite3.wasm.base64=$(out.%s.wasm)\""
+         "); \\\n"
+         "\trm -f $@.in\n",
+         zBuildName, zBuildName);
 
       if( CP_JS & pB->flags ){
         /*

@@ -213,16 +213,16 @@ sqlite3_memory_highwater 1
 unset -nocomplain memused
 set memused [sqlite3_memory_used]
 do_test zeroblob-7.1 {
-  set ::STMT [sqlite3_prepare $::DB "SELECT length(?)" -1 DUMMY]
+  sqlite3_prepare STMT db "SELECT length(?)"
   set ::sqlite3_max_blobsize 0
-  sqlite3_bind_zeroblob $::STMT 1 450000
-  sqlite3_step $::STMT
+  STMT bind_zeroblob 1 450000
+  STMT step
 } {SQLITE_ROW}
 do_test zeroblob-7.2 {
-  sqlite3_column_int $::STMT 0
+  STMT column_int 0
 } {450000}
 do_test zeroblob-7.3 {
-  sqlite3_finalize $::STMT
+  STMT finalize
 } {SQLITE_OK}
 ifcapable incrblob {
   do_test zeroblob-7.4 {
@@ -304,29 +304,30 @@ do_catchsql_test 11.4 {
 # Test the sqlite3_bind_zeroblob64() API.
 #
 proc bind_and_run {stmt nZero} {
-  sqlite3_bind_zeroblob64 $stmt 1 $nZero
-  sqlite3_step $stmt
-  set ret [sqlite3_column_int $stmt 0]
-  sqlite3_reset $stmt
+  set rc [$stmt bind_zeroblob 1 $nZero]
+  if {$rc!="SQLITE_OK"} { error $rc }
+  $stmt step
+  set ret [$stmt column_int 0]
+  $stmt reset
   set ret
 }
-set stmt [sqlite3_prepare db "SELECT length(?)" -1 dummy]
+sqlite3_prepare stmt db "SELECT length(?)"
 
-do_test 12.1 { bind_and_run $stmt 40 } 40
-do_test 12.2 { bind_and_run $stmt  0 }  0
-do_test 12.3 { bind_and_run $stmt 1000 } 1000
+do_test 12.1 { bind_and_run stmt 40 } 40
+do_test 12.2 { bind_and_run stmt  0 }  0
+do_test 12.3 { bind_and_run stmt 1000 } 1000
 
 do_test 12.4 { 
-  list [catch { bind_and_run $stmt [expr 5000 * 1024 * 1024] } msg] $msg 
+  list [catch { bind_and_run stmt [expr 5000 * 1024 * 1024] } msg] $msg 
 } {1 SQLITE_TOOBIG}
 do_test 12.5 {
-  sqlite3_step $stmt
-  set ret [sqlite3_column_int $stmt 0]
-  sqlite3_reset $stmt
+  stmt step
+  set ret [stmt column_int 0]
+  stmt reset
   set ret
 } {1000}
 
-sqlite3_finalize $stmt
+stmt finalize
 
 # 2019-01-25 https://sqlite.org/src/tktview/bb4bdb9f7f654b0bb9f34cfbac
 # Zeroblob truncated by an index on expression

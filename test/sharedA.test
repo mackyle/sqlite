@@ -147,7 +147,7 @@ do_test 2.1 {
 # the schema of test.db and that creates a rollback journal on test2.db
 #
 do_test 2.2 {
-  set ::STMT [sqlite3_prepare db2 "CREATE INDEX i1 ON t1(x)" -1 tail]
+  sqlite3_prepare stmt db2 "CREATE INDEX i1 ON t1(x)"
   db1 eval {
     BEGIN;
       CREATE INDEX i1 ON t1(x);
@@ -173,8 +173,8 @@ proc read_callback {call file args} {
     tvfs filter {}   ;# Ensure that tvfs callbacks to do run on the
                       # child thread
     sqlthread spawn ::thread_result [subst -nocommands {
-      sqlite3_step $::STMT
-      set rc [sqlite3_finalize $::STMT]
+      stmt step
+      stmt finalize
     }]
     after 1000 { set ::some_time_later 1 }
     vwait ::some_time_later

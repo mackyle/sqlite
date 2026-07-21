@@ -62,11 +62,11 @@ do_test tkt2854-1.6 {
 #
 do_test tkt2854-1.7 {
   set ::DB2 [sqlite3_connection_pointer db2]
-  set ::STMT1 [sqlite3_prepare $DB2 "SELECT * FROM abc" -1 TAIL]
-  set ::STMT2 [sqlite3_prepare $DB2 "BEGIN EXCLUSIVE" -1 TAIL]
-  set ::STMT3 [sqlite3_prepare $DB2 "BEGIN IMMEDIATE" -1 TAIL]
-  set ::STMT4 [sqlite3_prepare $DB2 "BEGIN" -1 TAIL]
-  set ::STMT5 [sqlite3_prepare $DB2 "COMMIT" -1 TAIL]
+  sqlite3_prepare STMT1 db2 "SELECT * FROM abc"
+  sqlite3_prepare STMT2 db2 "BEGIN EXCLUSIVE"
+  sqlite3_prepare STMT3 db2 "BEGIN IMMEDIATE"
+  sqlite3_prepare STMT4 db2 "BEGIN"
+  sqlite3_prepare STMT5 db2 "COMMIT"
   execsql { BEGIN EXCLUSIVE } db
 } {}
 do_test tkt2854-1.8 {
@@ -85,21 +85,21 @@ do_test tkt2854-1.10 {
 # at the b-tree level, not the schema level.
 #
 do_test tkt2854-1.11 {
-  list [sqlite3_step $::STMT1] [sqlite3_finalize $::STMT1]
+  list [STMT1 step] [STMT1 finalize]
 } {SQLITE_ERROR SQLITE_LOCKED}
 do_test tkt2854-1.12 {
-  list [sqlite3_step $::STMT2] [sqlite3_finalize $::STMT2]
+  list [STMT2 step] [STMT2 finalize]
 } {SQLITE_ERROR SQLITE_LOCKED}
 do_test tkt2854-1.13 {
-  list [sqlite3_step $::STMT3] [sqlite3_finalize $::STMT3]
+  list [STMT3 step] [STMT3 finalize]
 } {SQLITE_ERROR SQLITE_LOCKED}
 do_test tkt2854-1.14 {
   # A regular "BEGIN" doesn't touch any databases. So it succeeds.
-  list [sqlite3_step $::STMT4] [sqlite3_finalize $::STMT4]
+  list [STMT4 step] [STMT4 finalize]
 } {SQLITE_DONE SQLITE_OK}
 do_test tkt2854-1.15 {
   # As does a COMMIT.
-  list [sqlite3_step $::STMT5] [sqlite3_finalize $::STMT5]
+  list [STMT5 step] [STMT5 finalize]
 } {SQLITE_DONE SQLITE_OK}
 
 # Try to read the database using connection "db3" (which does not share

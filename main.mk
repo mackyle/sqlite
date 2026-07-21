@@ -753,6 +753,7 @@ TESTSRC = \
   $(TOP)/src/test_quota.c \
   $(TOP)/src/test_rtree.c \
   $(TOP)/src/test_schema.c \
+  $(TOP)/src/test_stmt.c \
   $(TOP)/src/test_superlock.c \
   $(TOP)/src/test_syscall.c \
   $(TOP)/src/test_tclsh.c \

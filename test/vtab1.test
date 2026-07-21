@@ -1458,12 +1458,12 @@ ifcapable fts3 {
   do_test 22.4.1 {
     set sql "CREATE VIRTUAL TABLE ${nm}.t3 USING fts4"
     set n [string length $sql]
-    set stmt [sqlite3_prepare db "${sql}xyz" $n dummy]
-    sqlite3_step $stmt
+    sqlite3_prepare stmt db "${sql}xyz" -nbyte $n
+    stmt step
   } {SQLITE_DONE}
   
   do_test 22.4.2 {
-    sqlite3_finalize $stmt
+    stmt finalize
   } {SQLITE_OK}
 }
 

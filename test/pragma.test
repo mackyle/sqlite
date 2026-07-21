@@ -1010,7 +1010,7 @@ do_test pragma-8.1.6 {
 # to reload the schema. This has to be done using the C-API test functions,
 # because the TCL API accounts for SCHEMA_ERROR and retries the query.
 do_test pragma-8.1.7 {
-  sqlite3 db2 test.db; set ::DB2 [sqlite3_connection_pointer db2]
+  sqlite3 db2 test.db
   execsql {
     SELECT * FROM t4;
   } db2
@@ -1021,11 +1021,11 @@ do_test pragma-8.1.8 {
   }
 } {}
 do_test pragma-8.1.9 {
-  set ::STMT [sqlite3_prepare $::DB2 "SELECT * FROM t4" -1 DUMMY]
-  sqlite3_step $::STMT
+  sqlite3_prepare stmt1 db2 "SELECT * FROM t4"
+  stmt1 step
 } SQLITE_ERROR
 do_test pragma-8.1.10 {
-  sqlite3_finalize $::STMT
+  stmt1 finalize
 } SQLITE_SCHEMA
 
 # Make sure the schema-version can be manipulated in an attached database.
@@ -1067,11 +1067,11 @@ ifcapable attach {
     }
   } {}
   do_test pragma-8.1.16 {
-    set ::STMT [sqlite3_prepare $::DB2 "SELECT * FROM aux.t1" -1 DUMMY]
-    sqlite3_step $::STMT
+    sqlite3_prepare stmt db2 "SELECT * FROM aux.t1"
+    stmt step
   } SQLITE_ERROR
   do_test pragma-8.1.17 {
-    sqlite3_finalize $::STMT
+    stmt finalize
   } SQLITE_SCHEMA
   do_test pragma-8.1.18 {
     db2 close
@@ -1210,16 +1210,8 @@ proc check_temp_store {} {
     INSERT INTO a SELECT * FROM a;
     INSERT INTO a SELECT * FROM a;
   }
-  db eval {PRAGMA database_list} {
-    if {$name=="temp"} {
-      set bt [btree_from_db db 1]
-      if {[btree_ismemdb $bt]} {
-        return "memory"
-      }
-      return "disk"
-    }
-  }
-  return "unknown"
+
+  return [btree_is_memdb db temp]
 }
 
 # Application_ID

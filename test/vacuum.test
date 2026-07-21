@@ -220,12 +220,13 @@ do_test vacuum-3.1 {
 #
 do_test vacuum-4.1 {
   db close
-  sqlite3 db test.db; set DB [sqlite3_connection_pointer db]
-  set VM [sqlite3_prepare $DB {VACUUM} -1 TAIL]
-  sqlite3_step $VM
+  sqlite3 db test.db;
+
+  sqlite3_prepare stmt db VACUUM 
+  stmt step
 } {SQLITE_DONE}
 do_test vacuum-4.2 {
-  sqlite3_finalize $VM
+  stmt finalize
 } SQLITE_OK
 
 # Ticket #515.  VACUUM after deleting and recreating the table that

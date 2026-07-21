@@ -217,6 +217,9 @@ b.cp = $(call b.mkdir@); \
 # error before we get to handle that filename juggling. Most JS files
 # defensively set a file-local @policy.
 D.common =
+ifeq (1,$(base64.wasm))
+D.common += -Dbase64.wasm
+endif
 
 #
 # $(call b.c-pp.shcmd,LOGTAG,src,dest,-Dx=y...)

@@ -620,9 +620,9 @@ static void mk_pre_post(char const *zBuildName, BuildDef const * pB){
        "))",
        zBuildName, zBuildName, zBuildName);
   }else{
-    char const *zWasmFile = pB->zDotWasm
-      ? pB->zDotWasm
-      : pB->zBaseName;
+    char const * const zDotWasm = pB
+      ? (pB->zDotWasm ? pB->zDotWasm : zBaseName)
+      : 0;
     /*
     ** See BuildDef::zDotWasm for _why_ we do this. _What_ we're doing
     ** is generate $(pre-js.BUILDNAME.js) as above, but:
@@ -637,20 +637,22 @@ static void mk_pre_post(char const *zBuildName, BuildDef const * pB){
     */
     pf("$(pre-js.%s.js): $(pre-js.in.js) $(bin.c-pp) $(MAKEFILE_LIST)",
        zBuildName);
-    if( pB->zDotWasm ){
+    if( zDotWasm ){
       pf(" $(dir.dout)/%s.wasm" /* This .wasm is from some other
                                    build, so this may trigger a full
                                    build of the reference copy. */,
-         pB->zDotWasm);
+         zDotWasm);
     }
     ps("");
     pf("\t@$(call b.mkdir@); $(call b.c-pp.shcmd,"
        "%s,"
        "$(pre-js.in.js),"
        "$(pre-js.%s.js),"
-       "$(c-pp.D.%s)" C_PP_D_CUSTOM_INSTANTIATE
+       "$(c-pp.D.%s) -Dsqlite3.wasm.base64=$(dir.dout)/%s.wasm"
+       C_PP_D_CUSTOM_INSTANTIATE
        ")\n",
-       zBuildName, zBuildName, zBuildName);
+       zBuildName, zBuildName, zBuildName,
+       zDotWasm/*null is harmless here*/);
   }
 
   ps("\n# --post-js=...");
@@ -684,7 +686,8 @@ static void mk_pre_post(char const *zBuildName, BuildDef const * pB){
        "$(c-pp.D.%s) --@policy=error -Dsqlite3.wasm=%s.wasm"
        "))",
        zBuildName, zBuildName, zBuildName,
-       zBaseName);
+       (pB->zDotWasm ? pB->zDotWasm : zBaseName)
+    );
   }else{
     pf("$(eval $(call b.c-pp.target,"
        "%s,"

@@ -10364,10 +10364,11 @@ int cmpp__b_base64_encode(cmpp *pp, cmpp_b const * bIn, cmpp_b * bOut){
   cmpp_size_t const nvMax = 1000 * 1000 * 1000
     /* 1B == default SQLITE_MAX_LENGTH, but that symbol is not exposed
        in its public API. We "could" extract that limit from pp's db
-       here, but... nah. We're only using it as a guideline, it's not
-       part of the db state so we're not beholden to its limits.  In
-       this context the limit is arbitrary, anyway - we inherit it
-       from this code's origins and retain it for simplicity. */;
+       here, but... no. We're only using it as a guideline: bOut is
+       not not part of the db state so we're not beholden to the db's
+       limits.  In this context the limit is arbitrary, anyway - we
+       inherit it from this code's origins and retain it for
+       simplicity. */;
   if( ppCode ) return ppCode;
   nc = 4*((nv+2)/3); /* quads needed */
   nc += (nc+(B64_DARK_MAX-1))/B64_DARK_MAX + 1; /* LFs and a 0-terminator */
@@ -13636,43 +13637,39 @@ int cmpp__d_delayed_load(cmpp *pp, char const *zName){
           cmpp_dx_f_dangling_closer, 0);
     cmpp_d * dQ = 0;
     rc = cmpp_d_register(pp, &rQ, &dQ);
-    if( 0==rc ){
-      /*
-        It would be preferable to delay registration of query:no-rows
-        until we need it, but doing so causes an error when:
+    if( rc ) goto end;
+    /*
+      It would be preferable to delay registration of query:no-rows
+      until we need it, but doing so causes an error when:
 
-        |#if 0
-        |#query
-        |...
-        |#query:no-rows   HERE
-        |...
-        |#/query
-        |#/if
+      |#if 0
+      |#query
+      |...
+      |#query:no-rows   HERE
+      |...
+      |#/query
+      |#/if
 
-        Because query:no-rows won't have been registered, and unknown
-        directives are an error even in skip mode. Maybe they
-        shouldn't be. Maybe we should just skip them in skip mode.
-        That's only been an issue since doing delayed registration of
-        directives, so it's not come up until recently (as of
-        2025-10-27). i was so hoping to be able to get _rid_ of skip
-        mode at some point.
-      */
-      cmpp_d * dNoRows = 0;
-      cmpp_d_reg const rNR = {
-        .name = "query:no-rows",
-        .opener = {
-          .f = cmpp_dx_f_dangling_closer,
-          .flags = F_NC
-        }
-      };
-      rc = cmpp_d_register(pp, &rNR, &dNoRows);
-      if( 0==rc ){
-        dNoRows->closer = dQ->closer;
-        assert( !dQ->impl.state );
-        dQ->impl.state = dNoRows;
+      Because query:no-rows won't have been registered, and unknown
+      directives are an error even in skip mode. Maybe they shouldn't
+      be. Maybe we should just skip them in skip mode.  That's only
+      been an issue since doing delayed registration of directives, so
+      it's not come up until recently (as of 2025-10-27). i was so
+      hoping to be able to get _rid_ of skip mode at some point.
+    */
+    cmpp_d * dNoRows = 0;
+    cmpp_d_reg const rNR = {
+      .name = "query:no-rows",
+      .opener = {
+        .f = cmpp_dx_f_dangling_closer,
+        .flags = F_NC
       }
-    }
-    goto end;
+    };
+    rc = cmpp_d_register(pp, &rNR, &dNoRows);
+    if( rc ) goto end;
+    dNoRows->closer = dQ->closer;
+    assert( !dQ->impl.state );
+    dQ->impl.state = dNoRows;
   }
 #endif /*CMPP_OMIT_D_DB*/
 

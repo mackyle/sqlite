@@ -774,8 +774,9 @@ static void mk_lib_mode(const char *zBuildName, const BuildDef * pB){
 
   pf("%s# Begin build [%s%s]. flags=0x%02x\n", zBanner,
      pB->zEmo, zBuildName, pB->flags);
-  pf("# zCmppD=%s\n# zBaseName=%s\n",
-     pB->zCmppD ? pB->zCmppD : "", zBaseName);
+  pf("# zCmppD=%s\n# zBaseName=%s\n# zDotWasm=%s\n",
+     pB->zCmppD ? pB->zCmppD : "",
+     zBaseName, zDotWasm);
   pf("b.names += %s\n"
      "emo.b.%s = %s\n",
      zBuildName, zBuildName, pB->zEmo);

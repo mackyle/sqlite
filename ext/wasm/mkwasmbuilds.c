@@ -53,7 +53,7 @@ enum BuildDefFlags {
   **
   ** The only difference beween bundler-friendly and esm builds is
   ** that bundlers require static filename strings in a few places due
-  ** to limitations of bundler tooling, whereas vanilla and JS can
+  ** to limitations of bundler tooling, whereas vanilla and ESM can
   ** both work with dynamic strings.
   */
   F_BUNDLER_FRIENDLY = 1<<1,
@@ -105,7 +105,7 @@ enum BuildDefFlags {
 ** final build directory $(dir.dout).
 **
 ** To keep parallel builds from stepping on each other, each distinct
-** build goes into its own subdir $(dir.dout.$(BuildDef::zBaseName).
+** build goes into its own subdir $(dir.dout)/$(BuildDef::zBaseName).
 ** Builds which produce deliverables we'd like to keep/distribute copy
 ** their final results into the build dir $(dir.dout). See the notes
 ** for the CP_JS enum entry for more details on that.
@@ -136,7 +136,7 @@ enum BuildDefFlags {
 **
 ** Each of those inputs has to be generated before passing them on to
 ** Emscripten so that any build-specific capabilities can get filtered
-** in or out (using ./c-pp-lite.c).
+** in or out (using ./c-pp).
 */
 struct BuildDef {
   /*
@@ -163,7 +163,7 @@ struct BuildDef {
   ** sqlite3.wasm file. In such cases we don't need the extra
   ** sqlite3-foo-bar.wasm which Emscripten (necessarily) creates when
   ** compiling the module, so we patch (at build-time) the JS file to
-  ** use this name instead sqlite3-foo-bar.
+  ** use this name instead of sqlite3-foo-bar.
   */
   const char *zDotWasm;
   const char *zCmppD;     /* Extra -D... flags for c-pp */
@@ -465,12 +465,12 @@ static void mk_prologue(void){
   pf(zBanner
      "define b.do.emcc\n"
      /* $1 = build name */
-     "$(bin.emcc) -o $@ $(emcc_opt_full) $(emcc.flags) "
-     "$(emcc.jsflags) -sENVIRONMENT=$(emcc.environment.$(1)) "
-     " $(pre-post.$(1).flags) "
-     " $(emcc.flags.$(1)) "
-     " $(cflags.common) $(cflags.$(1)) "
-     " $(SQLITE_OPT) "
+     "$(bin.emcc) -o $@ $(emcc_opt_full) $(emcc.flags)"
+     " $(emcc.jsflags) -sENVIRONMENT=$(emcc.environment.$(1))"
+     " $(pre-post.$(1).flags)"
+     " $(emcc.flags.$(1))"
+     " $(cflags.common) $(cflags.$(1))"
+     " $(SQLITE_OPT)"
      " $(cflags.wasm_extra_init) $(sqlite3-wasm.c.in)\n"
      "endef\n"
   );
@@ -603,8 +603,12 @@ static char const * BuildDef_basename(const BuildDef * pB){
 static void mk_pre_post(char const *zBuildName, BuildDef const * pB){
   char const * const zBaseName = pB
     ? BuildDef_basename(pB) : 0;
+    char const * const zDotWasm = pB
+      ? (pB->zDotWasm ? pB->zDotWasm : zBaseName)
+      : 0;
 
-  assert( zBuildName );
+  assert( zBuildName
+          && "This function has not supported a null pB in a long time" );
   pf("%s# Begin --pre/--post flags for %s\n", zBanner, zBuildName);
 
   ps("# --pre-js=...");
@@ -620,9 +624,6 @@ static void mk_pre_post(char const *zBuildName, BuildDef const * pB){
        "))",
        zBuildName, zBuildName, zBuildName);
   }else{
-    char const * const zDotWasm = pB
-      ? (pB->zDotWasm ? pB->zDotWasm : zBaseName)
-      : 0;
     /*
     ** See BuildDef::zDotWasm for _why_ we do this. _What_ we're doing
     ** is generate $(pre-js.BUILDNAME.js) as above, but:
@@ -685,9 +686,7 @@ static void mk_pre_post(char const *zBuildName, BuildDef const * pB){
        "$(extern-post-js.%s.js),"
        "$(c-pp.D.%s) --@policy=error -Dsqlite3.wasm=%s.wasm"
        "))",
-       zBuildName, zBuildName, zBuildName,
-       (pB->zDotWasm ? pB->zDotWasm : zBaseName)
-    );
+       zBuildName, zBuildName, zBuildName, zDotWasm);
   }else{
     pf("$(eval $(call b.c-pp.target,"
        "%s,"
@@ -706,7 +705,6 @@ static void mk_pre_post(char const *zBuildName, BuildDef const * pB){
      "--post-js=$(post-js.%s.js) "
      "--extern-post-js=$(extern-post-js.%s.js)\n",
      zBuildName, zBuildName, zBuildName, zBuildName);
-
 
   /* Set up deps... */
   pf("pre-post.%s.deps = "
@@ -978,7 +976,7 @@ static void mk_lib_mode(const char *zBuildName, const BuildDef * pB){
        "endif\n",
        zBuildName, pB->zIfCond);
   }
-  pf("# End build [%s]%s", zBuildName, zBanner);
+  pf("# End build [%s%s]%s", pB->zEmo, zBuildName, zBanner);
 }
 
 
@@ -1098,10 +1096,10 @@ int main(int argc, char const ** argv){
     */
     for( int i = 1; i < argc; ++i ){
       char const * const zArg = argv[i];
-#define E(N) if(0==strcmp(#N, zArg)) {mk_lib_mode(# N, &oBuildDefs.N);} else /**/
+#define E(N) if(0==strcmp(#N, zArg)) {mk_lib_mode(# N, &oBuildDefs.N);} else
       BuildDefs_map(E) if( 0==strcmp("prologue",zArg) ){
         mk_prologue();
-      }else {
+      }else{
         fprintf(stderr,"Unknown build name: %s\n", zArg);
         rc = 1;
         break;

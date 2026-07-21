@@ -124,15 +124,20 @@
       return this.emscriptenInstantiateWasm(imports, onSuccess);
     }
     const sims = this;
-//#if defined sqlite3.wasm.base64
+//#// \
+{/*
+  The following block uses //% as a directive delimiter and is
+  replaced in a second pass after compilation of sqlite3.js.
+*/}
+//%if defined sqlite3.wasm.base64
     let b64Wasm = `
-//#base64
-//#include -raw [arg sqlite3.wasm.base64]
-//#/base64
+//%base64
+//%include -raw [arg sqlite3.wasm.base64]
+//%/base64
 `;
     const bytes = Uint8Array.fromBase64(b64Wasm);
     b64Wasm = null;
-    const finalThen = (arg) => {
+    const finalThen = (arg)=>{
       arg.imports = imports;
       sims.instantiateWasm = arg; /* used by sqlite3-api-prologue.c-pp.js */
       onSuccess(arg.instance, arg.module);
@@ -140,12 +145,14 @@
 
     WebAssembly.instantiate(bytes.buffer, imports)
       .then(finalThen)
-      .catch((err) => {
+      .catch((err)=>{
         console.error("Failed to instantiate embedded sqlite3.wasm", err);
+        throw err;
       });
 
-    return {}/* Emscripten interprets this to wait on async instantiation */;
-//#else
+    return {}/* Emscripten interprets this to wait on async instantiation
+                via onSuccess(). */;
+//%else
     const uri = Module.locateFile(
       sims.wasmFilename, (
         ('undefined'===typeof scriptDirectory/*var defined by Emscripten glue*/)
@@ -169,7 +176,7 @@
           .then(bytes => WebAssembly.instantiate(bytes, imports))
           .then(finalThen)
     return loadWasm();
-//#/if sqlite3.wasm.base64
+//%/if sqlite3.wasm.base64 pass 2
   }.bind(sIMS);
 //#/if Module.instantiateWasm and not wasmfs
 })(Module);

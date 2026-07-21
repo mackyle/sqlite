@@ -764,9 +764,13 @@ static void emit_api_js(char const *zBuildName){
 static void mk_lib_mode(const char *zBuildName, const BuildDef * pB){
   const char * zJsExt = BuildDef_jsext(pB);
   char const * const zBaseName = BuildDef_basename(pB);
+  char const * const zDotWasm = pB
+    ? (pB->zDotWasm ? pB->zDotWasm : zBaseName)
+    : 0;
 
   assert( oBuildDefs.vanilla.zEnv );
   assert( zBaseName );
+  assert( zDotWasm );
 
   pf("%s# Begin build [%s%s]. flags=0x%02x\n", zBanner,
      pB->zEmo, zBuildName, pB->flags);
@@ -878,6 +882,17 @@ static void mk_lib_mode(const char *zBuildName, const BuildDef * pB){
 
       pf("\t@$(call b.do.wasm-opt,%s)\n", zBuildName);
       pf("\t@$(call b.strip-js-emcc-bindings,$(logtag.%s))\n", zBuildName);
+
+      if( 1 ){
+        pf("\techo 'Embedding $(out.%s.wasm) into $@ ...'\n"
+           "\t@mv $@ $@.in\n"
+           "\t$(call b.c-pp.shcmd,%s,$@.in,$@,"
+           "\"--delimiter=//%%\" "
+           "\"-Dsqlite3.wasm.base64=$(out.%s.wasm)\""
+           ")\n",
+           zBuildName, zBuildName, zBuildName);
+        pf("\t@rm -f $@.in\n");
+      }
 
       if( CP_JS & pB->flags ){
         /*

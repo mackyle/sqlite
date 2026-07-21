@@ -118,12 +118,17 @@
      It's disabled in the (unsupported/untested) node builds because
      node does not do fetch().
   */
-  Module['instantiateWasm'] = function callee(imports,onSuccess){
+  Module['instantiateWasm'] = function callee(imports, onSuccess){
     if( this.emscriptenInstantiateWasm instanceof Function ){
       /* See [tag:locateFile]. Same story here */
       return this.emscriptenInstantiateWasm(imports, onSuccess);
     }
     const sims = this;
+    const finalThen = (arg)=>{
+      arg.imports = imports;
+      sims.instantiateWasm = arg; /* used by sqlite3-api-prologue.c-pp.js */
+      onSuccess(arg.instance, arg.module);
+    };
 //#// \
 {/*
   The following block uses //% as a directive delimiter and is
@@ -138,11 +143,6 @@
 `;
     const bytes = Uint8Array.fromBase64(b64Wasm);
     b64Wasm = null;
-    const finalThen = (arg)=>{
-      arg.imports = imports;
-      sims.instantiateWasm = arg; /* used by sqlite3-api-prologue.c-pp.js */
-      onSuccess(arg.instance, arg.module);
-    };
 
     WebAssembly.instantiate(bytes.buffer, imports)
       .then(finalThen)
@@ -161,11 +161,6 @@
     );
     sims.debugModule("instantiateWasm() uri =", uri, "sIMS =",this);
     const wfetch = ()=>fetch(uri, {credentials: 'same-origin'});
-    const finalThen = (arg)=>{
-      arg.imports = imports;
-      sims.instantiateWasm = arg /* used by sqlite3-api-prologue.c-pp.js */;
-      onSuccess(arg.instance, arg.module);
-    };
     const loadWasm = WebAssembly.instantiateStreaming
           ? async ()=>
           WebAssembly

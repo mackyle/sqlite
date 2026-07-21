@@ -894,6 +894,9 @@ static void mk_lib_mode(const char *zBuildName, const BuildDef * pB){
          " \"--delimiter=//%%\" -Dbase64.wasm=$(base64.wasm)"
          " \"-Dsqlite3.wasm.base64=$(out.%s.wasm)\""
          "); \\\n"
+         "\tchmod u+w $@;\\\n"
+         /* ^^^ the build makes generated files read-only, which then breaks
+            rebuild. */
          "\trm -f $@.in\n",
          zBuildName, zBuildName);
 

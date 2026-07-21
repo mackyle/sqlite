@@ -10361,13 +10361,19 @@ int cmpp__b_base64_encode(cmpp *pp, cmpp_b const * bIn, cmpp_b * bOut){
   cmpp_size_t nc;
   cmpp_size_t const nv = bIn->n;
   char *cBuf;
-  cmpp_size_t const nvMax = 1024 * 1024 * 1024;
+  cmpp_size_t const nvMax = 1000 * 1000 * 1000
+    /* 1B == default SQLITE_MAX_LENGTH, but that symbol is not exposed
+       in its public API. We "could" extract that limit from pp's db
+       here, but... nah. We're only using it as a guideline, it's not
+       part of the db state so we're not beholden to its limits.  In
+       this context the limit is arbitrary, anyway - we inherit it
+       from this code's origins and retain it for simplicity. */;
   if( ppCode ) return ppCode;
   nc = 4*((nv+2)/3); /* quads needed */
   nc += (nc+(B64_DARK_MAX-1))/B64_DARK_MAX + 1; /* LFs and a 0-terminator */
   if( nvMax < nc ){
     return cmpp_err_set(pp, CMPP_RC_RANGE,
-                        "Blob expanded to base64 too big.");
+                        "Blob expanded to base64 is too big.");
   }
   cmpp_b_reuse(bOut);
   if( !bIn->z || !bIn->n ){

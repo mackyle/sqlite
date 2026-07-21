@@ -10372,8 +10372,8 @@ int cmpp__b_base64_encode(cmpp *pp, cmpp_b const * bIn, cmpp_b * bOut){
   }
   bBuf = bIn->z;
   cmpp_b_reuse(bOut);
-  if( !bBuf || !bIn->z ){
-    /* Is encoding 0 bytes misuse? */
+  if( !bBuf || !bIn->n ){
+    /* empty is okay */
     return 0;
   }
   if( 0==cmpp_b_reserve3(pp, bOut, nc) ){

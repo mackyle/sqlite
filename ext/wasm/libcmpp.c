@@ -10361,7 +10361,6 @@ int cmpp__b_base64_encode(cmpp *pp, cmpp_b const * bIn, cmpp_b * bOut){
   cmpp_size_t nc;
   cmpp_size_t const nv = bIn->n;
   char *cBuf;
-  unsigned char const *bBuf;
   cmpp_size_t const nvMax = 1024 * 1024 * 1024;
   if( ppCode ) return ppCode;
   nc = 4*((nv+2)/3); /* quads needed */
@@ -10370,9 +10369,8 @@ int cmpp__b_base64_encode(cmpp *pp, cmpp_b const * bIn, cmpp_b * bOut){
     return cmpp_err_set(pp, CMPP_RC_RANGE,
                         "Blob expanded to base64 too big.");
   }
-  bBuf = bIn->z;
   cmpp_b_reuse(bOut);
-  if( !bBuf || !bIn->n ){
+  if( !bIn->z || !bIn->n ){
     /* empty is okay */
     return 0;
   }

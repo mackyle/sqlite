@@ -15,13 +15,13 @@
 
   ./c-pp -I. -I./src -Dsrcdir=./src -Dsed=/usr/bin/sed -o libcmpp.h ./tool/libcmpp.c-pp.h -o libcmpp.c ./tool/libcmpp.c-pp.c
 
-  with libcmpp 2.0.x a53a63923506aba565e91571c0f6bdb678e7dcc05dc9f7e281a17e68bf95aa46 @ 2026-07-21 10:38:56.344 UTC
+  with libcmpp 2.0.x ed6b3b14709bba639fa506517cfe9f7415d4a807912cb28df06cfcf19a526176 @ 2026-07-21 11:54:45.237 UTC
 */
 #define CMPP_PACKAGE_NAME "libcmpp"
 #define CMPP_LIB_VERSION "2.0.x"
-#define CMPP_LIB_VERSION_HASH "a53a63923506aba565e91571c0f6bdb678e7dcc05dc9f7e281a17e68bf95aa46"
-#define CMPP_LIB_VERSION_TIMESTAMP "2026-07-21 10:38:56.344 UTC"
-#define CMPP_LIB_CONFIG_TIMESTAMP "2026-07-21 10:39 GMT"
+#define CMPP_LIB_VERSION_HASH "ed6b3b14709bba639fa506517cfe9f7415d4a807912cb28df06cfcf19a526176"
+#define CMPP_LIB_VERSION_TIMESTAMP "2026-07-21 11:54:45.237 UTC"
+#define CMPP_LIB_CONFIG_TIMESTAMP "2026-07-21 14:56 GMT"
 #define CMPP_VERSION CMPP_LIB_VERSION " " CMPP_LIB_VERSION_HASH " @ " CMPP_LIB_VERSION_TIMESTAMP
 #define CMPP_PLATFORM_EXT_DLL ".so"
 #define CMPP_MODULE_PATH ".:/usr/local/lib/cmpp"
@@ -10207,6 +10207,199 @@ const cmpp_outputer cmpp_outputer_obuf = {
   .cleanup = cmpp_outputer_cleanup_f_obuf
 };
 #endif
+
+/* base64 pieces copied from sqlite3.org/src/file/ext/misc/base64.c on
+   2026-07-19. */
+#define PC 0x80 /* pad character */
+#define WS 0x81 /* whitespace */
+#define ND 0x82 /* Not above or digit-value */
+#define PAD_CHAR '='
+
+#ifndef U8_TYPEDEF
+typedef unsigned char u8;
+#define U8_TYPEDEF
+#endif
+
+static const char b64Numerals[64+1]
+= "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+#define BX_NUMERAL(dv) (b64Numerals[(u8)(dv)])
+/* Width of base64 lines. Should be an integer multiple of 4. */
+#define B64_DARK_MAX 72
+
+/* Encode a byte buffer into base64 text with linefeeds appended to limit
+** encoded group lengths to B64_DARK_MAX or to terminate the last group.
+*/
+static char* toBase64( u8 const *pIn, cmpp_size_t nbIn, char *pOut ){
+  int nCol = 0;
+  while( nbIn >= 3 ){
+    /* Do the bit-shuffle, exploiting unsigned input to avoid masking. */
+    pOut[0] = BX_NUMERAL(pIn[0]>>2);
+    pOut[1] = BX_NUMERAL(((pIn[0]<<4)|(pIn[1]>>4))&0x3f);
+    pOut[2] = BX_NUMERAL(((pIn[1]&0xf)<<2)|(pIn[2]>>6));
+    pOut[3] = BX_NUMERAL(pIn[2]&0x3f);
+    pOut += 4;
+    nbIn -= 3;
+    pIn += 3;
+    if( (nCol += 4)>=B64_DARK_MAX || nbIn<=0 ){
+      *pOut++ = '\n';
+      nCol = 0;
+    }
+  }
+  if( nbIn > 0 ){
+    signed char nco = nbIn+1;
+    cmpp_ssize_t nbe;
+    unsigned long qv = *pIn++;
+    for( nbe=1; nbe<3; ++nbe ){
+      qv <<= 8;
+      if( (cmpp_size_t)nbe<nbIn ) qv |= *pIn++;
+    }
+    for( nbe=3; nbe>=0; --nbe ){
+      char ce = (nbe<nco)? BX_NUMERAL((u8)(qv & 0x3f)) : PAD_CHAR;
+      qv >>= 6;
+      pOut[nbe] = ce;
+    }
+    pOut += 4;
+    *pOut++ = '\n';
+  }
+  *pOut = 0;
+  return pOut;
+}
+
+#if 0 /* from-base-64. We don't yet have a #base64 -d[ecode] */
+/* Decoding table, ASCII (7-bit) value to base 64 digit value or other */
+static const u8 b64DigitValues[128] = {
+  /*                             HT LF VT  FF CR       */
+    ND,ND,ND,ND, ND,ND,ND,ND, ND,WS,WS,WS, WS,WS,ND,ND,
+  /*                                                US */
+    ND,ND,ND,ND, ND,ND,ND,ND, ND,ND,ND,ND, ND,ND,ND,ND,
+  /*sp                                  +            / */
+    WS,ND,ND,ND, ND,ND,ND,ND, ND,ND,ND,62, ND,ND,ND,63,
+  /* 0  1            5            9            =       */
+    52,53,54,55, 56,57,58,59, 60,61,ND,ND, ND,PC,ND,ND,
+  /*    A                                            O */
+    ND, 0, 1, 2,  3, 4, 5, 6,  7, 8, 9,10, 11,12,13,14,
+  /* P                               Z                 */
+    15,16,17,18, 19,20,21,22, 23,24,25,ND, ND,ND,ND,ND,
+  /*    a                                            o */
+    ND,26,27,28, 29,30,31,32, 33,34,35,36, 37,38,39,40,
+  /* p                               z                 */
+    41,42,43,44, 45,46,47,48, 49,50,51,ND, ND,ND,ND,ND
+};
+#define BX_DV_PROTO(c) \
+  ((((u8)(c))<0x80)? (u8)(b64DigitValues[(u8)(c)]) : 0x80)
+#define IS_BX_DIGIT(bdp) (((u8)(bdp))<0x80)
+#define IS_BX_WS(bdp) ((bdp)==WS)
+#define IS_BX_PAD(bdp) ((bdp)==PC)
+/* Skip over text which is not base64 numeral(s). */
+static char * skipNonB64( char *s, int nc ){
+  char c;
+  while( nc-- > 0 && (c = *s) && !IS_BX_DIGIT(BX_DV_PROTO(c)) ) ++s;
+  return s;
+}
+
+/* Decode base64 text into a byte buffer. */
+static u8* fromBase64( char *pIn, int ncIn, u8 *pOut ){
+  if( ncIn>0 && pIn[ncIn-1]=='\n' ) --ncIn;
+  while( ncIn>0 && *pIn!=PAD_CHAR ){
+    static signed char nboi[] = { 0, 0, 1, 2, 3 };
+    char *pUse = skipNonB64(pIn, ncIn);
+    unsigned long qv = 0L;
+    int nti, nbo, nac;
+    ncIn -= (pUse - pIn);
+    pIn = pUse;
+    nti = (ncIn>4)? 4 : ncIn;
+    ncIn -= nti;
+    nbo = nboi[nti];
+    if( nbo==0 ) break;
+    for( nac=0; nac<4; ++nac ){
+      char c = (nac<nti)? *pIn++ : b64Numerals[0];
+      u8 bdp = BX_DV_PROTO(c);
+      switch( bdp ){
+      case ND:
+        /*  Treat dark non-digits as pad, but they terminate decode too. */
+        ncIn = 0;
+        deliberate_fall_through; /* FALLTHRU */
+      case WS:
+        /* Treat whitespace as pad and terminate this group.*/
+        nti = nac;
+        deliberate_fall_through; /* FALLTHRU */
+      case PC:
+        bdp = 0;
+        --nbo;
+        deliberate_fall_through; /* FALLTHRU */
+      default: /* bdp is the digit value. */
+        qv = qv<<6 | bdp;
+        break;
+      }
+    }
+    switch( nbo ){
+    case 3:
+      pOut[2] = (qv) & 0xff;
+      deliberate_fall_through; /* FALLTHRU */
+    case 2:
+      pOut[1] = (qv>>8) & 0xff;
+      deliberate_fall_through; /* FALLTHRU */
+    case 1:
+      pOut[0] = (qv>>16) & 0xff;
+      break;
+    }
+    pOut += nbo;
+  }
+  return pOut;
+}
+#endif /* base64 decode */
+
+/**
+   Base64-encodes the contents of bIn and replaces bIn's contents
+   (if any) with these.
+
+   Potential TODO is have it append to bOut, but it's simpler to
+   replace it and that's all our use cases currently need.
+*/
+int cmpp__b_base64_encode(cmpp *pp, cmpp_b const * bIn, cmpp_b * bOut){
+  cmpp_size_t nc;
+  cmpp_size_t const nv = bIn->n;
+  char *cBuf;
+  cmpp_size_t const nvMax = 1000 * 1000 * 1000
+    /* 1B == default SQLITE_MAX_LENGTH, but that symbol is not exposed
+       in its public API. We "could" extract that limit from pp's db
+       here, but... nah. We're only using it as a guideline, it's not
+       part of the db state so we're not beholden to its limits.  In
+       this context the limit is arbitrary, anyway - we inherit it
+       from this code's origins and retain it for simplicity. */;
+  if( ppCode ) return ppCode;
+  nc = 4*((nv+2)/3); /* quads needed */
+  nc += (nc+(B64_DARK_MAX-1))/B64_DARK_MAX + 1; /* LFs and a 0-terminator */
+  if( nvMax < nc ){
+    return cmpp_err_set(pp, CMPP_RC_RANGE,
+                        "Blob expanded to base64 is too big.");
+  }
+  cmpp_b_reuse(bOut);
+  if( !bIn->z || !bIn->n ){
+    /* empty is okay */
+    return 0;
+  }
+  if( 0==cmpp_b_reserve3(pp, bOut, nc) ){
+    cBuf = (char*)bOut->z;
+    bOut->n = (cmpp_size_t)(toBase64(bIn->z, bIn->n, cBuf) - cBuf);
+    assert( bOut->n < bOut->nAlloc );
+    cBuf[bOut->n] = 0;
+  }
+  return ppCode;
+}
+
+#undef PC
+#undef WS
+#undef ND
+#undef PAD_CHAR
+#undef UB_TYPEDEF
+#undef BX_DV_PROTO
+#undef IS_BX_DIGIT
+#undef IS_BX_WS
+#undef IS_BX_PAD
+#undef BX_NUMERAL
+#undef B64_DARK_MAX
 /*
 ** 2025-11-07:
 **
@@ -13208,6 +13401,78 @@ end:
   cmpp_b_return(dx->pp, bR);
 }
 
+/** Impl for #base64. */
+static void cmpp_dx_f_base64(cmpp_dx *dx){
+  cmpp_api_init(dx->pp);
+  cmpp_b ob = cmpp_b_empty;
+  cmpp_flag32_t consumeFlags = cmpp_dx_consume_F_PROCESS_OTHER_D;
+  bool comma = false;
+  bool quote = false;
+  cmpp_arg const *arg = 0;
+  for( arg = dx->args.arg0; arg; arg = arg->next ){
+
+#define M(STR) cmpp_arg_equals(arg, STR)
+    if( M("-comma") ) comma = true;
+    else if( M("-quote") ) quote = true;
+    else{
+      cmpp_dx_err_set(dx, CMPP_RC_MISUSE,
+                      "Unhandled argument: %s", arg->z);
+      return;
+    }
+#undef M
+  }
+  if( cmpp_dx_consume_b(dx, &ob, &dx->d->closer, 1, consumeFlags) ){
+    goto end;
+  }else{
+    cmpp_b * const b64 = cmpp_b_borrow(dx->pp);
+    if( !b64 ) goto end;
+    int cmpp__b_base64_encode(cmpp *, cmpp_b const *, cmpp_b *)/* in b.c */;
+    cmpp__b_base64_encode(dx->pp, &ob, b64);
+    if( cmpp_dx_err_check(dx) ){
+      cmpp_b_return(dx->pp, b64);
+      goto end;
+    }
+    cmpp_b_swap(&ob, b64);
+    cmpp_b_return(dx->pp, b64);
+  }
+  unsigned char const * zEnd = ob.z + ob.n;
+#define out(P,N) if( cmpp_dx_out_raw(dx, P, N) ) goto end
+  if( !quote ){
+    cmpp_dx_out_raw(dx, ob.z, ob.n);
+    zEnd = ob.z /* skip the next loop */;
+  }
+  for( unsigned char const * z = ob.z; z < zEnd; ++z ){
+    if( quote ){
+      out("\"", 1);
+    }
+    bool closed = false;
+    for( ;z<zEnd;++z ){
+      if( '\n'==*z ){
+        if( quote ){
+          if( comma && z+1<zEnd ){
+            out("\\n\",\n",5);
+          }else{
+            out("\\n\"\n",4);
+          }
+        }else{
+          out(z, 1);
+        }
+        closed = true;
+        break;
+      }else{
+        out(z, 1);
+      }
+    }
+    if( quote && !closed ){
+      out("\\n\"\n",4);
+    }
+  }
+#undef out
+end:
+  cmpp_b_clear(&ob);
+  return;
+}
+
 
 #if 0
 /* Impl. for dummy placeholder. */
@@ -13309,6 +13574,8 @@ int cmpp__d_delayed_load(cmpp *pp, char const *zName){
                                 cmpp_dx_f_dangling_closer, 0);
   M_IF_CORE("arg",              cmpp_dx_f_arg,          F_A_LIST, 0, 0);
   M_IF_CORE("assert",           cmpp_dx_f_expr,         F_EXPR, 0, 0);
+  M_IF_CORE("base64",           cmpp_dx_f_base64,       F_A_LIST,
+                                cmpp_dx_f_dangling_closer, 0);
   M_IF_CORE("cmp",              cmpp_dx_f_cmp,          F_A_LIST, 0, 0);
   M_IF_CORE("define",           cmpp_dx_f_define,       F_A_LIST,
                                 cmpp_dx_f_dangling_closer, 0);
@@ -14250,15 +14517,13 @@ int cmpp_args_parse(cmpp_dx * const dx,
   if( 0==dxppCode ){
     pArgs->argc = pArgs->pimpl->argli.n;
     assert( !pArgs->arg0 );
-    for( unsigned int i = 0; i < pArgs->argc; ++i ){
+    for( unsigned int i = 1; i < pArgs->argc; ++i ){
       /* We have to link arg->next after the loop because
          CmppArgList_append() can realloc, invalidating
          the links. */
-      if( i ){
-        cmpp_arg * const a = &pArgs->pimpl->argli.list[i];
-        assert( ! a->next );
-        pArgs->pimpl->argli.list[i-1].next = a;
-      }
+      cmpp_arg * const a = &pArgs->pimpl->argli.list[i];
+      assert( ! a->next );
+      pArgs->pimpl->argli.list[i-1].next = a;
     }
     if( pArgs->argc ) pArgs->arg0 = pArgs->pimpl->argli.list;
     if( zOut<zInEnd ) *zOut = 0;

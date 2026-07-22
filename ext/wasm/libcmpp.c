@@ -13485,6 +13485,7 @@ static void cmpp_dx_f_base64(cmpp_dx *dx){
       cmpp_dx_err_set(dx, cmpp_errno_rc(errno, CMPP_RC_IO),
                       "Unknown error opening file %s.", zResolved);
     }
+    if( dxppCode ) goto end;
     cmpp_b_swap(bFile, &ob);
   }else if( isCall ){
     cmpp_dx_err_set(dx, CMPP_RC_MISUSE,

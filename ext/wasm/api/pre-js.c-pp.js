@@ -136,11 +136,9 @@
  */}
 //%define ? base64.wasm 0
 //%if base64.wasm and defined sqlite3.wasm.base64
-    let b64Wasm = `
-//%base64
-//%include -raw [arg sqlite3.wasm.base64]
-//%/base64
-`;
+//%@ push policy error delimiter '<<<' '>>>'
+    let b64Wasm = `<<<[base64 -file sqlite3.wasm.base64]>>>`;
+//%@ pop policy delimiter
     const bytes = Uint8Array.fromBase64(b64Wasm);
     b64Wasm = null;
 

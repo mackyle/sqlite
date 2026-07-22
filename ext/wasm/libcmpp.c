@@ -15,13 +15,13 @@
 
   ./c-pp -I. -I./src -Dsrcdir=./src -Dsed=/usr/bin/sed -o libcmpp.h ./tool/libcmpp.c-pp.h -o libcmpp.c ./tool/libcmpp.c-pp.c
 
-  with libcmpp 2.0.x ed6b3b14709bba639fa506517cfe9f7415d4a807912cb28df06cfcf19a526176 @ 2026-07-21 11:54:45.237 UTC
+  with libcmpp 2.0.x 7f7a9127b675829bf0f834bc13db17b69f7c53061d54efbfd32cfd5ae6e735f5 @ 2026-07-22 14:02:02.120 UTC
 */
 #define CMPP_PACKAGE_NAME "libcmpp"
 #define CMPP_LIB_VERSION "2.0.x"
-#define CMPP_LIB_VERSION_HASH "ed6b3b14709bba639fa506517cfe9f7415d4a807912cb28df06cfcf19a526176"
-#define CMPP_LIB_VERSION_TIMESTAMP "2026-07-21 11:54:45.237 UTC"
-#define CMPP_LIB_CONFIG_TIMESTAMP "2026-07-21 14:56 GMT"
+#define CMPP_LIB_VERSION_HASH "7f7a9127b675829bf0f834bc13db17b69f7c53061d54efbfd32cfd5ae6e735f5"
+#define CMPP_LIB_VERSION_TIMESTAMP "2026-07-22 14:02:02.120 UTC"
+#define CMPP_LIB_CONFIG_TIMESTAMP "2026-07-22 14:02 GMT"
 #define CMPP_VERSION CMPP_LIB_VERSION " " CMPP_LIB_VERSION_HASH " @ " CMPP_LIB_VERSION_TIMESTAMP
 #define CMPP_PLATFORM_EXT_DLL ".so"
 #define CMPP_MODULE_PATH ".:/usr/local/lib/cmpp"
@@ -1008,7 +1008,7 @@ CMPP_EXPORT int cmpp_flush_f_FILE(void * pFile);
 
    ```
    cmpp_b os = cmpp_b_empty;
-   FILE * f = cmpp_fopen(...);
+   cmpp_FILE * f = cmpp_fopen(...);
    rc = cmpp_stream(cmpp_input_f_FILE, f, cmpp_output_f_b, &os);
    // On error os might be partially populated.
    // Eventually clean up the buffer:
@@ -6716,8 +6716,8 @@ static int cmpp__out_expand(cmpp * pp, cmpp_outputer * pOut,
             if( nl && dxp && dxp->flags.countLines ){
               dxp->pos.lineNo +=nl;
             }
-            cmpp_call_str(pp, z+delim->open.n,
-                          (zb - z - delim->open.n),
+            //g_warn("Found: <<%.*s>>", (int)(zb - z -1), z+1);
+            cmpp_call_str(pp, z+1, (zb - z - 1),
                           cmpp_b_reuse(bCall), 0);
             if( 0==ppCode ){
               cmpp__out2(pp, pOut, bCall->z, bCall->n);
@@ -13404,37 +13404,104 @@ end:
 
 /** Impl for #base64. */
 static void cmpp_dx_f_base64(cmpp_dx *dx){
-  cmpp_api_init(dx->pp);
   cmpp_b ob = cmpp_b_empty;
   cmpp_flag32_t consumeFlags = cmpp_dx_consume_F_PROCESS_OTHER_D;
   bool comma = false;
   bool quote = false;
   cmpp_arg const *arg = 0;
-  for( arg = dx->args.arg0; arg; arg = arg->next ){
+  char * zResolved = 0;
+  cmpp_args args = cmpp_args_empty;
+  cmpp_b * const bFile = cmpp_b_borrow(dx->pp) /* -f|-file NAME */;
+  const bool isCall = cmpp_dx_is_call(dx);
+  //bool interpretFile = false;
+  if( !bFile || cmpp_dx_args_clone(dx, &args) ){
+    goto end;
+  }
+  for( arg = args.arg0; arg; arg = arg->next ){
 
 #define M(STR) cmpp_arg_equals(arg, STR)
     if( M("-comma") ) comma = true;
     else if( M("-quote") ) quote = true;
-    else{
+    else if( M("-f") || M("-file")
+             //|| M("-F") || M("-FILE")
+    ){
+      if( !arg->next ){
+        cmpp_dx_err_set(dx, CMPP_RC_MISUSE,
+                        "Expecting a filename argument for %s", arg->z);
+        goto end;
+      }
+      arg = arg->next;
+      assert( !bFile->z );
+      if( cmpp_arg_to_b(dx, arg, bFile,
+                        cmpp_arg_to_b_F_BRACE_CALL) ){
+        goto end;
+      }
+      if( !bFile->n || !bFile->z[0] ){
+        cmpp_dx_err_set(dx, CMPP_RC_MISUSE, "Empty filename is not permitted.");
+        goto end;
+      }
+#if 1
+      zResolved = sqlite3_mprintf("%.*s", (int)bFile->n, bFile->z)
+        /* memory must come from our allocator, not strndup() */;
+      if( cmpp_check_oom(dx->pp, zResolved) ){
+        goto end;
+      }
+#else
+      int nResolved = 0;
+      zResolved = cmpp__include_search(dx->pp, bFile->z, &nResolved);
+      if( !zResolved ){
+        if( !dxppCode ){
+          cmpp_dx_err_set(dx, CMPP_RC_NOT_FOUND, "file not found: %s",
+                          bFile->z);
+        }
+        goto end;
+      }
+#endif
+      //interpretFile = (char)'F'==(char)arg->z[1];
+    }else{
       cmpp_dx_err_set(dx, CMPP_RC_MISUSE,
                       "Unhandled argument: %s", arg->z);
-      return;
+      goto end;
     }
 #undef M
   }
-  if( cmpp_dx_consume_b(dx, &ob, &dx->d->closer, 1, consumeFlags) ){
+  if( zResolved ){
+    cmpp_outputer out = cmpp_outputer_b;
+    out.state = cmpp_b_reuse(bFile);
+    cmpp_FILE * const fp = cmpp_fopen(zResolved, "r");
+    if( fp ){
+      /* TODO (2026-07-22): -F|-FILE NAME tells it to preprocess the
+         input file before encoding, for which we can use
+         cmpp_process_stream(dx->pp,zResolved,cmpp_input_f_FILE, fp).
+         We need to temporarily redirect dx->pp's output to ob before
+         doing so. */
+      int const rc = cmpp_stream(cmpp_input_f_FILE, fp, out.out, out.state);
+      if( rc ){
+        cmpp_dx_err_set(dx, rc, "Unknown error streaming file %s.",
+                        zResolved);
+      }
+      cmpp_fclose(fp);
+    }else{
+      cmpp_dx_err_set(dx, cmpp_errno_rc(errno, CMPP_RC_IO),
+                      "Unknown error opening file %s.", zResolved);
+    }
+    cmpp_b_swap(bFile, &ob);
+  }else if( isCall ){
+    cmpp_dx_err_set(dx, CMPP_RC_MISUSE,
+                    "#base64.../#base64 is not legal for [call]. "
+                    "Pass the -f FILENAME flag instead.");
     goto end;
-  }else{
+  }else if( cmpp_dx_consume_b(dx, &ob, &dx->d->closer, 1, consumeFlags) ){
+    goto end;
+  }
+  if( ob.n ){
     cmpp_b * const b64 = cmpp_b_borrow(dx->pp);
     if( !b64 ) goto end;
     int cmpp__b_base64_encode(cmpp *, cmpp_b const *, cmpp_b *)/* in b.c */;
     cmpp__b_base64_encode(dx->pp, &ob, b64);
-    if( cmpp_dx_err_check(dx) ){
-      cmpp_b_return(dx->pp, b64);
-      goto end;
-    }
     cmpp_b_swap(&ob, b64);
     cmpp_b_return(dx->pp, b64);
+    if( cmpp_dx_err_check(dx) ) goto end;
   }
   unsigned char const * zEnd = ob.z + ob.n;
 #define out(P,N) if( cmpp_dx_out_raw(dx, P, N) ) goto end
@@ -13470,6 +13537,14 @@ static void cmpp_dx_f_base64(cmpp_dx *dx){
   }
 #undef out
 end:
+  if( bFile ){
+    /* ob has its whole contents, i.e. probably a large buffer, so
+       let's keep that one. */
+    cmpp_b_swap(&ob, bFile);
+    cmpp_b_return(dx->pp, bFile);
+  }
+  cmpp_mfree(zResolved);
+  cmpp_args_cleanup(&args);
   cmpp_b_clear(&ob);
   return;
 }
@@ -13670,6 +13745,7 @@ int cmpp__d_delayed_load(cmpp *pp, char const *zName){
     dNoRows->closer = dQ->closer;
     assert( !dQ->impl.state );
     dQ->impl.state = dNoRows;
+    goto end;
   }
 #endif /*CMPP_OMIT_D_DB*/
 

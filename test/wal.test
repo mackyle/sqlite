@@ -609,8 +609,8 @@ do_multiclient_test tn {
   } {}
   do_test wal-10.$tn.28 {
     code3 {
-      set ::STMT [sqlite3_prepare db3 "SELECT * FROM t1" -1 TAIL]
-      sqlite3_step $::STMT
+      set ::STMT [sqlite3_prepare db3 "SELECT * FROM t1"]
+      $::STMT step
     }
     execsql { SELECT * FROM t1 }
   } {1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18}
@@ -619,7 +619,7 @@ do_multiclient_test tn {
     catchsql { PRAGMA wal_checkpoint }
   } {0 {0 3 0}}
   do_test wal-10.$tn.30 {
-    code3 { sqlite3_finalize $::STMT }
+    code3 { $::STMT finalize }
     execsql { PRAGMA wal_checkpoint }
   } {0 3 0}
 

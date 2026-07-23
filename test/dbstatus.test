@@ -426,19 +426,19 @@ do_execsql_test 5.0 {
 }
 
 do_test 5.1 {
-  set ::stmt [sqlite3_prepare db "SELECT * FROM t1" -1 dummy]
-  sqlite3_step $::stmt
-  sqlite3_step $::stmt
-  sqlite3_step $::stmt
-  sqlite3_reset $::stmt
+  set ::stmt [sqlite3_prepare db "SELECT * FROM t1"]
+  $::stmt step
+  $::stmt step
+  $::stmt step
+  $::stmt reset
 } {SQLITE_OK}
 
 ifcapable api_armor {
-  do_test 5.2 { sqlite3_stmt_status $::stmt -1 0 } 0
+  do_test 5.2 { $::stmt stmt_status -1 0 } 0
 }
-do_test 5.3 { sqlite3_stmt_status $::stmt  0 0 } 0
+do_test 5.3 { $::stmt stmt_status  0 0 } 0
 do_test 5.4 { 
-  expr [sqlite3_stmt_status $::stmt 99 0]>0 
+  expr [$::stmt stmt_status 99 0]>0 
 } 1
 foreach {tn id res} {
   1 SQLITE_STMTSTATUS_MEMUSED 1
@@ -450,8 +450,8 @@ foreach {tn id res} {
   7 SQLITE_STMTSTATUS_RUN 1
 } {
 if {$tn==2} breakpoint
-  do_test 5.5.$tn { expr [sqlite3_stmt_status $::stmt $id 0]>0 } $res
+  do_test 5.5.$tn { expr [$::stmt stmt_status $id 0]>0 } $res
 }
 
-sqlite3_finalize $::stmt
+$::stmt finalize
 finish_test

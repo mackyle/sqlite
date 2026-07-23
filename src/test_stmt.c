@@ -30,7 +30,6 @@ struct TestStmt {
 };
 
 extern const char *sqlite3ErrName(int);
-extern int getDbPointer(Tcl_Interp *, const char *, sqlite3 **);
 
 typedef struct TestPrepareContext TestPrepareContext;
 struct TestPrepareContext {
@@ -48,6 +47,23 @@ struct CmdOption {
   int eType;
   void *pVal;
 };
+
+static int testGetDbPointer(
+  Tcl_Interp *interp, 
+  const char *zDb, 
+  sqlite3 **ppDb
+){
+  struct SqliteDb *p;
+  Tcl_CmdInfo cmdInfo;
+  if( Tcl_GetCommandInfo(interp, zDb, &cmdInfo) ){
+    p = (struct SqliteDb*)cmdInfo.objClientData;
+    *ppDb = *(sqlite3**)p;
+  }else{
+    Tcl_AppendResult(interp, "not a db handle: ", zDb, (char*)0);
+    return TCL_ERROR;
+  }
+  return TCL_OK;
+}
 
 static int testProcessOptions(
   Tcl_Interp *interp,
@@ -250,6 +266,9 @@ static int SQLITE_TCLAPI test_stmt_cmd(
     {"bind_text16", -3, "IVAR BYTEARRAY NBYTE"}, /* 18 */
     {"column_type", 1, "ICOL"},               /* 19 */
     {"clear_bindings", 0, ""},                /* 20 */
+    {"stmt_status", 2, "CODE RESETFLAG"},     /* 21 */
+    {"column_decltype", 1, "ICOL"},           /* 22 */
+    {"column_text", 1, "ICOL"},               /* 23 */
     {0}
   };
   int iSub = -1;
@@ -535,6 +554,64 @@ static int SQLITE_TCLAPI test_stmt_cmd(
       break;
     }
 
+    case 21: assert( strcmp(aSub[iSub].zSub, "stmt_status")==0 ); {
+      static const struct {
+        const char *zName;
+        int op;
+      } aOp[] = {
+        { "SQLITE_STMTSTATUS_FULLSCAN_STEP", SQLITE_STMTSTATUS_FULLSCAN_STEP },
+        { "SQLITE_STMTSTATUS_SORT",          SQLITE_STMTSTATUS_SORT          },
+        { "SQLITE_STMTSTATUS_AUTOINDEX",     SQLITE_STMTSTATUS_AUTOINDEX     },
+        { "SQLITE_STMTSTATUS_VM_STEP",       SQLITE_STMTSTATUS_VM_STEP       },
+        { "SQLITE_STMTSTATUS_REPREPARE",     SQLITE_STMTSTATUS_REPREPARE     },
+        { "SQLITE_STMTSTATUS_RUN",           SQLITE_STMTSTATUS_RUN           },
+        { "SQLITE_STMTSTATUS_MEMUSED",       SQLITE_STMTSTATUS_MEMUSED       },
+        { 0 }
+      };
+      int eCode = 0;
+      const char *zCode = 0;
+      int bReset = 0;
+
+      zCode = Tcl_GetString(objv[2]);
+      if( zCode[0]=='S' ){
+        int iOpt = 0;
+        if( Tcl_GetIndexFromObjStruct(
+              interp, objv[2], aOp, sizeof(aOp[0]), "option", 0, &iOpt
+        )){
+          return TCL_ERROR;
+        }
+        eCode = aOp[iOpt].op;
+      }else if( Tcl_GetIntFromObj(interp, objv[2], &eCode) ){
+        return TCL_ERROR;
+      }
+      if( Tcl_GetBooleanFromObj(interp, objv[3], &bReset) ){
+        return TCL_ERROR;
+      }
+
+      Tcl_SetObjResult(interp, Tcl_NewIntObj(
+        sqlite3_stmt_status(p->pStmt, eCode, bReset)
+      ));
+      break;
+    }
+
+    case 22: assert( strcmp(aSub[iSub].zSub, "column_decltype")==0 ); {
+      int iCol = 0;
+      const char *zRet = 0;
+      if( Tcl_GetIntFromObj(interp, objv[2], &iCol) ) return TCL_ERROR;
+      zRet = sqlite3_column_decltype(p->pStmt, iCol);
+      Tcl_SetObjResult(interp, Tcl_NewStringObj(zRet, -1));
+      break;
+    }
+
+    case 23: assert( strcmp(aSub[iSub].zSub, "column_text")==0 ); {
+      int iCol = 0;
+      const char *zRet = 0;
+      if( Tcl_GetIntFromObj(interp, objv[2], &iCol) ) return TCL_ERROR;
+      zRet = (const char*)sqlite3_column_text(p->pStmt, iCol);
+      Tcl_SetObjResult(interp, Tcl_NewStringObj(zRet, -1));
+      break;
+    }
+
   }
 
   return TCL_OK;
@@ -606,15 +683,15 @@ static int SQLITE_TCLAPI test_sqlite3_prepare(
     zCmd = testNewStmtName(interp, p, aCmd);
   }
 
-  if( getDbPointer(interp, zDb, &db) ) return TCL_ERROR;
+  if( testGetDbPointer(interp, zDb, &db) ) return TCL_ERROR;
 
   rc = sqlite3_prepare(db, zSql, nByte, &pStmt, &zTail);
+  if( zTailvar ){
+    Tcl_SetVar(interp, zTailvar, zTail, 0);
+  }
   if( rc!=SQLITE_OK ){
     Tcl_AppendResult(interp, sqlite3_errmsg(db), (char*)0);
     return TCL_ERROR;
-  }
-  if( zTailvar ){
-    Tcl_SetVar(interp, zTailvar, zTail, 0);
   }
 
   pRet = (TestStmt*)ckalloc(sizeof(TestStmt));
@@ -649,7 +726,7 @@ static int SQLITE_TCLAPI test_btree_is_memdb(
     Tcl_WrongNumArgs(interp, 1, objv, "DB IDB");
     return TCL_ERROR;
   }
-  if( getDbPointer(interp, Tcl_GetString(objv[1]), &db) ) return TCL_ERROR;
+  if( testGetDbPointer(interp, Tcl_GetString(objv[1]), &db) ) return TCL_ERROR;
   zName = Tcl_GetString(objv[2]);
 
   sqlite3_file_control(db, zName, SQLITE_FCNTL_FILE_POINTER, &pFile);

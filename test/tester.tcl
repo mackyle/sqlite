@@ -1650,19 +1650,19 @@ proc stepsql {dbptr sql} {
   set sql [string trim $sql]
   set r 0
   while {[string length $sql]>0} {
-    if {[catch {sqlite3_prepare $dbptr $sql -1 sqltail} vm]} {
+    if {[catch {sqlite3_prepare $dbptr $sql -tail sqltail} vm]} {
       return [list 1 $vm]
     }
     set sql [string trim $sqltail]
 #    while {[sqlite_step $vm N VAL COL]=="SQLITE_ROW"} {
 #      foreach v $VAL {lappend r $v}
 #    }
-    while {[sqlite3_step $vm]=="SQLITE_ROW"} {
-      for {set i 0} {$i<[sqlite3_data_count $vm]} {incr i} {
-        lappend r [sqlite3_column_text $vm $i]
+    while {[$vm step]=="SQLITE_ROW"} {
+      for {set i 0} {$i<[$vm data_count]} {incr i} {
+        lappend r [$vm column_text $i]
       }
     }
-    if {[catch {sqlite3_finalize $vm} errmsg]} {
+    if {[catch {$vm finalize} errmsg]} {
       return [list 1 $errmsg]
     }
   }
